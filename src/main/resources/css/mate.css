@@ -1,0 +1,22 @@
+/* Mate theme - warm, soft, low-contrast (Mate desktop-inspired) */
+.root {
+    -ld-bg: #3c3f41;
+    -ld-surface: #45494c;
+    -ld-card: #4f5357;
+    -ld-elev: #5a5f63;
+    -ld-border: #6b7175;
+    -ld-text: #e8e6e3;
+    -ld-text-dim: #a9b2b8;
+    -ld-accent: #6d9c3f;
+    -ld-accent-text: #f4f8f0;
+    -ld-accent-soft: #3f4d33;
+    -ld-danger: #d1604e;
+    -ld-ok: #87b56a;
+    -ld-warn: #d8a24a;
+    -ld-info: #5f9ea0;
+    -ld-chart-1: #6d9c3f;
+    -ld-chart-2: #87b56a;
+    -ld-chart-3: #d8a24a;
+    -ld-chart-4: #5f9ea0;
+    -ld-chart-5: #d1604e;
+}

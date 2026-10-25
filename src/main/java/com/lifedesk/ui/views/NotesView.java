@@ -1,0 +1,331 @@
+package com.lifedesk.ui.views;
+
+import com.lifedesk.app.AppContext;
+import com.lifedesk.notes.NoteMeta;
+import com.lifedesk.notes.SaveResult;
+import com.lifedesk.ui.Dialogs;
+import com.lifedesk.ui.MainWindow;
+import com.lifedesk.ui.View;
+import com.lifedesk.ui.components.EmptyState;
+import javafx.animation.PauseTransition;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
+import javafx.scene.control.SplitPane;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.Tooltip;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.VBox;
+import javafx.util.Duration;
+
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+
+/**
+ * Notes & Knowledge: markdown editor + live preview, folders, tags, autosave
+ * with conflict detection. The editor keeps the loaded-content hash so
+ * external edits are never silently overwritten.
+ */
+public class NotesView extends View {
+    private final ListView<String> folderList = new ListView<>();
+    private final ListView<NoteMeta> noteList = new ListView<>();
+    private final TextField searchField = new TextField();
+    private final TextField titleField = new TextField();
+    private final TextField tagsField = new TextField();
+    private final TextArea editor = new TextArea();
+    private final com.lifedesk.markdown.MarkdownPreviewPane preview = new com.lifedesk.markdown.MarkdownPreviewPane();
+    private final Label statusHint = new Label("");
+    private final BorderPane editorPane = new BorderPane();
+    private final PauseTransition autosave = new PauseTransition(Duration.seconds(1.5));
+
+    private NoteMeta current;
+    private String loadedHash = "";
+    private boolean previewMode = true;
+    private String currentFolder = "";
+
+    public NotesView(AppContext ctx, MainWindow main) {
+        super(ctx, main);
+    }
+
+    @Override
+    public String id() {
+        return "NOTES";
+    }
+
+    @Override
+    protected Node build() {
+        // ---- left: folders + list + search
+        folderList.setPrefWidth(170);
+        folderList.getItems().add("(tất cả)");
+        folderList.getSelectionModel().select(0);
+        folderList.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
+            currentFolder = "(tất cả)".equals(b) || b == null ? "" : b;
+            refreshNoteList();
+        });
+
+        noteList.setPrefWidth(270);
+        noteList.setCellFactory(v -> new ListCell<>() {
+            @Override
+            protected void updateItem(NoteMeta item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    Label title = new Label((item.starred ? "⭐ " : "") + item.title);
+                    Label meta = new Label(item.folder.isEmpty() ? "(gốc)" : item.folder);
+                    meta.getStyleClass().add("dim-label");
+                    setGraphic(new VBox(1, title, meta));
+                    setText(null);
+                }
+            }
+        });
+        noteList.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> openNote(b));
+
+        searchField.setPromptText("Tìm ghi chú…");
+        searchField.textProperty().addListener((o, a, b) -> refreshNoteList());
+
+        Button newBtn = new Button("+ Ghi chú mới");
+        newBtn.getStyleClass().add("primary-btn");
+        newBtn.setOnAction(e -> createNote());
+        Button delBtn = new Button("🗑");
+        delBtn.setTooltip(new Tooltip("Xóa ghi chú đang chọn"));
+        delBtn.setOnAction(e -> deleteCurrent());
+        Button starBtn = new Button("⭐");
+        starBtn.setTooltip(new Tooltip("Đánh dấu quan trọng"));
+        starBtn.setOnAction(e -> toggleStar());
+
+        VBox left = new VBox(8, searchField, folderList, noteList, new HBox(6, newBtn, starBtn, delBtn));
+        VBox.setVgrow(noteList, Priority.ALWAYS);
+        left.setPrefWidth(460);
+        SplitPane.setResizableWithParent(left, Boolean.FALSE);
+
+        // ---- right: editor + preview
+        titleField.setPromptText("Tiêu đề ghi chú");
+        tagsField.setPromptText("tags, phân cách bằng dấu phẩy");
+        titleField.textProperty().addListener((o, a, b) -> queueAutosave());
+        tagsField.textProperty().addListener((o, a, b) -> queueAutosave());
+        editor.setPromptText("Viết markdown ở đây… heading, bảng, danh sách, checklist (- [ ]), code block, [[liên kết ghi chú]]");
+        editor.textProperty().addListener((o, a, b) -> {
+            queueAutosave();
+            if (previewMode) {
+                renderPreview();
+            }
+        });
+
+        Button saveBtn = new Button("💾 Lưu ngay");
+        saveBtn.setOnAction(e -> saveNow());
+        ToggleButton previewToggle = new ToggleButton("👁 Xem trước");
+        previewToggle.setSelected(true);
+        previewToggle.setOnAction(e -> {
+            previewMode = previewToggle.isSelected();
+            layoutEditorSplit();
+        });
+        statusHint.getStyleClass().add("dim-label");
+
+        HBox editorBar = new HBox(8, titleField, new Region(), tagsField, saveBtn, previewToggle);
+        editorBar.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(titleField, Priority.ALWAYS);
+
+        editorPane.setTop(editorBar);
+        layoutEditorSplit();
+
+        preview.setHandlers(
+                this::openRecord,
+                url -> {
+                    if (Dialogs.confirm("Mở liên kết ngoài",
+                            "Mở đường dẫn này bằng trình duyệt?\n" + url)) {
+                        try {
+                            java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
+                        } catch (Exception ex) {
+                            Dialogs.error("Lỗi", "Không mở được liên kết: " + ex.getMessage());
+                        }
+                    }
+                });
+
+        editorPane.setBottom(statusHint);
+        editorPane.setVisible(false);
+        // Pre-render an empty themed page so the preview never flashes white.
+        preview.render("", ctx.themeManager().previewPalette(ctx.config().theme));
+
+        SplitPane root = new SplitPane(left, editorPane);
+        VBox empty = new VBox(new EmptyState("📝", "Chọn hoặc tạo một ghi chú để bắt đầu."));
+        empty.setAlignment(Pos.CENTER);
+        root.getItems().add(empty);
+        root.setDividerPositions(0.28, 0.62);
+        return root;
+    }
+
+    private void layoutEditorSplit() {
+        if (previewMode) {
+            SplitPane split = new SplitPane(editor, preview);
+            split.setDividerPositions(0.5);
+            editorPane.setCenter(split);
+            renderPreview();
+        } else {
+            editorPane.setCenter(editor);
+        }
+    }
+
+    private void renderPreview() {
+        preview.render(editor.getText(), ctx.themeManager().previewPalette(ctx.config().theme),
+                target -> ctx.notes().resolveLink(target).map(s -> "lifedesk://note/" + s).orElse(null));
+    }
+
+    // ------------------------------------------------------------------ list
+
+    private void refreshFolders() {
+        String current = folderList.getSelectionModel().getSelectedItem();
+        folderList.getItems().setAll("(tất cả)");
+        folderList.getItems().addAll(ctx.notes().folders());
+        folderList.getSelectionModel().select(
+                current != null && folderList.getItems().contains(current) ? current : "(tất cả)");
+    }
+
+    private void refreshNoteList() {
+        String q = searchField.getText();
+        var notes = ctx.notes().search(q).stream()
+                .filter(n -> currentFolder.isEmpty() || n.folder.equals(currentFolder))
+                .sorted(Comparator.comparing((NoteMeta n) -> n.updatedAt).reversed())
+                .toList();
+        noteList.getItems().setAll(notes);
+        refreshFolders();
+    }
+
+    private void openNote(NoteMeta meta) {
+        if (meta == current) {
+            return; // selection re-fired by our own refresh; nothing to do
+        }
+        saveNow(); // flush previous note before switching
+        current = meta;
+        editorPane.setVisible(meta != null);
+        if (meta == null) {
+            return;
+        }
+        String content = ctx.notes().readContent(meta.id);
+        loadedHash = com.lifedesk.common.Fingerprint.sha256(content);
+        editor.setText(content);
+        titleField.setText(meta.title);
+        tagsField.setText(String.join(", ", meta.tags));
+        statusHint.setText("Đã mở \"" + meta.title + "\" — tự động lưu sau 1.5s ngừng gõ.");
+        renderPreview();
+    }
+
+    private void queueAutosave() {
+        if (current == null) {
+            return;
+        }
+        statusHint.setText("Đang soạn… (tự động lưu)");
+        autosave.stop();
+        autosave.setOnFinished(e -> saveNow());
+        autosave.playFromStart();
+    }
+
+    private void saveNow() {
+        if (current == null) {
+            return;
+        }
+        try {
+            SaveResult result = ctx.notes().saveContent(current.id, editor.getText(), loadedHash);
+            String titleNew = titleField.getText();
+            var tags = new LinkedHashSet<String>();
+            for (String t : tagsField.getText().split(",")) {
+                if (!t.isBlank()) {
+                    tags.add(t.trim());
+                }
+            }
+            boolean metaChanged = (!titleNew.isBlank() && !titleNew.equals(current.title))
+                    || !tags.equals(current.tags);
+            if (metaChanged) {
+                ctx.notes().updateMeta(current, titleNew, current.folder, tags, current.starred);
+            }
+            if (result == SaveResult.SAVED_WITH_CONFLICT_COPY) {
+                Dialogs.warn("Phát hiện xung đột",
+                        "Ghi chú \"" + current.title + "\" đã bị sửa bên ngoài ứng dụng.\n"
+                                + "Bản bên ngoài được giữ lại thành file -conflict-*.md; nội dung bạn vừa lưu là bản mới nhất.");
+            }
+            if (result != SaveResult.UNCHANGED || metaChanged) {
+                statusHint.setText("Đã lưu lúc " + java.time.LocalTime.now()
+                        .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")));
+                loadedHash = com.lifedesk.common.Fingerprint.sha256(editor.getText());
+            }
+        } catch (RuntimeException e) {
+            statusHint.setText("LƯU THẤT BẠI: " + e.getMessage());
+            Dialogs.error("Lưu ghi chú thất bại", e.getMessage()
+                    + "\nNội dung vẫn còn trong trình soạn thảo — thử lại hoặc chép ra nơi khác.");
+        }
+        refreshNoteListKeepingSelection();
+    }
+
+    private void refreshNoteListKeepingSelection() {
+        String q = searchField.getText();
+        var notes = ctx.notes().search(q).stream()
+                .filter(n -> currentFolder.isEmpty() || n.folder.equals(currentFolder))
+                .sorted(Comparator.comparing((NoteMeta n) -> n.updatedAt).reversed())
+                .toList();
+        NoteMeta selected = noteList.getSelectionModel().getSelectedItem();
+        noteList.getItems().setAll(notes);
+        if (selected != null) {
+            notes.stream().filter(n -> n.id.equals(selected.id)).findFirst()
+                    .ifPresent(n -> noteList.getSelectionModel().select(n));
+        }
+    }
+
+    private void createNote() {
+        String title = Dialogs.prompt("Ghi chú mới", "Tiêu đề ghi chú:", "").orElse(null);
+        if (title == null || title.isBlank()) {
+            return;
+        }
+        NoteMeta meta = ctx.notes().create(title, currentFolder, "# " + title + "\n\n", new LinkedHashSet<>());
+        refreshNoteList();
+        noteList.getSelectionModel().select(meta);
+    }
+
+    private void deleteCurrent() {
+        if (current == null) {
+            return;
+        }
+        if (Dialogs.confirm("Xóa ghi chú", "Xóa vĩnh viễn \"" + current.title + "\"?")) {
+            ctx.notes().delete(current.id);
+            current = null;
+            editor.clear();
+            editorPane.setVisible(false);
+            refreshNoteList();
+        }
+    }
+
+    private void toggleStar() {
+        if (current != null) {
+            ctx.notes().updateMeta(current, null, null, null, !current.starred);
+            refreshNoteListKeepingSelection();
+        }
+    }
+
+    @Override
+    public void onShow() {
+        refreshNoteList();
+    }
+
+    @Override
+    public void onHide() {
+        saveNow();
+    }
+
+    @Override
+    public void openRecord(String recordId) {
+        ctx.notes().list().stream().filter(n -> n.id.equals(recordId)).findFirst()
+                .ifPresent(meta -> {
+                    editorPane.setVisible(true);
+                    refreshNoteList();
+                    noteList.getSelectionModel().select(meta);
+                });
+    }
+}

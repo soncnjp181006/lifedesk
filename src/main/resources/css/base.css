@@ -1,0 +1,554 @@
+/* ==========================================================================
+   LifeDesk base stylesheet.
+   All rules use looked-up colors (-ld-*) defined by the active theme file.
+   Java source code never sets colors; adding a theme = adding one CSS file.
+   ========================================================================== */
+
+.root {
+    -ld-bg: white;            /* window background        */
+    -ld-surface: #f3f4f6;     /* sidebar / topbar         */
+    -ld-card: white;          /* card background          */
+    -ld-elev: #eef0f3;        /* hover / subtle fill      */
+    -ld-border: #d5d9e0;
+    -ld-text: #1c2430;
+    -ld-text-dim: #67707d;
+    -ld-accent: #2563eb;
+    -ld-accent-text: white;
+    -ld-accent-soft: #dbeafe;
+    -ld-danger: #dc2626;
+    -ld-ok: #16a34a;
+    -ld-warn: #d97706;
+    -ld-info: #0891b2;
+    -ld-chart-1: #2563eb;
+    -ld-chart-2: #16a34a;
+    -ld-chart-3: #d97706;
+    -ld-chart-4: #9333ea;
+    -ld-chart-5: #dc2626;
+
+    -fx-background-color: -ld-bg;
+    -fx-font-family: "Segoe UI", "Arial", sans-serif;
+    -fx-font-size: 13px;
+    -fx-text-fill: -ld-text;
+}
+
+/* ---------- generic labels ---------- */
+.label {
+    -fx-text-fill: -ld-text;
+}
+.dim-label {
+    -fx-text-fill: -ld-text-dim;
+    -fx-font-size: 12px;
+}
+.title-label {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ld-text;
+}
+.section-label {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ld-text;
+}
+
+/* ---------- buttons ---------- */
+.button {
+    -fx-background-color: -ld-elev;
+    -fx-text-fill: -ld-text;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 1;
+    -fx-padding: 6 12 6 12;
+    -fx-cursor: hand;
+}
+.button:hover {
+    -fx-background-color: -ld-accent-soft;
+}
+.button:focused {
+    -fx-border-color: -ld-accent;
+    -fx-border-width: 2;
+}
+.button:pressed {
+    -fx-background-color: -ld-border;
+}
+.primary-btn {
+    -fx-background-color: -ld-accent;
+    -fx-text-fill: -ld-accent-text;
+    -fx-border-color: -ld-accent;
+    -fx-font-weight: bold;
+}
+.primary-btn:hover {
+    -fx-background-color: derive(-ld-accent, 12%);
+}
+.primary-btn:pressed {
+    -fx-background-color: derive(-ld-accent, -12%);
+}
+.danger-btn {
+    -fx-background-color: -ld-danger;
+    -fx-text-fill: white;
+    -fx-border-color: -ld-danger;
+    -fx-font-weight: bold;
+}
+.danger-btn:hover {
+    -fx-background-color: derive(-ld-danger, 12%);
+}
+.ghost-btn {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+.ghost-btn:hover {
+    -fx-background-color: -ld-elev;
+}
+
+/* ---------- text input ---------- */
+.text-field, .text-area, .password-field {
+    -fx-background-color: -ld-card;
+    -fx-text-fill: -ld-text;
+    -fx-prompt-text-fill: -ld-text-dim;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 1;
+    -fx-padding: 5 8 5 8;
+    -fx-highlight-fill: -ld-accent-soft;
+}
+.text-field:focused, .text-area:focused {
+    -fx-border-color: -ld-accent;
+    -fx-border-width: 2;
+}
+.text-area .content {
+    -fx-background-color: -ld-card;
+}
+.search-field {
+    -fx-background-radius: 16;
+    -fx-border-radius: 16;
+    -fx-padding: 6 14 6 14;
+    -fx-min-width: 260;
+}
+
+/* ---------- combo / choice / date ---------- */
+.combo-box, .date-picker, .spinner {
+    -fx-background-color: -ld-card;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+}
+.combo-box .list-cell, .date-picker .cell {
+    -fx-text-fill: -ld-text;
+    -fx-background-color: transparent;
+}
+.combo-box-popup .list-view {
+    -fx-background-color: -ld-card;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 1;
+}
+.combo-box-popup .list-cell:filled:hover {
+    -fx-background-color: -ld-accent-soft;
+}
+.combo-box-popup .list-cell:filled:selected {
+    -fx-background-color: -ld-accent;
+    -fx-text-fill: -ld-accent-text;
+}
+.spinner .text-field {
+    -fx-border-width: 0;
+    -fx-background-color: transparent;
+}
+
+/* ---------- table ---------- */
+.table-view {
+    -fx-background-color: -ld-card;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+}
+.table-view .column-header-background {
+    -fx-background-color: -ld-surface;
+    -fx-background-radius: 8 8 0 0;
+}
+.table-view .column-header, .table-view .filler {
+    -fx-background-color: transparent;
+    -fx-size: 36;
+}
+.table-view .column-header .label {
+    -fx-text-fill: -ld-text-dim;
+    -fx-font-weight: bold;
+}
+.table-row-cell {
+    -fx-background-color: -ld-card;
+    -fx-border-color: transparent transparent -ld-border transparent;
+    -fx-border-width: 0 0 0.5 0;
+}
+.table-row-cell:odd {
+    -fx-background-color: derive(-ld-card, -3%);
+}
+.table-row-cell:selected {
+    -fx-background-color: -ld-accent-soft;
+}
+.table-row-cell:selected .label {
+    -fx-text-fill: -ld-text;
+}
+.table-view .placeholder .label {
+    -fx-text-fill: -ld-text-dim;
+}
+
+/* ---------- lists ---------- */
+.list-view {
+    -fx-background-color: -ld-card;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+}
+.list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: -ld-text;
+    -fx-padding: 6 10 6 10;
+}
+.list-cell:filled:hover {
+    -fx-background-color: -ld-elev;
+}
+.list-cell:filled:selected {
+    -fx-background-color: -ld-accent-soft;
+}
+
+/* ---------- checkbox / radio ---------- */
+.check-box, .radio-button {
+    -fx-text-fill: -ld-text;
+}
+.check-box .box, .radio-button .radio {
+    -fx-background-color: -ld-card;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 3;
+    -fx-background-radius: 3;
+}
+.check-box:selected .mark {
+    -fx-background-color: -ld-accent;
+}
+.check-box:selected .box {
+    -fx-background-color: -ld-accent-soft;
+    -fx-border-color: -ld-accent;
+}
+.radio-button:selected .dot {
+    -fx-background-color: -ld-accent;
+}
+
+/* ---------- scroll panes (keep module backgrounds visible) ---------- */
+.scroll-pane {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+}
+.scroll-pane .viewport {
+    -fx-background-color: transparent;
+}
+.scroll-pane .content {
+    -fx-background-color: transparent;
+}
+
+/* ---------- tabs ---------- */
+.tab-pane > .tab-header-area {
+    -fx-background-color: -ld-surface;
+    -fx-padding: 4 8 0 8;
+}
+.tab-pane > .tab-header-area .tab-header-background {
+    -fx-background-color: -ld-surface;
+}
+.tab {
+    -fx-background-color: -ld-elev;
+    -fx-background-radius: 6 6 0 0;
+}
+.tab:selected {
+    -fx-background-color: -ld-card;
+}
+.tab .tab-label {
+    -fx-text-fill: -ld-text-dim;
+}
+.tab:selected .tab-label {
+    -fx-text-fill: -ld-text;
+    -fx-font-weight: bold;
+}
+
+/* ---------- scroll bars ---------- */
+.scroll-bar {
+    -fx-background-color: transparent;
+}
+.scroll-bar .thumb {
+    -fx-background-color: -ld-border;
+    -fx-background-radius: 6;
+}
+.scroll-bar .thumb:hover {
+    -fx-background-color: -ld-text-dim;
+}
+.scroll-bar .increment-button, .scroll-bar .decrement-button {
+    -fx-background-color: transparent;
+    -fx-padding: 2;
+}
+
+/* ---------- layout chrome ---------- */
+.sidebar {
+    -fx-background-color: -ld-surface;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 0 1 0 0;
+    -fx-min-width: 56;
+    -fx-padding: 10 8 10 8;
+}
+.sidebar-btn {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-background-radius: 8;
+    -fx-alignment: baseline-left;
+    -fx-padding: 8 10 8 10;
+    -fx-max-width: infinity;
+}
+.sidebar-btn:hover {
+    -fx-background-color: -ld-elev;
+}
+.sidebar-btn.active {
+    -fx-background-color: -ld-accent;
+    -fx-text-fill: -ld-accent-text;
+}
+.sidebar-btn.active .label {
+    -fx-text-fill: -ld-accent-text;
+}
+.sidebar-icon {
+    -fx-font-size: 15px;
+}
+.topbar {
+    -fx-background-color: -ld-surface;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 8 14 8 14;
+    -fx-spacing: 10;
+}
+.content-area {
+    -fx-background-color: -ld-bg;
+    -fx-padding: 16;
+}
+.statusbar {
+    -fx-background-color: -ld-surface;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 4 12 4 12;
+    -fx-font-size: 11px;
+}
+.statusbar .label {
+    -fx-text-fill: -ld-text-dim;
+}
+
+/* ---------- cards & widgets ---------- */
+.card {
+    -fx-background-color: -ld-card;
+    -fx-background-radius: 10;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-padding: 14;
+    -fx-spacing: 8;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 6, 0.1, 0, 2);
+}
+.card-title {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ld-text;
+}
+.metric-big {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ld-accent;
+}
+.metric-pos {
+    -fx-text-fill: -ld-ok;
+}
+.metric-neg {
+    -fx-text-fill: -ld-danger;
+}
+
+/* ---------- chips & badges ---------- */
+.chip {
+    -fx-background-radius: 12;
+    -fx-padding: 2 10 2 10;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-background-color: -ld-elev;
+    -fx-text-fill: -ld-text;
+}
+.chip-todo    { -fx-background-color: -ld-accent-soft; -fx-text-fill: -ld-accent; }
+.chip-doing   { -fx-background-color: derive(-ld-warn, 70%); -fx-text-fill: -ld-warn; }
+.chip-done    { -fx-background-color: derive(-ld-ok, 75%);   -fx-text-fill: -ld-ok; }
+.chip-cancelled { -fx-background-color: -ld-elev; -fx-text-fill: -ld-text-dim; }
+.chip-overdue { -fx-background-color: derive(-ld-danger, 75%); -fx-text-fill: -ld-danger; }
+.chip-urgent  { -fx-background-color: derive(-ld-danger, 75%); -fx-text-fill: -ld-danger; }
+.chip-high    { -fx-background-color: derive(-ld-warn, 72%); -fx-text-fill: -ld-warn; }
+.chip-medium  { -fx-background-color: -ld-accent-soft; -fx-text-fill: -ld-accent; }
+.chip-low     { -fx-background-color: -ld-elev; -fx-text-fill: -ld-text-dim; }
+.chip-info    { -fx-background-color: derive(-ld-info, 75%); -fx-text-fill: -ld-info; }
+
+/* ---------- states ---------- */
+.empty-state {
+    -fx-alignment: center;
+    -fx-spacing: 10;
+    -fx-padding: 40;
+}
+.empty-state .icon {
+    -fx-font-size: 40px;
+    -fx-opacity: 0.5;
+}
+.empty-state .msg {
+    -fx-text-fill: -ld-text-dim;
+    -fx-font-size: 14px;
+}
+.error-banner {
+    -fx-background-color: derive(-ld-danger, 80%);
+    -fx-border-color: -ld-danger;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-border-width: 1;
+    -fx-padding: 8 12 8 12;
+    -fx-text-fill: -ld-danger;
+}
+.loading-pane {
+    -fx-alignment: center;
+    -fx-spacing: 12;
+}
+
+/* ---------- progress ---------- */
+.progress-bar > .track {
+    -fx-background-color: -ld-elev;
+    -fx-background-radius: 4;
+}
+.progress-bar > .bar {
+    -fx-background-color: -ld-accent;
+    -fx-background-radius: 4;
+}
+.progress-bar.ok > .bar    { -fx-background-color: -ld-ok; }
+.progress-bar.warn > .bar  { -fx-background-color: -ld-warn; }
+.progress-bar.danger > .bar{ -fx-background-color: -ld-danger; }
+
+/* ---------- notifications popup ---------- */
+.notif-popup {
+    -fx-background-color: -ld-card;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-border-width: 1;
+    -fx-padding: 8;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.25), 16, 0.2, 0, 4);
+}
+.notif-item {
+    -fx-padding: 8 10 8 10;
+    -fx-background-radius: 8;
+}
+.notif-item:hover {
+    -fx-background-color: -ld-elev;
+}
+.notif-item.unread {
+    -fx-border-color: -ld-accent transparent transparent transparent;
+    -fx-border-width: 2 0 0 0;
+}
+
+/* ---------- chat ---------- */
+.chat-bubble-user {
+    -fx-background-color: -ld-accent;
+    -fx-text-fill: -ld-accent-text;
+    -fx-background-radius: 12 12 2 12;
+    -fx-padding: 8 12 8 12;
+}
+.chat-bubble-user .label, .chat-bubble-user Text {
+    -fx-text-fill: -ld-accent-text;
+}
+.chat-bubble-ai {
+    -fx-background-color: -ld-elev;
+    -fx-background-radius: 12 12 12 2;
+    -fx-padding: 8 12 8 12;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 1;
+    -fx-border-radius: 12 12 12 2;
+}
+.chat-bubble-system {
+    -fx-background-color: transparent;
+    -fx-text-fill: -ld-text-dim;
+    -fx-padding: 4 8 4 8;
+}
+
+/* ---------- charts ---------- */
+.chart {
+    -fx-background-color: transparent;
+}
+.chart-plot-background {
+    -fx-background-color: transparent;
+}
+.chart-vertical-grid-lines, .chart-horizontal-grid-lines {
+    -fx-stroke: -ld-border;
+    -fx-stroke-width: 0.5;
+    -fx-opacity: 0.6;
+}
+.chart-vertical-zero-line, .chart-horizontal-zero-line {
+    -fx-stroke: -ld-text-dim;
+}
+.axis {
+    -fx-tick-label-fill: -ld-text-dim;
+    -fx-tick-length: 6;
+    -fx-border-color: -ld-border;
+}
+.chart-title {
+    -fx-text-fill: -ld-text;
+    -fx-font-size: 12px;
+}
+.axis-label {
+    -fx-text-fill: -ld-text-dim;
+}
+.series0 .chart-line-symbol { -fx-stroke: -ld-chart-1; -fx-background-color: -ld-chart-1, white; }
+.series1 .chart-line-symbol { -fx-stroke: -ld-chart-2; -fx-background-color: -ld-chart-2, white; }
+.series2 .chart-line-symbol { -fx-stroke: -ld-chart-3; -fx-background-color: -ld-chart-3, white; }
+.series3 .chart-line-symbol { -fx-stroke: -ld-chart-4; -fx-background-color: -ld-chart-4, white; }
+.series0 .chart-series-line { -fx-stroke: -ld-chart-1; -fx-stroke-width: 2; }
+.series1 .chart-series-line { -fx-stroke: -ld-chart-2; -fx-stroke-width: 2; }
+.series2 .chart-series-line { -fx-stroke: -ld-chart-3; -fx-stroke-width: 2; }
+.series3 .chart-series-line { -fx-stroke: -ld-chart-4; -fx-stroke-width: 2; }
+.bar-chart .series0 .chart-bar { -fx-background-color: -ld-chart-1; }
+.bar-chart .series1 .chart-bar { -fx-background-color: -ld-chart-2; }
+.bar-chart .series2 .chart-bar { -fx-background-color: -ld-chart-3; }
+.default-color0.chart-pie { -fx-pie-color: -ld-chart-1; }
+.default-color1.chart-pie { -fx-pie-color: -ld-chart-2; }
+.default-color2.chart-pie { -fx-pie-color: -ld-chart-3; }
+.default-color3.chart-pie { -fx-pie-color: -ld-chart-4; }
+.default-color4.chart-pie { -fx-pie-color: -ld-chart-5; }
+.chart-pie-label { -fx-text-fill: -ld-text; }
+.chart-legend { -fx-background-color: transparent; }
+.chart-legend-item { -fx-text-fill: -ld-text; }
+
+/* ---------- markdown preview (webview wrapper) ---------- */
+.md-preview-wrap {
+    -fx-background-color: -ld-card;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+}
+
+/* ---------- dialogs ---------- */
+.dialog-pane {
+    -fx-background-color: -ld-card;
+    -fx-border-color: -ld-border;
+}
+.dialog-pane .header-panel {
+    -fx-background-color: -ld-surface;
+}
+.dialog-pane .label {
+    -fx-text-fill: -ld-text;
+}
+
+/* ---------- tooltip ---------- */
+.tooltip {
+    -fx-background-color: -ld-card;
+    -fx-text-fill: -ld-text;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+}
+
+/* ---------- separator / menu ---------- */
+.separator .line {
+    -fx-border-color: -ld-border;
+}
+.menu-bar {
+    -fx-background-color: -ld-surface;
+}

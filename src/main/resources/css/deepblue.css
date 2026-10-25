@@ -1,0 +1,22 @@
+/* Deep Blue theme */
+.root {
+    -ld-bg: #0d1b2a;
+    -ld-surface: #12233a;
+    -ld-card: #172c47;
+    -ld-elev: #1e3760;
+    -ld-border: #2a4a75;
+    -ld-text: #e4edf8;
+    -ld-text-dim: #8fa8c6;
+    -ld-accent: #3b82f6;
+    -ld-accent-text: #eaf2ff;
+    -ld-accent-soft: #1d3a66;
+    -ld-danger: #e4574f;
+    -ld-ok: #34b585;
+    -ld-warn: #e0a03c;
+    -ld-info: #38bdf8;
+    -ld-chart-1: #3b82f6;
+    -ld-chart-2: #34b585;
+    -ld-chart-3: #e0a03c;
+    -ld-chart-4: #a78bfa;
+    -ld-chart-5: #e4574f;
+}

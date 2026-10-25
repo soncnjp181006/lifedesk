@@ -1,0 +1,22 @@
+/* Light theme */
+.root {
+    -ld-bg: #f8f9fb;
+    -ld-surface: #eef1f5;
+    -ld-card: #ffffff;
+    -ld-elev: #e6e9ef;
+    -ld-border: #d5d9e0;
+    -ld-text: #1c2430;
+    -ld-text-dim: #67707d;
+    -ld-accent: #2563eb;
+    -ld-accent-text: #ffffff;
+    -ld-accent-soft: #dbeafe;
+    -ld-danger: #dc2626;
+    -ld-ok: #16a34a;
+    -ld-warn: #d97706;
+    -ld-info: #0891b2;
+    -ld-chart-1: #2563eb;
+    -ld-chart-2: #16a34a;
+    -ld-chart-3: #d97706;
+    -ld-chart-4: #9333ea;
+    -ld-chart-5: #dc2626;
+}

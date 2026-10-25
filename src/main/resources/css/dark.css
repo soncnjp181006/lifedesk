@@ -1,0 +1,22 @@
+/* Dark theme */
+.root {
+    -ld-bg: #15181e;
+    -ld-surface: #1b1f26;
+    -ld-card: #232830;
+    -ld-elev: #2c323d;
+    -ld-border: #3a414d;
+    -ld-text: #e8eaed;
+    -ld-text-dim: #9aa3af;
+    -ld-accent: #4f8ef7;
+    -ld-accent-text: #0e1116;
+    -ld-accent-soft: #2b3a52;
+    -ld-danger: #ef5350;
+    -ld-ok: #4caf7d;
+    -ld-warn: #ffb74d;
+    -ld-info: #4dd0e1;
+    -ld-chart-1: #4f8ef7;
+    -ld-chart-2: #4caf7d;
+    -ld-chart-3: #ffb74d;
+    -ld-chart-4: #b07cf7;
+    -ld-chart-5: #ef5350;
+}

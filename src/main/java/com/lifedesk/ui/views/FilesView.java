@@ -1,0 +1,356 @@
+package com.lifedesk.ui.views;
+
+import com.lifedesk.app.AppContext;
+import com.lifedesk.files.FileHit;
+import com.lifedesk.files.FileManagerService;
+import com.lifedesk.files.FileSearchOptions;
+import com.lifedesk.ui.Dialogs;
+import com.lifedesk.ui.MainWindow;
+import com.lifedesk.ui.View;
+import com.lifedesk.ui.components.EmptyState;
+import javafx.beans.property.ReadOnlyObjectWrapper;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.VBox;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+
+/**
+ * File manager over user-granted roots. Read-only by design: no delete,
+ * rename or move operations exist in this view or service. Opening a file
+ * uses the OS default application.
+ */
+public class FilesView extends View {
+    private static final DateTimeFormatter DF = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+    private static final String[] SIZE_UNITS = {"B", "KB", "MB", "GB"};
+
+    private final ComboBox<Path> rootCombo = new ComboBox<>();
+    private final TableView<FileHit> table = new TableView<>();
+    private final TextField nameQuery = new TextField();
+    private final TextField extQuery = new TextField();
+    private final TextField minSize = new TextField();
+    private final CheckBox recursive = new CheckBox("Quét đệ quy (tối đa 6 cấp)");
+    private final ListView<String> favorites = new ListView<>();
+    private final Label scopeNote = new Label();
+    private javafx.concurrent.Task<List<FileHit>> searchTask;
+
+    public FilesView(AppContext ctx, MainWindow main) {
+        super(ctx, main);
+    }
+
+    @Override
+    public String id() {
+        return "FILES";
+    }
+
+    @Override
+    protected Node build() {
+        Label title = new Label("Tệp (chỉ đọc)");
+        title.getStyleClass().add("title-label");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        Button addRoot = new Button("+ Cấp quyền thư mục");
+        addRoot.setOnAction(e -> addAllowedRoot());
+        HBox header = new HBox(10, title, spacer, addRoot);
+        header.setAlignment(Pos.CENTER_LEFT);
+
+        scopeNote.getStyleClass().add("dim-label");
+        scopeNote.setWrapText(true);
+        scopeNote.setText("LifeDesk CHỈ đọc các thư mục bạn cấp quyền. Không xóa/đổi tên/di chuyển file; "
+                + "không quét toàn bộ ổ đĩa; không thu thập nội dung file.");
+
+        rootCombo.setCellFactory(v -> new ListCell<>() {
+            @Override
+            protected void updateItem(Path item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : item.toString());
+            }
+        });
+        rootCombo.setOnAction(e -> browse());
+
+        nameQuery.setPromptText("Tên file chứa…");
+        extQuery.setPromptText("Phần mở rộng (vd: pdf, docx)");
+        minSize.setPromptText("Dung lượng tối thiểu (byte)");
+        recursive.setSelected(true);
+        Button searchBtn = new Button("🔍 Tìm kiếm");
+        searchBtn.getStyleClass().add("primary-btn");
+        searchBtn.setOnAction(e -> runSearch());
+        Button cancelSearch = new Button("Hủy tìm");
+        cancelSearch.setOnAction(e -> {
+            if (searchTask != null && searchTask.isRunning()) {
+                searchTask.cancel(true);
+            }
+        });
+        Button browseBtn = new Button("📂 Duyệt thư mục");
+        browseBtn.setOnAction(e -> browse());
+        Button openBtn = new Button("🚀 Mở bằng app mặc định");
+        openBtn.setOnAction(e -> openSelected());
+        Button favBtn = new Button("⭐ Thêm vào yêu thích");
+        favBtn.setOnAction(e -> addFavorite());
+        Button favRemove = new Button("Bỏ yêu thích");
+        favRemove.setOnAction(e -> removeFavorite());
+
+        HBox searchRow = new HBox(8, rootCombo, browseBtn, nameQuery, extQuery, minSize, recursive,
+                searchBtn, cancelSearch);
+        searchRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(nameQuery, Priority.ALWAYS);
+        HBox.setHgrow(rootCombo, Priority.SOMETIMES);
+
+        buildTable();
+        table.setPlaceholder(new EmptyState("📁", "Chọn một thư mục đã cấp quyền để duyệt hoặc tìm kiếm."));
+
+        favorites.setPrefWidth(240);
+        favorites.setCellFactory(v -> new ListCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : item);
+            }
+        });
+        favorites.getItems().addAll(ctx.files().favorites().stream().map(f -> f.path).toList());
+        favorites.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
+            if (b != null) {
+                Path p = Paths.get(b);
+                if (ctx.files().isAllowed(p)) {
+                    rootCombo.getItems().stream().filter(r -> r.equals(p)).findFirst()
+                            .ifPresentOrElse(rootCombo.getSelectionModel()::select,
+                                    () -> openRecordList(p));
+                } else {
+                    main.status("Thư mục yêu thích chưa được cấp quyền trong phiên này");
+                }
+            }
+        });
+        VBox favBox = new VBox(8, new Label("Thư mục yêu thích"), favorites, new HBox(6, favBtn, favRemove));
+        favBox.setPrefWidth(260);
+
+        HBox content = new HBox(12, new VBox(10, searchRow, table), favBox);
+        HBox.setHgrow(content.getChildren().get(0), Priority.ALWAYS);
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        VBox root = new VBox(10, header, scopeNote, content);
+        VBox.setVgrow(root, Priority.ALWAYS);
+        refreshRoots();
+        return root;
+    }
+
+    private void buildTable() {
+        TableColumn<FileHit, FileHit> nameCol = new TableColumn<>("Tên");
+        nameCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue()));
+        nameCol.setCellFactory(c -> new javafx.scene.control.TableCell<>() {
+            @Override
+            protected void updateItem(FileHit item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    setText(null);
+                    setGraphic(new Label((item.directory() ? "📁 " : "📄 ") + item.name()));
+                }
+            }
+        });
+        TableColumn<FileHit, String> sizeCol = new TableColumn<>("Kích thước");
+        sizeCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(
+                p.getValue().directory() ? "<dir>" : humanSize(p.getValue().sizeBytes())));
+        TableColumn<FileHit, String> modifiedCol = new TableColumn<>("Sửa lần cuối");
+        modifiedCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(
+                LocalDateTime.ofInstant(p.getValue().lastModified(), ZoneId.systemDefault()).format(DF)));
+        TableColumn<FileHit, String> extCol = new TableColumn<>("Loại");
+        extCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(
+                p.getValue().directory() ? "Thư mục" : String.valueOf(p.getValue().extension())));
+        TableColumn<FileHit, String> pathCol = new TableColumn<>("Đường dẫn");
+        pathCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().path().toString()));
+        table.getColumns().setAll(List.of(nameCol, sizeCol, modifiedCol, extCol, pathCol));
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) {
+                FileHit hit = table.getSelectionModel().getSelectedItem();
+                if (hit != null) {
+                    if (hit.directory()) {
+                        browse(hit.path());
+                    } else {
+                        openSelected();
+                    }
+                }
+            }
+        });
+    }
+
+    private static String humanSize(long bytes) {
+        double b = bytes;
+        int u = 0;
+        while (b >= 1024 && u < SIZE_UNITS.length - 1) {
+            b /= 1024;
+            u++;
+        }
+        return String.format("%.1f %s", b, SIZE_UNITS[u]);
+    }
+
+    private void refreshRoots() {
+        Path selected = rootCombo.getValue();
+        rootCombo.getItems().setAll(ctx.files().allowedRoots());
+        if (selected != null && rootCombo.getItems().contains(selected)) {
+            rootCombo.getSelectionModel().select(selected);
+        } else if (!rootCombo.getItems().isEmpty()) {
+            rootCombo.getSelectionModel().selectFirst();
+        }
+    }
+
+    private void addAllowedRoot() {
+        javafx.stage.DirectoryChooser chooser = new javafx.stage.DirectoryChooser();
+        chooser.setTitle("Cấp quyền truy cập thư mục cho LifeDesk");
+        java.io.File dir = chooser.showDialog(main.stage());
+        if (dir == null) {
+            return;
+        }
+        if (!Dialogs.confirm("Cấp quyền đọc thư mục",
+                "Cho phép LifeDesk đọc file trong:\n" + dir.getAbsolutePath()
+                        + "\n(Đồng nghĩa với cho phép agent tìm kiếm file trong thư mục này)")) {
+            return;
+        }
+        ctx.config().allowedRoots.add(dir.getAbsolutePath());
+        ctx.files().setAllowedRoots(ctx.config().allowedRoots);
+        saveConfig();
+        refreshRoots();
+        browse();
+    }
+
+    private void saveConfig() {
+        com.lifedesk.ui.Fx.async(ctx.executors().io(), () -> {
+            new com.lifedesk.config.ConfigService(com.lifedesk.config.ConfigService.defaultConfigDir())
+                    .save(ctx.config());
+            return true;
+        }, ok -> {
+        }, err -> main.status("Lưu cấu hình thất bại: " + err.getMessage()));
+    }
+
+    private void browse() {
+        Path root = rootCombo.getValue();
+        if (root != null) {
+            browse(root);
+        }
+    }
+
+    private void browse(Path dir) {
+        if (!ctx.files().isAllowed(dir)) {
+            Dialogs.warn("Ngoài phạm vi", "Thư mục này chưa được cấp quyền truy cập.");
+            return;
+        }
+        try {
+            table.getItems().setAll(ctx.files().list(dir));
+            if (!rootCombo.getItems().contains(dir)) {
+                rootCombo.getItems().add(dir);
+                rootCombo.getSelectionModel().select(dir);
+            }
+        } catch (RuntimeException e) {
+            Dialogs.error("Không đọc được thư mục", e.getMessage());
+        }
+    }
+
+    private void openRecordList(Path dir) {
+        browse(dir);
+    }
+
+    private void runSearch() {
+        Path root = rootCombo.getValue();
+        if (root == null) {
+            Dialogs.info("Chọn thư mục", "Hãy chọn một thư mục đã cấp quyền.");
+            return;
+        }
+        FileSearchOptions options = new FileSearchOptions();
+        options.root = root;
+        options.nameQuery = nameQuery.getText();
+        if (!extQuery.getText().isBlank()) {
+            options.extensions = java.util.Set.of(extQuery.getText().trim().toLowerCase().split("[,\\s]+"));
+        }
+        if (!minSize.getText().isBlank()) {
+            try {
+                options.minSizeBytes = Long.parseLong(minSize.getText().trim());
+            } catch (NumberFormatException e) {
+                Dialogs.error("Dung lượng không hợp lệ", "Nhập số byte, ví dụ 1000000");
+                return;
+            }
+        }
+        options.includeSubfolders = recursive.isSelected();
+        main.status("Đang tìm kiếm trong " + root + "…");
+
+        searchTask = new javafx.concurrent.Task<>() {
+            @Override
+            protected List<FileHit> call() {
+                return ctx.files().search(options);
+            }
+        };
+        searchTask.setOnSucceeded(e -> {
+            List<FileHit> hits = searchTask.getValue();
+            table.getItems().setAll(hits);
+            main.status("Tìm kiếm xong: " + hits.size() + " kết quả (giới hạn " + options.maxResults + ")");
+        });
+        searchTask.setOnFailed(e -> main.status("Tìm kiếm lỗi: " + searchTask.getException()));
+        searchTask.setOnCancelled(e -> main.status("Đã hủy tìm kiếm"));
+        ctx.executors().io().execute(searchTask);
+    }
+
+    private void openSelected() {
+        FileHit hit = table.getSelectionModel().getSelectedItem();
+        if (hit == null) {
+            return;
+        }
+        try {
+            boolean ok = ctx.files().openWithDefaultApp(hit.path());
+            if (!ok) {
+                Dialogs.warn("Không mở được", "Hệ điều hành không hỗ trợ mở file mặc định từ Java trên máy này.");
+            }
+        } catch (RuntimeException e) {
+            Dialogs.error("Không mở được file", e.getMessage());
+        }
+    }
+
+    private void addFavorite() {
+        Path root = rootCombo.getValue();
+        if (root == null) {
+            return;
+        }
+        ctx.files().addFavorite(root.toString(), root.getFileName().toString());
+        favorites.getItems().setAll(ctx.files().favorites().stream().map(f -> f.path).toList());
+    }
+
+    private void removeFavorite() {
+        String selected = favorites.getSelectionModel().getSelectedItem();
+        if (selected != null) {
+            ctx.files().removeFavorite(selected);
+            favorites.getItems().setAll(ctx.files().favorites().stream().map(f -> f.path).toList());
+        }
+    }
+
+    @Override
+    public void onShow() {
+        refreshRoots();
+    }
+
+    @Override
+    public void onHide() {
+        if (searchTask != null && searchTask.isRunning()) {
+            searchTask.cancel(true);
+        }
+    }
+}

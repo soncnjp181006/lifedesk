@@ -1,0 +1,22 @@
+/* Monokai theme */
+.root {
+    -ld-bg: #272822;
+    -ld-surface: #2d2e27;
+    -ld-card: #33342c;
+    -ld-elev: #3e3f36;
+    -ld-border: #4a4b41;
+    -ld-text: #f8f8f2;
+    -ld-text-dim: #a6a693;
+    -ld-accent: #a6e22e;
+    -ld-accent-text: #1e1f1a;
+    -ld-accent-soft: #3b4426;
+    -ld-danger: #f92672;
+    -ld-ok: #a6e22e;
+    -ld-warn: #e6db74;
+    -ld-info: #66d9ef;
+    -ld-chart-1: #a6e22e;
+    -ld-chart-2: #66d9ef;
+    -ld-chart-3: #e6db74;
+    -ld-chart-4: #ae81ff;
+    -ld-chart-5: #f92672;
+}
