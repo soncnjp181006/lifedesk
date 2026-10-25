@@ -38,6 +38,7 @@ public class SettingsView extends View {
     private final TextField modelSearch = new TextField();
     private final List<ModelInfo> fetchedModels = new java.util.ArrayList<>();
     private final Label aiStatusLabel = new Label("");
+    private final Label activeModelLabel = new Label();
 
     public SettingsView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -206,7 +207,19 @@ public class SettingsView extends View {
 
         buildModelTable();
         modelTable.setPlaceholder(new Label("Bấm \"Lấy danh sách model\" để xem model từ provider hiện tại."));
+        modelTable.setPrefHeight(340);
+        modelTable.setMaxWidth(Double.MAX_VALUE);
         VBox.setVgrow(modelTable, Priority.ALWAYS);
+        modelTable.setRowFactory(v -> {
+            javafx.scene.control.TableRow<ModelInfo> row = new javafx.scene.control.TableRow<>();
+            row.setOnMouseClicked(e -> {
+                if (e.getClickCount() == 2 && !row.isEmpty()) {
+                    selectModel();
+                }
+            });
+            return row;
+        });
+        activeModelLabel.getStyleClass().add("card-headline");
 
         CheckBox includeData = new CheckBox("Cho phép LLM đọc tổng quan dữ liệu của tôi (tasks/tài chính/thói quen)");
         includeData.setSelected(ai.includeUserData);
@@ -216,6 +229,7 @@ public class SettingsView extends View {
         });
 
         VBox box = new VBox(12, enabled, providerRow, ollamaBox, kiloBox,
+                new HBox(10, new Label("Model đang dùng:"), activeModelLabel),
                 new HBox(8, fetchModels, modelSearch, selectModel, pullModel),
                 modelTable, includeData, aiStatusLabel);
         refreshAiStatus();
@@ -236,9 +250,13 @@ public class SettingsView extends View {
     private void refreshAiStatus() {
         if (!ctx.ai().enabled()) {
             aiStatusLabel.setText("AI đang TẮT.");
+            activeModelLabel.setText("(tắt)");
             return;
         }
         var p = ctx.ai().currentProvider();
+        String modelName = ctx.ai().activeModel();
+        activeModelLabel.setText(p.map(AiProvider::id).orElse("?") + " / "
+                + (modelName == null || modelName.isBlank() ? "(chưa chọn — bấm Lấy danh sách model)" : modelName));
         p.ifPresentOrElse(
                 provider -> aiStatusLabel.setText("Provider: " + provider.displayName()
                         + (provider.isAvailable() ? " — sẵn sàng" : " — chưa kết nối được")),
@@ -269,21 +287,15 @@ public class SettingsView extends View {
                 });
     }
 
+    /** Live filter: the table always mirrors search text over the fetched list. */
     private void filterModels() {
         String q = modelSearch.getText() == null ? "" : modelSearch.getText().trim().toLowerCase();
-        fetchedModels.stream()
-                .filter(m -> q.isBlank() || m.id().toLowerCase().contains(q) || m.details().toLowerCase().contains(q))
-                .toList()
-                .forEach(m -> {
-                    if (!modelTable.getItems().contains(m)) {
-                        modelTable.getItems().add(m);
-                    }
-                });
-        if (!q.isBlank()) {
-            modelTable.getItems().removeIf(m -> !m.id().toLowerCase().contains(q) && !m.details().toLowerCase().contains(q));
-        } else if (modelTable.getItems().size() != fetchedModels.size()) {
-            modelTable.getItems().setAll(fetchedModels);
-        }
+        modelTable.getItems().setAll(fetchedModels.stream()
+                .filter(m -> q.isBlank()
+                        || m.id().toLowerCase().contains(q)
+                        || m.details().toLowerCase().contains(q)
+                        || m.providerId().toLowerCase().contains(q))
+                .toList());
     }
 
     private void selectModel() {

@@ -34,17 +34,21 @@ import java.util.function.Supplier;
  */
 public class MainWindow {
     public enum ViewId {
-        DASHBOARD("Dashboard", "🏠"), TASKS("Công việc", "📋"), NOTES("Ghi chú", "📝"),
-        FINANCE("Tài chính", "💰"), HABITS("Thói quen & Mục tiêu", "🎯"), HEALTH("Sức khỏe", "🩺"),
-        LEARNING("Học tập", "📚"), FILES("Tệp", "📁"), AUTOMATION("Automation", "🤖"),
-        AI("Trợ lý AI", "✨"), SEARCH("Kết quả tìm kiếm", "🔍"), SETTINGS("Cài đặt", "⚙️");
+        DASHBOARD("Dashboard", "Dash"), TASKS("Công việc", "Việc"), NOTES("Ghi chú", "Ghi"),
+        FINANCE("Tài chính", "Tiền"), HABITS("Thói quen & Mục tiêu", "HT"), HEALTH("Sức khỏe", "SK"),
+        LEARNING("Học tập", "Học"), FILES("Tệp", "Tệp"), AUTOMATION("Automation", "Auto"),
+        AI("Trợ lý AI", "AI"), SEARCH("Kết quả tìm kiếm", "TS"), SETTINGS("Cài đặt", "CĐ");
 
         public final String label;
-        public final String icon;
+        private final String shortLabel;
 
-        ViewId(String label, String icon) {
+        ViewId(String label, String shortLabel) {
             this.label = label;
-            this.icon = icon;
+            this.shortLabel = shortLabel;
+        }
+
+        public String shortLabel() {
+            return shortLabel;
         }
     }
 
@@ -60,6 +64,7 @@ public class MainWindow {
 
     private Label statusLabel;
     private Label notifBadge;
+    private Label brandTitleLabel;
     private Popup notifPopup;
     private VBox notifList;
     private TextField searchField;
@@ -111,17 +116,17 @@ public class MainWindow {
     // ------------------------------------------------------------------ chrome
 
     private Node buildTopBar() {
-        HBox bar = new HBox(10);
+        HBox bar = new HBox(12);
         bar.getStyleClass().add("topbar");
         bar.setAlignment(Pos.CENTER_LEFT);
 
         Button collapseBtn = new Button("☰");
-        collapseBtn.getStyleClass().add("ghost-btn");
+        collapseBtn.getStyleClass().add("icon-btn");
         collapseBtn.setTooltip(new Tooltip("Thu gọn/thanh bên"));
         collapseBtn.setOnAction(e -> toggleSidebar());
 
         searchField = new TextField();
-        searchField.setPromptText("Tìm kiếm toàn cục (Enter)…");
+        searchField.setPromptText("Tìm kiếm toàn cục  (Enter)");
         searchField.getStyleClass().add("search-field");
         HBox.setHgrow(searchField, Priority.SOMETIMES);
         searchField.setOnAction(e -> {
@@ -139,7 +144,7 @@ public class MainWindow {
         themeCombo.getItems().addAll(ctx.themeManager().availableThemes());
         themeCombo.setValue(ctx.config().theme);
         themeCombo.setTooltip(new Tooltip("Chủ đề giao diện"));
-        themeCombo.setPrefWidth(130);
+        themeCombo.setPrefWidth(132);
         themeCombo.setOnAction(e -> {
             String theme = themeCombo.getValue();
             if (theme != null) {
@@ -151,18 +156,18 @@ public class MainWindow {
 
         // Notification bell
         Button bell = new Button("🔔");
-        bell.getStyleClass().add("ghost-btn");
+        bell.getStyleClass().add("icon-btn");
         notifBadge = new Label("0");
         notifBadge.getStyleClass().add("chip");
         notifBadge.setVisible(false);
         StackPane bellStack = new StackPane(bell, notifBadge);
         StackPane.setAlignment(notifBadge, Pos.TOP_RIGHT);
-        StackPane.setMargin(notifBadge, new Insets(-2, -6, 0, 0));
+        StackPane.setMargin(notifBadge, new Insets(-4, -7, 0, 0));
         bell.setOnAction(e -> toggleNotifPopup(bellStack));
         ctx.notifications().changes().addListener(this::refreshNotifBadge);
 
         Button settingsBtn = new Button("⚙");
-        settingsBtn.getStyleClass().add("ghost-btn");
+        settingsBtn.getStyleClass().add("icon-btn");
         settingsBtn.setTooltip(new Tooltip("Cài đặt"));
         settingsBtn.setOnAction(e -> showView(ViewId.SETTINGS));
 
@@ -173,20 +178,37 @@ public class MainWindow {
     private Node buildSidebar() {
         sidebarBox.getStyleClass().add("sidebar");
         sidebarCollapsed = ctx.config().sidebarCollapsed;
+        VBox brand = new VBox(1);
+        brandTitleLabel = new Label("LifeDesk");
+        brandTitleLabel.getStyleClass().add("brand-title");
+        Label brandSub = new Label("Trợ lý cá nhân");
+        brandSub.getStyleClass().add("brand-subtitle");
+        brand.getChildren().addAll(brandTitleLabel, brandSub);
+        Region brandSpacer = new Region();
+        brandSpacer.setMinHeight(8);
+        sidebarBox.getChildren().addAll(brand, brandSpacer);
         rebuildSidebarButtons();
         VBox.setVgrow(sidebarBox, Priority.ALWAYS);
         return sidebarBox;
     }
 
     private void rebuildSidebarButtons() {
-        sidebarBox.getChildren().clear();
+        // Remove previous nav buttons, keep the brand block (first two children).
+        if (sidebarBox.getChildren().size() > 2) {
+            sidebarBox.getChildren().remove(2, sidebarBox.getChildren().size());
+        }
+        brandTitleLabel.setText(sidebarCollapsed ? "L" : "LifeDesk");
+        if (sidebarCollapsed) {
+            sidebarBox.setStyle("-fx-min-width: 58;");
+        } else {
+            sidebarBox.setStyle("");
+        }
         for (ViewId id : ViewId.values()) {
             if (id == ViewId.SEARCH) {
                 continue; // opened via search action only
             }
-            String label = sidebarCollapsed ? id.icon : id.icon + "  " + id.label;
-            Button btn = new Button(label);
-            btn.getStyleClass().add("sidebar-btn");
+            Button btn = new Button(sidebarCollapsed ? id.shortLabel() : id.label);
+            btn.getStyleClass().add("nav-item");
             btn.setMaxWidth(Double.MAX_VALUE);
             btn.setAlignment(Pos.CENTER_LEFT);
             if (id == current) {
@@ -280,6 +302,8 @@ public class MainWindow {
 
     public void applyTheme() {
         scene.getStylesheets().setAll(ctx.themeManager().stylesheetsFor(ctx.config().theme));
+        // Dialogs live in their own windows - hand them the active theme explicitly.
+        Dialogs.setGlobalStylesheets(scene.getStylesheets());
     }
 
     private void saveConfig() {

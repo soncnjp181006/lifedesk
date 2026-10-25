@@ -354,7 +354,7 @@ public class TasksView extends View {
     // ------------------------------------------------------------------ editor
 
     void openEditor(Task existing) {
-        javafx.scene.control.Dialog<Task> dialog = new javafx.scene.control.Dialog<>();
+        javafx.scene.control.Dialog<Task> dialog = Dialogs.newDialog();
         dialog.setTitle(existing == null ? "Công việc mới" : "Sửa công việc");
         dialog.setHeaderText(null);
         dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,

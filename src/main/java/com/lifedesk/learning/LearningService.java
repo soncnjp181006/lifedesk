@@ -134,6 +134,34 @@ public class LearningService {
         change.fire();
     }
 
+    /** Register a material file for a course. */
+    public void addMaterial(String courseId, String path) {
+        Course c = course(courseId);
+        if (!c.materialPaths.contains(path)) {
+            c.materialPaths.add(path);
+        }
+        persistCourses();
+        change.fire();
+    }
+
+    public void removeMaterial(String courseId, String path) {
+        Course c = course(courseId);
+        c.materialPaths.remove(path);
+        persistCourses();
+        change.fire();
+    }
+
+    public java.util.List<String> materials(String courseId) {
+        return java.util.List.copyOf(course(courseId).materialPaths);
+    }
+
+    public int dueCountForDeck(String deckId) {
+        LocalDate today = LocalDate.now();
+        return (int) cards.stream()
+                .filter(c -> c.deckId.equals(deckId) && !c.dueDate.isAfter(today))
+                .count();
+    }
+
     // ------------------------------------------------------------------ study sessions
 
     public List<StudySession> sessions() {
@@ -188,6 +216,50 @@ public class LearningService {
         persistDecks();
         change.fire();
         return d;
+    }
+
+    public void renameDeck(String id, String newName) {
+        deck(id).name = Validators.requireNonBlank(newName, "Tên bộ thẻ");
+        persistDecks();
+        change.fire();
+    }
+
+    public void updateCard(String cardId, String front, String back) {
+        Flashcard card = cards.stream().filter(c -> c.id.equals(cardId)).findFirst()
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy thẻ: " + cardId));
+        if (front == null || front.isBlank() || back == null || back.isBlank()) {
+            throw new ValidationException("Mặt trước và mặt sau của thẻ không được để trống");
+        }
+        card.front = front.trim();
+        card.back = back.trim();
+        persistCards();
+        change.fire();
+    }
+
+    public Flashcard card(String cardId) {
+        return cards.stream().filter(c -> c.id.equals(cardId)).findFirst()
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy thẻ: " + cardId));
+    }
+
+    public void updateSession(String sessionId, LocalDate date, int minutes, String topic) {
+        StudySession session = sessions.stream().filter(x -> x.id.equals(sessionId)).findFirst()
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy buổi học: " + sessionId));
+        if (minutes <= 0 || minutes > 24 * 60) {
+            throw new ValidationException("Thời lượng học phải từ 1 đến 1440 phút");
+        }
+        session.date = Validators.requireNonNull(date, "Ngày học");
+        session.minutes = minutes;
+        session.topic = topic == null ? "" : topic;
+        persistSessions();
+        change.fire();
+    }
+
+    public void deleteSession(String sessionId) {
+        if (!sessions.removeIf(s -> s.id.equals(sessionId))) {
+            throw new NotFoundException("Không tìm thấy buổi học: " + sessionId);
+        }
+        persistSessions();
+        change.fire();
     }
 
     public void deleteDeck(String id) {

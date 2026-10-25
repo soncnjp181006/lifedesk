@@ -29,11 +29,12 @@ import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
-import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
-import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Toggle;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -42,27 +43,48 @@ import javafx.scene.layout.VBox;
 
 import java.io.File;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.util.ArrayList;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Personal finance: transactions, budgets, debts, reports, CSV import/export. */
+/**
+ * Personal finance: always-visible quick entry (income/expense), month
+ * navigation with summary cards, budgets, debts and reports + CSV.
+ */
 public class FinanceView extends View {
     private static final NumberFormat VND = NumberFormat.getNumberInstance(new Locale("vi", "VN"));
+    private static final DateTimeFormatter MONTH_FMT = DateTimeFormatter.ofPattern("MM/yyyy");
 
+    // month state + navigation
+    private YearMonth selMonth = YearMonth.now();
+    private Label monthLabel;
+
+    // quick-add controls
+    private final ToggleButton quickExpense = new ToggleButton("Chi tiêu");
+    private final ToggleButton quickIncome = new ToggleButton("Thu nhập");
+    private final TextField quickAmount = new TextField();
+    private final ComboBox<Category> quickCategory = new ComboBox<>();
+    private final ComboBox<PaymentMethod> quickMethod =
+            new ComboBox<>(FXCollections.observableArrayList(PaymentMethod.values()));
+    private final DatePicker quickDate = new DatePicker(LocalDate.now());
+    private final TextField quickDesc = new TextField();
+
+    // transactions tab
     private final TableView<Transaction> txTable = new TableView<>();
     private final TextField txSearch = new TextField();
     private final ComboBox<String> txTypeFilter = new ComboBox<>();
+    private final Label incomeMetric = metric();
+    private final Label expenseMetric = metric();
+    private final Label netMetric = metric();
+    private final Label savingMetric = metric();
+
     private final TableView<Budget> budgetTable = new TableView<>();
     private final TableView<Debt> debtTable = new TableView<>();
-    private final ComboBox<Category> quickCategory = new ComboBox<>();
-    private final Label monthIncome = bigMetric();
-    private final Label monthExpense = bigMetric();
-    private final Label monthNet = bigMetric();
 
     public FinanceView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -73,23 +95,27 @@ public class FinanceView extends View {
         return "FINANCE";
     }
 
-    private static Label bigMetric() {
-        Label l = new Label("0");
+    private static Label metric() {
+        Label l = new Label("0 đ");
         l.getStyleClass().add("metric-big");
         return l;
     }
 
     @Override
     protected Node build() {
+        // ---- header
         Label title = new Label("Tài chính cá nhân");
         title.getStyleClass().add("title-label");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Button exportBtn = new Button("⬇ Xuất CSV");
+        Button exportBtn = new Button("Xuất CSV");
         exportBtn.setOnAction(e -> exportCsv());
-        Button importBtn = new Button("⬆ Nhập CSV");
+        Button importBtn = new Button("Nhập CSV");
         importBtn.setOnAction(e -> importCsv());
-        HBox header = new HBox(10, title, spacer, exportBtn, importBtn);
+        Button catBtn = new Button("Danh mục…");
+        catBtn.setTooltip(new Tooltip("Thêm / đổi tên / xóa danh mục"));
+        catBtn.setOnAction(e -> manageCategories());
+        HBox header = new HBox(10, title, spacer, catBtn, exportBtn, importBtn);
         header.setAlignment(Pos.CENTER_LEFT);
 
         TabPane tabs = new TabPane();
@@ -102,7 +128,7 @@ public class FinanceView extends View {
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         ctx.finance().changes().addListener(this::scheduleRefresh);
-        return new VBox(10, header, tabs);
+        return new VBox(12, header, tabs);
     }
 
     private volatile boolean refreshQueued = false;
@@ -118,45 +144,121 @@ public class FinanceView extends View {
         });
     }
 
-    // ------------------------------------------------------------------ transactions
+    // ------------------------------------------------------------------ transactions tab
 
     private Node buildTransactionsTab() {
-        var month = YearMonth.now();
-        monthIncome.setText(VND.format(ctx.finance().monthSummary(month).income()));
-        HBox summary = new HBox(24,
-                new VBox(2, new Label("Thu nhập tháng này"), monthIncome),
-                new VBox(2, new Label("Chi tiêu tháng này"), monthExpense),
-                new VBox(2, new Label("Ròng"), monthNet));
-        summary.getStyleClass().add("card");
+        // ---- month navigator
+        Button prevMonth = new Button("‹");
+        prevMonth.setTooltip(new Tooltip("Tháng trước"));
+        prevMonth.setOnAction(e -> {
+            selMonth = selMonth.minusMonths(1);
+            refresh();
+        });
+        Button nextMonth = new Button("›");
+        nextMonth.setTooltip(new Tooltip("Tháng sau"));
+        nextMonth.setOnAction(e -> {
+            selMonth = selMonth.plusMonths(1);
+            refresh();
+        });
+        Button thisMonth = new Button("Tháng này");
+        thisMonth.setOnAction(e -> {
+            selMonth = YearMonth.now();
+            refresh();
+        });
+        monthLabel = new Label();
+        monthLabel.getStyleClass().add("card-headline");
+        HBox monthNav = new HBox(8, prevMonth, monthLabel, nextMonth, thisMonth);
+        monthNav.setAlignment(Pos.CENTER_LEFT);
 
-        txSearch.setPromptText("Tìm giao dịch (mô tả, tag)…");
+        // ---- summary cards
+        HBox summary = new HBox(12,
+                summaryCard("THU NHẬP", incomeMetric, "metric-pos"),
+                summaryCard("CHI TIÊU", expenseMetric, "metric-neg"),
+                summaryCard("RÒNG", netMetric, "metric-pos"),
+                summaryCard("TIẾT KIỆM", savingMetric, "metric-pos"));
+        summary.getChildren().forEach(n -> HBox.setHgrow(n, Priority.ALWAYS));
+
+        // ---- quick-add bar: nhập thu/chi trực tiếp
+        ToggleGroup typeGroup = new ToggleGroup();
+        quickExpense.setToggleGroup(typeGroup);
+        quickIncome.setToggleGroup(typeGroup);
+        quickExpense.setSelected(true);
+        quickExpense.getStyleClass().add("toggle-button");
+        quickIncome.getStyleClass().add("toggle-button");
+        typeGroup.selectedToggleProperty().addListener((o, a, b) -> reloadQuickCategories());
+
+        quickAmount.setPromptText("Số tiền (VD 250000)");
+        quickAmount.setPrefWidth(170);
+        quickAmount.setOnAction(e -> quickAdd());
+        quickCategory.setPrefWidth(170);
+        quickMethod.setValue(PaymentMethod.CASH);
+        quickMethod.setPrefWidth(150);
+        quickDate.setPrefWidth(135);
+        quickDesc.setPromptText("Mô tả ngắn (Enter để lưu)…");
+        HBox.setHgrow(quickDesc, Priority.ALWAYS);
+        quickDesc.setOnAction(e -> quickAdd());
+
+        Button addBtn = new Button("＋ Thêm giao dịch");
+        addBtn.getStyleClass().add("primary-btn");
+        addBtn.setOnAction(e -> quickAdd());
+        addBtn.setTooltip(new Tooltip("Lưu giao dịch ngay (Enter ở ô Số tiền hoặc Mô tả cũng lưu)"));
+
+        Button addCatBtn = new Button("+ Danh mục");
+        addCatBtn.setOnAction(e -> quickAddCategory());
+
+        javafx.scene.layout.FlowPane quickBar = new javafx.scene.layout.FlowPane(10, 8,
+                quickExpense, quickIncome, quickAmount, quickCategory,
+                quickMethod, quickDate, quickDesc, addCatBtn, addBtn);
+        quickBar.getStyleClass().add("quick-add-bar");
+        quickDesc.setPrefWidth(320);
+
+        // ---- search/filter/table
+        txSearch.setPromptText("Tìm trong tháng (mô tả, tag)…");
         txSearch.textProperty().addListener((o, a, b) -> refreshTransactions());
         txTypeFilter.getItems().addAll("(tất cả)", "INCOME", "EXPENSE");
         txTypeFilter.setValue("(tất cả)");
         txTypeFilter.setOnAction(e -> refreshTransactions());
-        Button addTx = new Button("+ Thêm giao dịch");
-        addTx.getStyleClass().add("primary-btn");
-        addTx.setOnAction(e -> openTransactionEditor(null));
-        Button delTx = new Button("🗑 Xóa");
+        Button editTx = new Button("✎ Sửa");
+        editTx.setOnAction(e -> {
+            Transaction t = txTable.getSelectionModel().getSelectedItem();
+            if (t != null) {
+                openTransactionEditor(t);
+            }
+        });
+        Button delTx = new Button("Xóa");
+        delTx.getStyleClass().add("danger-btn");
         delTx.setOnAction(e -> deleteSelectedTransaction());
 
-        HBox toolbar = new HBox(8, txSearch, new Label("Loại:"), txTypeFilter, addTx, delTx);
+        HBox toolbar = new HBox(8, txSearch, new Label("Loại:"), txTypeFilter, editTx, delTx);
         toolbar.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(txSearch, Priority.ALWAYS);
 
         buildTxTable();
-        txTable.setPlaceholder(new EmptyState("💰", "Chưa có giao dịch nào trong phạm vi dữ liệu."));
+        txTable.setPlaceholder(new EmptyState("💸",
+                "Chưa có giao dịch trong tháng này.\nNhập thu/chi bằng thanh bên trên — Enter là lưu."));
 
-        return new VBox(10, summary, toolbar, txTable);
+        reloadQuickCategories();
+        return new VBox(12, monthNav, summary, quickBar, toolbar, txTable);
+    }
+
+    private Node summaryCard(String caption, Label metric, String metricClass) {
+        Label cap = new Label(caption);
+        cap.getStyleClass().add("overline");
+        metric.getStyleClass().add(metricClass);
+        VBox card = new VBox(2, cap, metric);
+        card.getStyleClass().add("summary-card");
+        return card;
     }
 
     private void buildTxTable() {
         TableColumn<Transaction, String> dateCol = new TableColumn<>("Ngày");
-        dateCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().date.toString()));
+        dateCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(
+                p.getValue().date.format(DateTimeFormatter.ofPattern("dd/MM"))));
+        dateCol.setPrefWidth(70);
 
         TableColumn<Transaction, Transaction> typeCol = new TableColumn<>("Loại");
         typeCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue()));
-        typeCol.setCellFactory(c -> new TableCell<>() {
+        typeCol.setCellFactory(c -> new javafx.scene.control.TableCell<>() {
             @Override
             protected void updateItem(Transaction item, boolean empty) {
                 super.updateItem(item, empty);
@@ -167,16 +269,21 @@ public class FinanceView extends View {
                         item.type == TxType.INCOME ? "chip-done" : "chip-overdue"));
             }
         });
+        typeCol.setPrefWidth(70);
 
         TableColumn<Transaction, String> amountCol = new TableColumn<>("Số tiền");
-        amountCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(VND.format(p.getValue().amount) + " đ"));
-        amountCol.setStyle("-fx-alignment: CENTER-RIGHT;");
+        amountCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(
+                (p.getValue().type == TxType.INCOME ? "+ " : "− ") + VND.format(p.getValue().amount) + " đ"));
+        amountCol.setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-weight: bold;");
+        amountCol.setPrefWidth(130);
 
         TableColumn<Transaction, String> catCol = new TableColumn<>("Danh mục");
         catCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(safeCategory(p.getValue())));
+        catCol.setPrefWidth(130);
 
         TableColumn<Transaction, String> methodCol = new TableColumn<>("Thanh toán");
         methodCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(methodLabel(p.getValue().method)));
+        methodCol.setPrefWidth(120);
 
         TableColumn<Transaction, String> descCol = new TableColumn<>("Mô tả");
         descCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().description));
@@ -191,6 +298,7 @@ public class FinanceView extends View {
                 openTransactionEditor(txTable.getSelectionModel().getSelectedItem());
             }
         });
+        VBox.setVgrow(txTable, Priority.ALWAYS);
     }
 
     private String safeCategory(Transaction t) {
@@ -211,38 +319,101 @@ public class FinanceView extends View {
         };
     }
 
+    /** Quick add: validate + save in one action (Enter or button). */
+    private void quickAdd() {
+        try {
+            String raw = quickAmount.getText().trim().replace(',', '.');
+            if (raw.isEmpty()) {
+                main.status("Nhập số tiền trước đã.");
+                quickAmount.requestFocus();
+                return;
+            }
+            BigDecimal value = new BigDecimal(raw);
+            Category cat = quickCategory.getValue();
+            if (cat == null) {
+                Dialogs.info("Chọn danh mục", "Hãy chọn (hoặc tạo) một danh mục cho giao dịch.");
+                return;
+            }
+            TxType type = quickIncome.isSelected() ? TxType.INCOME : TxType.EXPENSE;
+            LocalDate date = quickDate.getValue() == null ? LocalDate.now() : quickDate.getValue();
+            ctx.finance().addTransaction(date, type, value, cat.id, quickMethod.getValue(),
+                    quickDesc.getText(), null, null, false);
+            main.status("Đã lưu: " + (type == TxType.INCOME ? "thu " : "chi ")
+                    + VND.format(value) + " đ — " + quickDesc.getText());
+            quickAmount.clear();
+            quickDesc.clear();
+            quickAmount.requestFocus();
+            refresh();
+        } catch (NumberFormatException e) {
+            Dialogs.error("Số tiền không hợp lệ", "Chỉ nhập số, ví dụ: 250000 hoặc 1.5 (triệu không hỗ trợ — nhập 1500000).");
+        } catch (RuntimeException e) {
+            Dialogs.error("Không lưu được giao dịch", e.getMessage());
+        }
+    }
+
+    /** Create a category inline for the type currently selected in the quick-add bar. */
+    private void quickAddCategory() {
+        TxType type = quickIncome.isSelected() ? TxType.INCOME : TxType.EXPENSE;
+        String name = Dialogs.prompt("Danh mục mới",
+                "Tên danh mục " + (type == TxType.INCOME ? "thu nhập" : "chi tiêu") + ":", "").orElse(null);
+        if (name == null || name.isBlank()) {
+            return;
+        }
+        try {
+            Category c = ctx.finance().addCategory(name, type);
+            reloadQuickCategories();
+            quickCategory.getSelectionModel().select(c);
+        } catch (RuntimeException e) {
+            Dialogs.error("Không tạo được danh mục", e.getMessage());
+        }
+    }
+
+    private void reloadQuickCategories() {
+        TxType type = quickIncome.isSelected() ? TxType.INCOME : TxType.EXPENSE;
+        Category selected = quickCategory.getValue();
+        quickCategory.getItems().setAll(ctx.finance().categories(type));
+        if (selected != null && quickCategory.getItems().contains(selected)) {
+            quickCategory.getSelectionModel().select(selected);
+        } else {
+            quickCategory.getSelectionModel().selectFirst();
+        }
+    }
+
     private void refreshTransactions() {
-        var q = txSearch.getText();
-        var typeFilter = txTypeFilter.getValue();
-        var list = ctx.finance().all().stream()
+        LocalDate from = selMonth.atDay(1);
+        LocalDate to = selMonth.atEndOfMonth();
+        monthLabel.setText("Tháng " + selMonth.format(MONTH_FMT));
+
+        String q = txSearch.getText();
+        String typeFilter = txTypeFilter.getValue();
+        var list = ctx.finance().inRange(from, to).stream()
                 .filter(t -> typeFilter == null || "(tất cả)".equals(typeFilter) || t.type.name().equals(typeFilter))
                 .filter(t -> q == null || q.isBlank()
                         || t.description.toLowerCase().contains(q.toLowerCase())
                         || t.tags.stream().anyMatch(tag -> tag.toLowerCase().contains(q.toLowerCase())))
                 .toList();
         txTable.getItems().setAll(list);
-        var month = YearMonth.now();
-        var summary = ctx.finance().monthSummary(month);
-        monthIncome.setText(VND.format(summary.income()) + " đ");
-        monthExpense.setText(VND.format(summary.expense()) + " đ");
-        monthNet.setText(VND.format(summary.net()) + " đ");
-        monthNet.getStyleClass().removeAll("metric-pos", "metric-neg");
-        monthNet.getStyleClass().add(summary.net().signum() >= 0 ? "metric-pos" : "metric-neg");
-        refreshQuickCategories();
-    }
 
-    private void refreshQuickCategories() {
-        var selected = quickCategory.getValue();
-        quickCategory.getItems().setAll(ctx.finance().categories(TxType.EXPENSE));
-        quickCategory.getItems().addAll(ctx.finance().categories(TxType.INCOME));
-        if (selected != null) {
-            quickCategory.getItems().stream().filter(c -> c.id.equals(selected.id)).findFirst()
-                    .ifPresent(quickCategory.getSelectionModel()::select);
+        var summary = ctx.finance().monthSummary(selMonth);
+        incomeMetric.setText(VND.format(summary.income()) + " đ");
+        expenseMetric.setText(VND.format(summary.expense()) + " đ");
+        netMetric.setText(VND.format(summary.net()) + " đ");
+        netMetric.getStyleClass().removeAll("metric-pos", "metric-neg");
+        netMetric.getStyleClass().add(summary.net().signum() >= 0 ? "metric-pos" : "metric-neg");
+        if (summary.income().signum() > 0) {
+            double rate = summary.net().divide(summary.income(), 4, RoundingMode.HALF_UP)
+                    .doubleValue() * 100;
+            savingMetric.setText(String.format(Locale.ROOT, "%.0f%%", rate));
+            savingMetric.getStyleClass().removeAll("metric-pos", "metric-neg");
+            savingMetric.getStyleClass().add(rate >= 0 ? "metric-pos" : "metric-neg");
+        } else {
+            savingMetric.setText("—");
         }
+        reloadQuickCategories();
     }
 
     void openTransactionEditor(Transaction existing) {
-        javafx.scene.control.Dialog<Transaction> dialog = new javafx.scene.control.Dialog<>();
+        javafx.scene.control.Dialog<Transaction> dialog = Dialogs.newDialog();
         dialog.setTitle(existing == null ? "Thêm giao dịch" : "Sửa giao dịch");
         dialog.setHeaderText(null);
         dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
@@ -276,6 +447,12 @@ public class FinanceView extends View {
                 labeled("Mô tả", description),
                 labeled("Tags (phân cách bằng dấu phẩy)", tags));
         content.setPadding(new javafx.geometry.Insets(10));
+        if (existing != null) {
+            com.lifedesk.ui.components.NoteLinkPicker noteLinks =
+                    new com.lifedesk.ui.components.NoteLinkPicker(ctx, "finance", existing.id,
+                            "Ghi chú liên quan (bật/tắt để gắn hoặc gỡ — lưu ngay):");
+            content.getChildren().add(noteLinks);
+        }
         dialog.getDialogPane().setContent(content);
 
         dialog.setResultConverter(bt -> {
@@ -333,18 +510,25 @@ public class FinanceView extends View {
 
     private Node buildBudgetsTab() {
         buildBudgetTable();
-        Button addBudget = new Button("+ Đặt ngân sách");
+        Button addBudget = new Button("Đặt ngân sách");
         addBudget.getStyleClass().add("primary-btn");
         addBudget.setOnAction(e -> openBudgetEditor(null));
-        Button delBudget = new Button("🗑");
+        Button editBudget = new Button("Sửa");
+        editBudget.setOnAction(e -> {
+            Budget b = budgetTable.getSelectionModel().getSelectedItem();
+            if (b != null) {
+                openBudgetEditor(b);
+            }
+        });
+        Button delBudget = new Button("Xóa");
         delBudget.setOnAction(e -> {
             Budget b = budgetTable.getSelectionModel().getSelectedItem();
             if (b != null && Dialogs.confirm("Xóa ngân sách", "Xóa ngân sách tháng " + b.month + "?")) {
                 ctx.finance().deleteBudget(b.id);
             }
         });
-        HBox toolbar = new HBox(8, addBudget, delBudget);
-        return new VBox(10, toolbar, budgetTable);
+        HBox toolbar = new HBox(8, addBudget, editBudget, delBudget);
+        return new VBox(12, toolbar, budgetTable);
     }
 
     private void buildBudgetTable() {
@@ -377,7 +561,7 @@ public class FinanceView extends View {
     }
 
     void openBudgetEditor(Budget existing) {
-        javafx.scene.control.Dialog<Budget> dialog = new javafx.scene.control.Dialog<>();
+        javafx.scene.control.Dialog<Budget> dialog = Dialogs.newDialog();
         dialog.setTitle(existing == null ? "Đặt ngân sách" : "Sửa ngân sách");
         dialog.setHeaderText(null);
         dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
@@ -423,25 +607,32 @@ public class FinanceView extends View {
 
     private Node buildDebtsTab() {
         buildDebtTable();
-        Button addDebt = new Button("+ Thêm khoản");
+        Button addDebt = new Button("Thêm khoản");
         addDebt.getStyleClass().add("primary-btn");
-        addDebt.setOnAction(e -> openDebtEditor());
-        Button settle = new Button("✓ Đã all-clear / tất toán");
+        addDebt.setOnAction(e -> openDebtEditor(null));
+        Button editDebt = new Button("Sửa");
+        editDebt.setOnAction(e -> {
+            Debt d = debtTable.getSelectionModel().getSelectedItem();
+            if (d != null) {
+                openDebtEditor(d);
+            }
+        });
+        Button settle = new Button("Tất toán");
         settle.setOnAction(e -> {
             Debt d = debtTable.getSelectionModel().getSelectedItem();
             if (d != null) {
                 ctx.finance().settleDebt(d.id);
             }
         });
-        Button delDebt = new Button("🗑");
+        Button delDebt = new Button("Xóa");
         delDebt.setOnAction(e -> {
             Debt d = debtTable.getSelectionModel().getSelectedItem();
             if (d != null && Dialogs.confirm("Xóa khoản", "Xóa khoản \"" + d.party + "\"?")) {
                 ctx.finance().deleteDebt(d.id);
             }
         });
-        HBox toolbar = new HBox(8, addDebt, settle, delDebt);
-        return new VBox(10, toolbar, debtTable);
+        HBox toolbar = new HBox(8, addDebt, editDebt, settle, delDebt);
+        return new VBox(12, toolbar, debtTable);
     }
 
     private void buildDebtTable() {
@@ -462,18 +653,19 @@ public class FinanceView extends View {
         debtTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
     }
 
-    void openDebtEditor() {
-        javafx.scene.control.Dialog<Debt> dialog = new javafx.scene.control.Dialog<>();
-        dialog.setTitle("Thêm khoản phải thu / phải trả");
+    void openDebtEditor(Debt existing) {
+        javafx.scene.control.Dialog<Debt> dialog = Dialogs.newDialog();
+        dialog.setTitle(existing == null ? "Thêm khoản phải thu / phải trả" : "Sửa khoản");
         dialog.setHeaderText(null);
         dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
                 javafx.scene.control.ButtonType.CANCEL);
         ComboBox<DebtDirection> dir = new ComboBox<>(FXCollections.observableArrayList(DebtDirection.values()));
-        dir.setValue(DebtDirection.RECEIVABLE);
-        TextField party = new TextField();
-        TextField amount = new TextField();
-        DatePicker due = new DatePicker(LocalDate.now().plusDays(7));
-        TextArea note = new TextArea();
+        dir.setValue(existing == null ? DebtDirection.RECEIVABLE : existing.direction);
+        TextField party = new TextField(existing == null ? "" : existing.party);
+        TextField amount = new TextField(existing == null ? "" : existing.amount.toPlainString());
+        DatePicker due = new DatePicker(existing == null || existing.dueDate == null
+                ? LocalDate.now().plusDays(7) : existing.dueDate);
+        javafx.scene.control.TextArea note = new javafx.scene.control.TextArea(existing == null ? "" : existing.note);
         note.setPrefRowCount(2);
         VBox content = new VBox(10, new HBox(10, labeled("Loại", dir), labeled("Đối tượng", party)),
                 new HBox(10, labeled("Số tiền (VND)", amount), labeled("Hạn", due)),
@@ -485,8 +677,18 @@ public class FinanceView extends View {
                 return null;
             }
             try {
-                return ctx.finance().addDebt(dir.getValue(), party.getText(),
-                        new BigDecimal(amount.getText().trim()), LocalDate.now(), due.getValue(), note.getText());
+                BigDecimal value = new BigDecimal(amount.getText().trim());
+                if (existing == null) {
+                    return ctx.finance().addDebt(dir.getValue(), party.getText(), value,
+                            LocalDate.now(), due.getValue(), note.getText());
+                }
+                existing.direction = dir.getValue();
+                existing.party = party.getText();
+                existing.amount = value;
+                existing.dueDate = due.getValue();
+                existing.note = note.getText();
+                ctx.finance().updateDebt(existing);
+                return existing;
             } catch (NumberFormatException e) {
                 Dialogs.error("Số tiền không hợp lệ", "Nhập số, ví dụ 2000000");
                 return null;
@@ -508,6 +710,7 @@ public class FinanceView extends View {
         BarChart<String, Number> monthly = new BarChart<>(x, y);
         monthly.setTitle("Thu / chi 6 tháng gần nhất");
         monthly.setPrefHeight(300);
+        monthly.setLegendVisible(true);
 
         var now = YearMonth.now();
         var incomeSeries = new javafx.scene.chart.XYChart.Series<String, Number>();
@@ -517,7 +720,7 @@ public class FinanceView extends View {
         for (int i = 5; i >= 0; i--) {
             YearMonth m = now.minusMonths(i);
             var s = ctx.finance().monthSummary(m);
-            String label = m.format(java.time.format.DateTimeFormatter.ofPattern("MM/yyyy"));
+            String label = m.format(MONTH_FMT);
             incomeSeries.getData().add(new javafx.scene.chart.XYChart.Data<>(label, s.income().doubleValue()));
             expenseSeries.getData().add(new javafx.scene.chart.XYChart.Data<>(label, s.expense().doubleValue()));
         }
@@ -533,15 +736,13 @@ public class FinanceView extends View {
             totals.entrySet().stream()
                     .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
                     .limit(8)
-                    .forEach(e -> {
-                        String name = safeCategoryName(e.getKey());
-                        categoryPie.getData().add(new PieChart.Data(name, e.getValue().doubleValue()));
-                    });
+                    .forEach(e -> categoryPie.getData().add(
+                            new PieChart.Data(safeCategoryName(e.getKey()), e.getValue().doubleValue())));
         }
 
         HBox charts = new HBox(20, monthly, categoryPie);
         HBox.setHgrow(monthly, Priority.ALWAYS);
-        return new VBox(10, charts);
+        return new VBox(12, charts);
     }
 
     private String safeCategoryName(String id) {
@@ -580,10 +781,6 @@ public class FinanceView extends View {
         }
         try {
             CsvImportReport report = ctx.finance().importCsv(file.toPath());
-            TextArea reportArea = new TextArea(String.join("\n",
-                    report.messages) + "\n\n" + String.join("\n", report.errorLines));
-            reportArea.setEditable(false);
-            reportArea.setPrefRowCount(12);
             Dialogs.info("Kết quả nhập CSV",
                     "Tạo mới: " + report.created + ", trùng bỏ qua: " + report.skippedDuplicates
                             + ", lỗi: " + report.errors + (report.errors > 0
@@ -591,6 +788,69 @@ public class FinanceView extends View {
         } catch (RuntimeException e) {
             Dialogs.error("Nhập CSV thất bại", e.getMessage());
         }
+    }
+
+    /** Manage categories: rename + delete (delete blocked while transactions use the category). */
+    private void manageCategories() {
+        javafx.scene.control.Dialog<Void> dialog = Dialogs.newDialog();
+        dialog.setTitle("Quản lý danh mục");
+        dialog.setHeaderText("Danh mục thu / chi");
+        dialog.getDialogPane().getButtonTypes().add(javafx.scene.control.ButtonType.CLOSE);
+
+        javafx.scene.control.ListView<Category> list = new javafx.scene.control.ListView<>();
+        list.getItems().setAll(ctx.finance().categories(null));
+        list.setCellFactory(v -> new javafx.scene.control.ListCell<>() {
+            @Override
+            protected void updateItem(Category item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null
+                        : item.name + "  (" + (item.type == TxType.INCOME ? "thu" : "chi") + ")");
+            }
+        });
+        list.setPrefHeight(280);
+
+        Button rename = new Button("Đổi tên");
+        rename.setOnAction(e -> {
+            Category c = list.getSelectionModel().getSelectedItem();
+            if (c == null) {
+                return;
+            }
+            String newName = Dialogs.prompt("Đổi tên danh mục",
+                    "Tên mới cho \"" + c.name + "\":", c.name).orElse(null);
+            if (newName == null || newName.isBlank()) {
+                return;
+            }
+            try {
+                ctx.finance().renameCategory(c.id, newName);
+                list.getItems().setAll(ctx.finance().categories(null));
+            } catch (RuntimeException ex) {
+                Dialogs.error("Không đổi được tên", ex.getMessage());
+            }
+        });
+        Button delete = new Button("Xóa danh mục");
+        delete.getStyleClass().add("danger-btn");
+        delete.setOnAction(e -> {
+            Category c = list.getSelectionModel().getSelectedItem();
+            if (c == null) {
+                return;
+            }
+            if (Dialogs.confirm("Xóa danh mục", "Xóa danh mục \"" + c.name + "\"?")) {
+                try {
+                    ctx.finance().deleteCategory(c.id);
+                    list.getItems().setAll(ctx.finance().categories(null));
+                } catch (RuntimeException ex) {
+                    Dialogs.warn("Không xóa được", ex.getMessage());
+                }
+            }
+        });
+        Label hint = new Label("Danh mục đang có giao dịch sẽ không xóa được — hãy đổi tên thay thế.");
+        hint.getStyleClass().add("dim-label");
+
+        dialog.getDialogPane().setContent(new VBox(10, list, new HBox(8, rename, delete), hint));
+        dialog.setResizable(true);
+        dialog.showAndWait();
+        reloadQuickCategories();
+        refresh();
     }
 
     @Override
@@ -607,7 +867,11 @@ public class FinanceView extends View {
     @Override
     public void openRecord(String recordId) {
         ctx.finance().all().stream().filter(t -> t.id.equals(recordId)).findFirst()
-                .ifPresent(txTable.getSelectionModel()::select);
+                .ifPresent(t -> {
+                    selMonth = YearMonth.from(t.date);
+                    refresh();
+                    txTable.getSelectionModel().select(t);
+                });
     }
 
     private VBox labeled(String labelText, Node field) {

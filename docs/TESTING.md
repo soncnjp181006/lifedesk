@@ -19,10 +19,10 @@ mvn test                 → BUILD SUCCESS
 mvn package -DskipTests  → BUILD SUCCESS (target/lifedesk.jar + 19 jar trong target/lib)
 ```
 
-### 2.2. JUnit 5 — 61/61 PASS
+### 2.2. JUnit 5 — 72/72 PASS
 
 ```
-Tests run: 61, Failures: 0, Errors: 0, Skipped: 0 — BUILD SUCCESS
+Tests run: 72, Failures: 0, Errors: 0, Skipped: 0 — BUILD SUCCESS
 ```
 
 Phân bố:
@@ -30,12 +30,14 @@ Phân bố:
 |---|---|---|
 | JsonStoreTest | 7 | ghi atomic, envelope schemaVersion, phục hồi từ `.bak`, quarantine file hỏng + báo lỗi, text write/read/delete, chặn path traversal, 8 thread ghi đồng thời 20 lần vẫn đọc được JSON hợp lệ |
 | TaskServiceTest | 7 | validation, CRUD, lặp DAILY/WEEKLY sinh phiên mới, today/overdue/upcoming, completedAt, search không dấu |
-| FinanceServiceTest | 8 | chặn số tiền ≤ 0, chặn sai loại danh mục, tổng BigDecimal chính xác đến từng xu (1002345.72), chống trùng + allowDuplicate, CSV export→import lại vào service mới = 0 dòng mới (dedupe), CSV lỗi ngày/số âm báo 2 lỗi và nhập 1 dòng đúng, ngân sách 75% đúng, vòng đời nợ |
-| NotesServiceTest | 7 | create/read/update/delete, **xung đột sửa ngoài app → giữ bản ngoài thành `-conflict-*.md`**, đổi tiêu đề đổi file giữ nguyên id, chuyển thư mục, search, wiki link + tag parser, index bền qua reload |
+| FinanceServiceTest | 10 | chặn số tiền ≤ 0, chặn sai loại danh mục, tổng BigDecimal chính xác đến từng xu (1002345.72), chống trùng + allowDuplicate, CSV export→import lại vào service mới = 0 dòng mới (dedupe), CSV lỗi ngày/số âm báo 2 lỗi và nhập 1 dòng đúng, ngân sách 75% đúng, vòng đời nợ, **đổi tên danh mục + chặn xóa khi còn giao dịch + xóa danh mục dọn luôn ngân sách + sửa khoản nợ** |
+| NotesServiceTest | 8 | create/read/update/delete, **xung đột sửa ngoài app → giữ bản ngoài thành `-conflict-*.md`**, đổi tiêu đề đổi file giữ nguyên id, chuyển thư mục, search, wiki link + tag parser, index bền qua reload, **liên kết chéo module: toggle gắn/gỡ với giao dịch/thói quen/ngày sức khỏe + reverse lookup + bền qua reload** |
 | HabitServiceTest | 7 | streak 1→2, chỉ đếm ngày có lịch, điều chỉnh quá khứ **bắt buộc lý do** + nhật ký, tỷ lệ 30 ngày, tổng kết tuần, tiến độ mục tiêu auto từ task, nhật ký mục tiêu |
 | MarkdownServiceTest | 7 | `<script>` bị escape, `javascript:` bị strip (UrlSanitizer whitelist http/https/mailto/lifedesk/relative), bảng/heading/code/checklist, wiki link → `lifedesk://note/<id>`, plain text, trang preview có màu theme không script |
 | AgentPolicyTest | 9 | tool lạ (shell.exec/process.run) không tồn tại → từ chối, WRITE cần phê duyệt kế hoạch, deny-list chặn toàn plan, **note.delete không ai duyệt → run CANCELLED + note còn nguyên**, duyệt tay → xóa thật, giới hạn số bước, E2E READ+WRITE tạo task thật + 2 bước SUCCESS, ma trận quyết định policy, audit sanitizer (che api_key/Authorization, cắt 500 ký tự) |
 | BackupServiceTest | 4 | backup→verify→phá hỏng tasks.json→restore sửa lại→integrity sạch→dữ liệu đọc lại đúng; verify phát hiện zip bị giả mạo (checksum fail); restore từ zip rác **ném lỗi và không đụng dữ liệu**; manifest nằm trong zip |
+| LearningServiceTest | 4 | đổi tên deck, sửa thẻ (chặn rỗng + id lạ), sửa/xóa buổi học (validate phút), lịch Leitner tăng box đúng cap 6 + sai thì về box 1 hẹn ngày mai |
+| HealthServiceTest | 4 | sửa chỉ số (đổi tên + mục tiêu), chặn trùng tên, xóa chỉ số xóa cả giá trị trong entry, validate khoảng giá trị ngủ/vận động/cân nặng |
 | AppIntegrationTest | 5 | search xuyên module TASK+NOTE với filter loại, dữ liệu sống qua restart context, khóa single-instance chặn bản thứ 2 + mở lại được sau khi nhả, rule engine trả lời từ dữ liệu thật, nhắc việc bắn đúng 1 lần/ngày và key tồn tại qua restart |
 
 ### 2.3. Services smoke — 39/39 PASS
@@ -60,7 +62,7 @@ SMOKE RESULT: PASS (UI launched, screenshot captured)
 `ui-smoke-tasks.png` (bảng công việc + chip trạng thái/ưu tiên + filter + List/Board),
 `ui-smoke-notes.png` (danh sách ghi chú + thư mục + editor/preview),
 `ui-smoke-finance.png` (4 tab, thẻ tổng thu/chi/ròng, bảng giao dịch chip CHI),
-`ui-smoke-automation.png`, `ui-smoke-settings.png` (6 tab, danh sách 5 theme).
+`ui-smoke-habits.png`, `ui-smoke-health.png` (form ngày + gắn ghi chú theo ngày), `ui-smoke-learning.png` (khóa học + bảng buổi học riêng), `ui-smoke-ai.png`, `ui-smoke-automation.png`, `ui-smoke-settings.png` (6 tab, danh sách 5 theme) — tổng cộng 9 view.
 
 Quá trình UI smoke cũng xác nhận: ứng dụng khởi chạy trên Windows với dữ liệu tạm, reminder scheduler +
 workflow scheduler khởi động, search index dựng trong ~16ms, app shutdown sạch (không stack trace).

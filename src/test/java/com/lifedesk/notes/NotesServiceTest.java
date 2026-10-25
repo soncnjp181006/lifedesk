@@ -99,6 +99,31 @@ class NotesServiceTest {
     }
 
     @Test
+    void crossModuleLinksToggleAndPersist() {
+        NotesService svc = service();
+        NoteMeta n = svc.create("Ghi chú hoá đơn", "", "nội dung", java.util.Set.of());
+        // link -> isLinked true, reverse lookup finds it
+        svc.linkNote(n.id, "finance", "tx-123");
+        assertTrue(svc.isLinked(n.id, "finance", "tx-123"));
+        assertEquals(1, svc.notesLinkedTo("finance", "tx-123").size());
+        assertEquals("Tài chính(1)", svc.linksSummary(n.id));
+        // toggle detaches
+        assertFalse(svc.toggleLink(n.id, "finance", "tx-123"));
+        assertFalse(svc.isLinked(n.id, "finance", "tx-123"));
+        assertTrue(svc.notesLinkedTo("finance", "tx-123").isEmpty());
+        // multiple modules tracked separately
+        svc.linkNote(n.id, "habits", "habit-1");
+        svc.linkNote(n.id, "health", "date:2026-10-25");
+        assertEquals("Thói quen(1), Sức khỏe(1)", svc.linksSummary(n.id));
+        // persistence across reload
+        NotesService reloaded = new NotesService(new JsonStore(dir, new StorageIssueLog()));
+        assertTrue(reloaded.isLinked(n.id, "habits", "habit-1"));
+        assertTrue(reloaded.notesLinkedTo("health", "date:2026-10-25").size() == 1);
+        // unknown note id fails
+        assertThrows(RuntimeException.class, () -> reloaded.linkNote("missing", "finance", "x"));
+    }
+
+    @Test
     void indexPersistsAcrossReload() {
         NotesService svc = service();
         svc.create("Lưu bền", "", "nội dung lưu bền", Set.of());

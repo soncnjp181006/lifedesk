@@ -205,7 +205,7 @@ public class AutomationView extends View {
         if (step == null) {
             return;
         }
-        javafx.scene.control.Dialog<PlanStep> dialog = new javafx.scene.control.Dialog<>();
+        javafx.scene.control.Dialog<PlanStep> dialog = Dialogs.newDialog();
         dialog.setTitle("Sửa bước kế hoạch");
         dialog.setHeaderText(step.tool);
         dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
@@ -348,7 +348,7 @@ public class AutomationView extends View {
         if (w == null) {
             return;
         }
-        javafx.scene.control.Dialog<Workflow> dialog = new javafx.scene.control.Dialog<>();
+        javafx.scene.control.Dialog<Workflow> dialog = Dialogs.newDialog();
         dialog.setTitle("Cấu hình workflow");
         dialog.setHeaderText(w.name);
         dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);

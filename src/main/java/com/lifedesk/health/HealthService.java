@@ -136,6 +136,25 @@ public class HealthService {
         return def;
     }
 
+    public MetricDef metric(String id) {
+        return metrics.stream().filter(m -> m.id.equals(id)).findFirst()
+                .orElseThrow(() -> new com.lifedesk.common.NotFoundException("Không tìm thấy chỉ số: " + id));
+    }
+
+    public void updateMetric(String id, String name, String unit, BigDecimal target) {
+        MetricDef def = metric(id);
+        String trimmed = Validators.requireNonBlank(name, "Tên chỉ số");
+        boolean dup = metrics.stream().anyMatch(m -> !m.id.equals(id) && m.name.equalsIgnoreCase(trimmed));
+        if (dup) {
+            throw new ValidationException("Chỉ số đã tồn tại: " + trimmed);
+        }
+        def.name = trimmed;
+        def.unit = unit == null ? "" : unit;
+        def.target = target;
+        persistMetrics();
+        change.fire();
+    }
+
     public void deleteMetric(String id) {
         metrics.removeIf(m -> m.id.equals(id));
         for (HealthEntry e : entries) {

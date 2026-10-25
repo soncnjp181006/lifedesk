@@ -222,7 +222,7 @@ public class HabitsView extends View {
     }
 
     void openHabitEditor(Habit existing) {
-        javafx.scene.control.Dialog<Habit> dialog = new javafx.scene.control.Dialog<>();
+        javafx.scene.control.Dialog<Habit> dialog = Dialogs.newDialog();
         dialog.setTitle(existing == null ? "Thói quen mới" : "Sửa thói quen");
         dialog.setHeaderText(null);
         dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
@@ -255,6 +255,10 @@ public class HabitsView extends View {
                 new VBox(4, new Label("Lịch thực hiện"), daysBox, hint),
                 new HBox(8, hasReminder, new Label("giờ"), reminderH, reminderM));
         content.setPadding(new javafx.geometry.Insets(10));
+        if (existing != null) {
+            content.getChildren().add(new com.lifedesk.ui.components.NoteLinkPicker(ctx, "habits",
+                    existing.id, "Ghi chú liên quan (quy tắc riêng, tiến độ…):"));
+        }
         dialog.getDialogPane().setContent(content);
 
         dialog.setResultConverter(bt -> {
@@ -362,7 +366,7 @@ public class HabitsView extends View {
     }
 
     void openGoalEditor(Goal existing) {
-        javafx.scene.control.Dialog<Goal> dialog = new javafx.scene.control.Dialog<>();
+        javafx.scene.control.Dialog<Goal> dialog = Dialogs.newDialog();
         dialog.setTitle(existing == null ? "Mục tiêu mới" : "Sửa mục tiêu");
         dialog.setHeaderText(null);
         dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
@@ -407,6 +411,10 @@ public class HabitsView extends View {
                 new HBox(10, labeled("Tiến độ theo", mode), labeled("Tự đặt (%)", progress)),
                 new VBox(4, new HBox(8, taskPick, toggleLink), linkedLabel));
         content.setPadding(new javafx.geometry.Insets(10));
+        if (existing != null) {
+            content.getChildren().add(new com.lifedesk.ui.components.NoteLinkPicker(ctx, "goals",
+                    existing.id, "Ghi chú liên quan (kế hoạch chi tiết…):"));
+        }
         dialog.getDialogPane().setContent(content);
         dialog.setResultConverter(bt -> {
             if (bt.getButtonData() != javafx.scene.control.ButtonBar.ButtonData.OK_DONE) {

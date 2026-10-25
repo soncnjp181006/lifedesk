@@ -282,6 +282,81 @@ public class NotesService {
                 .findFirst();
     }
 
+    // ------------------------------------------------------------------ cross-module links
+
+    /** Attach a note to a record of another module (finance/habits/health/learning). */
+    public synchronized void linkNote(String noteId, String module, String recordId) {
+        NoteMeta n = get(noteId);
+        n.links.computeIfAbsent(module, k -> new LinkedHashSet<>()).add(recordId);
+        n.updatedAt = Instant.now();
+        persistIndex();
+        change.fire();
+    }
+
+    public synchronized void unlinkNote(String noteId, String module, String recordId) {
+        NoteMeta n = get(noteId);
+        java.util.Set<String> ids = n.links.get(module);
+        if (ids != null) {
+            ids.remove(recordId);
+            if (ids.isEmpty()) {
+                n.links.remove(module);
+            }
+            persistIndex();
+            change.fire();
+        }
+    }
+
+    /** Toggle: attach when absent, detach when present. Returns true after call == linked. */
+    public synchronized boolean toggleLink(String noteId, String module, String recordId) {
+        NoteMeta n = get(noteId);
+        boolean linked = n.links.getOrDefault(module, java.util.Set.of()).contains(recordId);
+        if (linked) {
+            unlinkNote(noteId, module, recordId);
+        } else {
+            linkNote(noteId, module, recordId);
+        }
+        return !linked;
+    }
+
+    public synchronized boolean isLinked(String noteId, String module, String recordId) {
+        NoteMeta n = notes.stream().filter(x -> x.id.equals(noteId)).findFirst().orElse(null);
+        return n != null && n.links.getOrDefault(module, java.util.Set.of()).contains(recordId);
+    }
+
+    /** All notes linked to a given record (reverse lookup; note count is small). */
+    public synchronized List<NoteMeta> notesLinkedTo(String module, String recordId) {
+        return notes.stream()
+                .filter(n -> n.links.getOrDefault(module, java.util.Set.of()).contains(recordId))
+                .toList();
+    }
+
+    /** Human summary of a note's links, e.g. "Tài chính(2), Thói quen(1)". */
+    public synchronized String linksSummary(String noteId) {
+        NoteMeta n = get(noteId);
+        if (n.links.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        n.links.forEach((module, ids) -> {
+            if (sb.length() > 0) {
+                sb.append(", ");
+            }
+            sb.append(moduleLabel(module)).append('(').append(ids.size()).append(')');
+        });
+        return sb.toString();
+    }
+
+    public static String moduleLabel(String module) {
+        return switch (module) {
+            case "finance" -> "Tài chính";
+            case "habits" -> "Thói quen";
+            case "goals" -> "Mục tiêu";
+            case "health" -> "Sức khỏe";
+            case "learning" -> "Học tập";
+            default -> module;
+        };
+    }
+
     public Path notesRoot() {
         return store.resolve(NOTES_DIR);
     }

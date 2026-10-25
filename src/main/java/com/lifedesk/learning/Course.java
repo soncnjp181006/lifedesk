@@ -17,6 +17,8 @@ public class Course {
     public Set<String> tags = new LinkedHashSet<>();
     /** Linked Markdown note ids. */
     public Set<String> linkedNoteIds = new LinkedHashSet<>();
+    /** Local material files (lectures, slides, books...) managed by the Learning module. */
+    public java.util.List<String> materialPaths = new java.util.ArrayList<>();
     public Instant createdAt = Instant.now();
     public Instant updatedAt = Instant.now();
 

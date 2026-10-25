@@ -38,6 +38,8 @@ import java.util.List;
 /** Learning: courses with study sessions, decks of flashcards with Leitner review. */
 public class LearningView extends View {
     private final TableView<Course> courseTable = new TableView<>();
+    private final TableView<com.lifedesk.learning.StudySession> sessionTable =
+            new TableView<>();
     private final TableView<Flashcard> cardTable = new TableView<>();
     private final ListView<Deck> deckList = new ListView<>();
     private final Label dueLabel = new Label();
@@ -75,15 +77,20 @@ public class LearningView extends View {
                 openCourseEditor(c);
             }
         });
-        Button logSession = new Button("⏱ Ghi buổi học");
+        Button logSession = new Button("Ghi buổi học");
         logSession.setOnAction(e -> logSession());
-        Button delCourse = new Button("🗑");
+        Button editSession = new Button("Sửa buổi");
+        editSession.setOnAction(e -> editSelectedSession());
+        Button delSession = new Button("Xóa buổi");
+        delSession.setOnAction(e -> deleteSelectedSession());
+        Button delCourse = new Button("Xóa khóa");
         delCourse.setOnAction(e -> {
             Course c = courseTable.getSelectionModel().getSelectedItem();
             if (c != null && Dialogs.confirm("Xóa khóa học", "Xóa \"" + c.title + "\"?")) {
                 ctx.learning().deleteCourse(c.id);
             }
         });
+        courseTable.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> refreshSessions());
 
         // ---- flashcards
         deckList.setPrefWidth(220);
@@ -96,6 +103,10 @@ public class LearningView extends View {
             }
         });
         deckList.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> refreshCards());
+        deckList.setPrefHeight(400);
+        deckList.setPrefWidth(280);
+        VBox.setVgrow(deckList, Priority.ALWAYS);
+        deckStats.getStyleClass().add("dim-label");
         buildCardTable();
         Button addDeck = new Button("+ Bộ thẻ");
         addDeck.setOnAction(e -> {
@@ -105,8 +116,25 @@ public class LearningView extends View {
                 refresh();
             }
         });
+        Button renameDeck = new Button("Đổi tên");
+        renameDeck.setOnAction(e -> {
+            Deck d = deckList.getSelectionModel().getSelectedItem();
+            if (d == null) {
+                return;
+            }
+            String name = Dialogs.prompt("Đổi tên bộ thẻ", "Tên mới cho \"" + d.name + "\":", d.name).orElse(null);
+            if (name != null && !name.isBlank()) {
+                ctx.learning().renameDeck(d.id, name);
+                refresh();
+            }
+        });
         Button addCard = new Button("+ Thẻ");
         addCard.setOnAction(e -> addCard());
+        javafx.scene.control.Button editCardBtn = new javafx.scene.control.Button("Sửa thẻ");
+        editCardBtn.setOnAction(e -> editSelectedCard());
+        Button reviewDeckBtn = new Button("Ôn tập bộ đang chọn");
+        reviewDeckBtn.getStyleClass().add("primary-btn");
+        reviewDeckBtn.setOnAction(e -> startReview());
         Button delCard = new Button("🗑");
         delCard.setOnAction(e -> {
             Flashcard f = cardTable.getSelectionModel().getSelectedItem();
@@ -118,11 +146,33 @@ public class LearningView extends View {
 
         TabPane tabs = new TabPane();
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        buildSessionTable();
+        buildMaterialTable();
+        Button addMaterial = new Button("Thêm tài liệu…");
+        addMaterial.setTooltip(new javafx.scene.control.Tooltip("Chọn file tài liệu (slide, sách, bài giảng…) gắn vào khóa"));
+        addMaterial.setOnAction(e -> addMaterialFile());
+        Button openMaterial = new Button("Mở tài liệu");
+        openMaterial.setOnAction(e -> openSelectedMaterial());
+        Button delMaterial = new Button("Bỏ tài liệu");
+        delMaterial.setOnAction(e -> removeSelectedMaterial());
+        VBox materialsPane = new VBox(8, new HBox(8, addMaterial, openMaterial, delMaterial), materialTable);
+        VBox.setVgrow(materialTable, Priority.ALWAYS);
+        VBox sessionsPane = new VBox(8, new HBox(8, logSession, editSession, delSession), sessionTable);
+        VBox.setVgrow(sessionTable, Priority.ALWAYS);
+        courseTable.setPrefHeight(260);
+        materialTable.setPrefHeight(180);
+        sessionTable.setPrefHeight(220);
         tabs.getTabs().addAll(
-                new Tab("Khóa học", new VBox(10, new HBox(8, addCourse, editCourse, logSession, delCourse), courseTable)),
-                new Tab("Flashcards", new HBox(10,
-                        new VBox(8, addDeck, deckList),
-                        new VBox(8, new HBox(8, addCard, delCard), cardTable))));
+                new Tab("Khóa học & tài liệu", new VBox(10,
+                        new HBox(8, addCourse, editCourse, delCourse),
+                        courseTable,
+                        materialsPane,
+                        sessionsPane)),
+                new Tab("Flashcards", new VBox(10,
+                        new HBox(8, addDeck, renameDeck, reviewDeckBtn),
+                        new HBox(10,
+                                new VBox(8, deckList, deckStats),
+                                new VBox(8, new HBox(8, addCard, editCardBtn, delCard), cardTable)))));
         HBox.setHgrow(deckList.getParent().getParent(), Priority.ALWAYS);
 
         ctx.learning().changes().addListener(() -> javafx.application.Platform.runLater(this::refresh));
@@ -160,7 +210,7 @@ public class LearningView extends View {
     }
 
     void openCourseEditor(Course existing) {
-        javafx.scene.control.Dialog<Course> dialog = new javafx.scene.control.Dialog<>();
+        javafx.scene.control.Dialog<Course> dialog = Dialogs.newDialog();
         dialog.setTitle(existing == null ? "Khóa học mới" : "Sửa khóa học");
         dialog.setHeaderText(null);
         dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
@@ -243,7 +293,7 @@ public class LearningView extends View {
             Dialogs.info("Chọn khóa học", "Hãy chọn một khóa học trước khi ghi buổi học.");
             return;
         }
-        javafx.scene.control.Dialog<Boolean> dialog = new javafx.scene.control.Dialog<>();
+        javafx.scene.control.Dialog<Boolean> dialog = Dialogs.newDialog();
         dialog.setTitle("Ghi buổi học");
         dialog.setHeaderText(c.title);
         dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);
@@ -262,6 +312,121 @@ public class LearningView extends View {
             } catch (RuntimeException ex) {
                 Dialogs.error("Không ghi được buổi học", ex.getMessage());
             }
+        }
+    }
+
+    private final TableView<String> materialTable = new TableView<>();
+
+    private void buildMaterialTable() {
+        TableColumn<String, String> pathCol = new TableColumn<>("Tài liệu của khóa đang chọn");
+        pathCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue()));
+        materialTable.getColumns().setAll(java.util.List.of(pathCol));
+        materialTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        materialTable.setPlaceholder(new EmptyState("📄", "Chưa có tài liệu nào. Bấm \"Thêm tài liệu…\" để gắn file vào khóa."));
+        materialTable.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) {
+                openSelectedMaterial();
+            }
+        });
+        courseTable.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> refreshMaterials());
+    }
+
+    private void refreshMaterials() {
+        Course c = courseTable.getSelectionModel().getSelectedItem();
+        materialTable.getItems().setAll(c == null ? java.util.List.of() : ctx.learning().materials(c.id));
+    }
+
+    private void addMaterialFile() {
+        Course c = courseTable.getSelectionModel().getSelectedItem();
+        if (c == null) {
+            Dialogs.info("Chọn khóa học", "Hãy chọn khóa học trước khi thêm tài liệu.");
+            return;
+        }
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle("Chọn tài liệu cho \"" + c.title + "\"");
+        java.io.File file = chooser.showOpenDialog(main.stage());
+        if (file == null) {
+            return;
+        }
+        ctx.learning().addMaterial(c.id, file.getAbsolutePath());
+        refreshMaterials();
+    }
+
+    private void openSelectedMaterial() {
+        String path = materialTable.getSelectionModel().getSelectedItem();
+        if (path == null) {
+            return;
+        }
+        try {
+            java.awt.Desktop.getDesktop().open(new java.io.File(path));
+        } catch (Exception ex) {
+            Dialogs.error("Không mở được tài liệu", ex.getMessage());
+        }
+    }
+
+    private void removeSelectedMaterial() {
+        Course c = courseTable.getSelectionModel().getSelectedItem();
+        String path = materialTable.getSelectionModel().getSelectedItem();
+        if (c == null || path == null) {
+            return;
+        }
+        ctx.learning().removeMaterial(c.id, path);
+        refreshMaterials();
+    }
+
+    private void buildSessionTable() {
+        TableColumn<com.lifedesk.learning.StudySession, String> dateCol = new TableColumn<>("Ngày");
+        dateCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().date.toString()));
+        TableColumn<com.lifedesk.learning.StudySession, Number> minutesCol = new TableColumn<>("Phút");
+        minutesCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().minutes));
+        TableColumn<com.lifedesk.learning.StudySession, String> topicCol = new TableColumn<>("Chủ đề");
+        topicCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().topic));
+        sessionTable.getColumns().setAll(java.util.List.of(dateCol, minutesCol, topicCol));
+        sessionTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        sessionTable.setPlaceholder(new EmptyState("⏱", "Chưa có buổi học nào cho khóa đang chọn."));
+    }
+
+    private void refreshSessions() {
+        Course c = courseTable.getSelectionModel().getSelectedItem();
+        sessionTable.getItems().setAll(c == null ? java.util.List.of() : ctx.learning().sessionsFor(c.id));
+    }
+
+    private void editSelectedSession() {
+        var session = sessionTable.getSelectionModel().getSelectedItem();
+        if (session == null) {
+            Dialogs.info("Chọn buổi học", "Hãy chọn một buổi học trong bảng để sửa.");
+            return;
+        }
+        javafx.scene.control.Dialog<Boolean> dialog = Dialogs.newDialog();
+        dialog.setTitle("Sửa buổi học");
+        dialog.setHeaderText(null);
+        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
+                javafx.scene.control.ButtonType.CANCEL);
+        DatePicker date = new DatePicker(session.date);
+        javafx.scene.control.Spinner<Integer> minutes =
+                new javafx.scene.control.Spinner<>(5, 600, session.minutes, 5);
+        TextField topic = new TextField(session.topic);
+        dialog.getDialogPane().setContent(new VBox(8,
+                labeled("Ngày", date), labeled("Số phút", minutes), labeled("Chủ đề", topic)));
+        dialog.setResultConverter(bt -> bt.getButtonData() == javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        boolean[] ok = {false};
+        dialog.showAndWait().ifPresent(v -> ok[0] = v);
+        if (ok[0]) {
+            try {
+                ctx.learning().updateSession(session.id, date.getValue(), minutes.getValue(), topic.getText());
+                refresh();
+            } catch (RuntimeException ex) {
+                Dialogs.error("Không sửa được buổi học", ex.getMessage());
+            }
+        }
+    }
+
+    private void deleteSelectedSession() {
+        var session = sessionTable.getSelectionModel().getSelectedItem();
+        if (session != null && Dialogs.confirm("Xóa buổi học",
+                "Xóa buổi học ngày " + session.date + " (" + session.minutes + " phút)?")) {
+            ctx.learning().deleteSession(session.id);
+            refresh();
         }
     }
 
@@ -286,7 +451,7 @@ public class LearningView extends View {
             Dialogs.info("Chọn bộ thẻ", "Hãy tạo/chọn một bộ thẻ trước.");
             return;
         }
-        javafx.scene.control.Dialog<Flashcard> dialog = new javafx.scene.control.Dialog<>();
+        javafx.scene.control.Dialog<Flashcard> dialog = Dialogs.newDialog();
         dialog.setTitle("Thẻ mới");
         dialog.setHeaderText(deck.name);
         dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);
@@ -309,8 +474,38 @@ public class LearningView extends View {
         });
     }
 
+    private void editSelectedCard() {
+        Flashcard card = cardTable.getSelectionModel().getSelectedItem();
+        if (card == null) {
+            Dialogs.info("Chọn thẻ", "Hãy chọn một thẻ trong bảng để sửa.");
+            return;
+        }
+        javafx.scene.control.Dialog<Boolean> dialog = Dialogs.newDialog();
+        dialog.setTitle("Sửa thẻ");
+        dialog.setHeaderText(null);
+        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
+                javafx.scene.control.ButtonType.CANCEL);
+        javafx.scene.control.TextArea front = new javafx.scene.control.TextArea(card.front);
+        front.setPrefRowCount(2);
+        javafx.scene.control.TextArea back = new javafx.scene.control.TextArea(card.back);
+        back.setPrefRowCount(2);
+        dialog.getDialogPane().setContent(new VBox(8, new Label("Mặt trước *"), front, new Label("Mặt sau *"), back));
+        dialog.setResultConverter(bt -> bt.getButtonData() == javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        boolean[] ok = {false};
+        dialog.showAndWait().ifPresent(v -> ok[0] = v);
+        if (ok[0]) {
+            try {
+                ctx.learning().updateCard(card.id, front.getText(), back.getText());
+                refresh();
+            } catch (RuntimeException e) {
+                Dialogs.error("Không sửa được thẻ", e.getMessage());
+            }
+        }
+    }
+
     private void startReview() {
-        var due = ctx.learning().dueCards(null);
+        Deck selectedDeck = deckList.getSelectionModel().getSelectedItem();
+        var due = ctx.learning().dueCards(selectedDeck == null ? null : selectedDeck.id);
         if (due.isEmpty()) {
             Dialogs.info("Ôn tập", "Không có thẻ nào đến hạn hôm nay. 🎉");
             return;
@@ -325,7 +520,7 @@ public class LearningView extends View {
         Label backLabel = new Label();
         backLabel.setStyle("-fx-wrap-text: true; -fx-opacity: 0.15;");
 
-        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dialog = new javafx.scene.control.Dialog<>();
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dialog = Dialogs.newDialog();
         dialog.setTitle("Ôn tập");
         dialog.setHeaderText(null);
         javafx.scene.control.ButtonType wrong = new javafx.scene.control.ButtonType("Sai ❌",
@@ -365,6 +560,7 @@ public class LearningView extends View {
 
     private void refresh() {
         courseTable.getItems().setAll(ctx.learning().courses());
+        refreshSessions();
         var decks = ctx.learning().decks();
         Deck selected = deckList.getSelectionModel().getSelectedItem();
         deckList.getItems().setAll(decks);
@@ -376,9 +572,20 @@ public class LearningView extends View {
         dueLabel.setText("Thẻ đến hạn: " + ctx.learning().dueCount());
     }
 
+    private final Label deckStats = new Label();
+
     private void refreshCards() {
         Deck deck = deckList.getSelectionModel().getSelectedItem();
         cardTable.getItems().setAll(deck == null ? java.util.List.of() : ctx.learning().cardsInDeck(deck.id));
+        if (deck == null) {
+            deckStats.setText("Chọn hoặc tạo một bộ thẻ để bắt đầu.");
+        } else {
+            int total = ctx.learning().cardsInDeck(deck.id).size();
+            int due = ctx.learning().dueCountForDeck(deck.id);
+            deckStats.setText(deck.name + ": " + total + " thẻ, " + due + " đến hạn ôn tập hôm nay.");
+        }
+        HBox.setHgrow(cardTable.getParent() == null ? cardTable : cardTable, Priority.ALWAYS);
+        cardTable.setPrefHeight(500);
     }
 
     @Override

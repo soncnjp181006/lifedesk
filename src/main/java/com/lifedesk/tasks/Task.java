@@ -56,4 +56,9 @@ public class Task {
         long done = checklist.stream().filter(c -> c.done).count();
         return (int) Math.round(100.0 * done / checklist.size());
     }
+
+    @Override
+    public String toString() {
+        return title;
+    }
 }

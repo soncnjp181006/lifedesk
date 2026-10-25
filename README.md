@@ -21,10 +21,48 @@ chạy hoàn toàn **offline, không cần tài khoản, không database server,
 
 ## 2. Build & chạy
 
+### 2a. Cách nhanh nhất — một lệnh PowerShell (khuyên dùng)
+
+Từ thư mục gốc dự án (script tự định vị dự án — gọi bằng đường dẫn đầy đủ từ đâu cũng chạy):
+
+```powershell
+cd C:\Users\Nexus\Desktop\JAVA\lifedesk
+
+# Build + đóng gói app chạy ngay (không cần cài, kèm runtime riêng)
+powershell -ExecutionPolicy Bypass -File scripts\package.ps1 `
+    -Jdk "C:\Program Files\Java\jdk-25.0.4.1" `
+    -Mvn  "C:\tools\apache-maven-3.9.16\bin\mvn.cmd"
+
+# Vừa chạy toàn bộ 72 test vừa đóng gói
+powershell -ExecutionPolicy Bypass -File scripts\package.ps1 -RunTests `
+    -Jdk "C:\Program Files\Java\jdk-25.0.4.1" `
+    -Mvn  "C:\tools\apache-maven-3.9.16\bin\mvn.cmd"
+
+# Tạo bộ cài MSI (cần cài WiX Toolset 3.x trước)
+powershell -ExecutionPolicy Bypass -File scripts\package.ps1 -Type msi
+```
+
+Script `scripts\package.ps1` tự tìm thư mục dự án (chạy được từ bất kỳ thư mục nào, ví dụ
+gọi bằng đường dẫn đầy đủ), làm đủ chuỗi: build jar → gom `target\dist` (jar + lib)
+→ xóa app-image cũ → `jpackage`. Nếu `mvn` đã có trên PATH và `JAVA_HOME` đã đặt, chỉ cần:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\package.ps1
+```
+
+Kết quả:
+
+| Kiểu | Kết quả |
+|---|---|
+| `-Type app-image` (mặc định) | `target\jpackage\LifeDesk\LifeDesk.exe` — chạy ngay, kèm runtime 165MB, không cần cài |
+| `-Type msi` | `target\jpackage\LifeDesk-1.0.0.msi` — bộ cài Windows (cần WiX 3.x) |
+
+### 2b. Build bằng Maven thủ công
+
 ```bat
 cd lifedesk
 
-:: Chạy toàn bộ test (61 test JUnit 5)
+:: Chạy toàn bộ test (72 test JUnit 5)
 set JAVA_HOME=C:\Program Files\Java\jdk-25.0.4.1
 mvn test
 
@@ -48,7 +86,7 @@ mvn compile exec:java -Dexec.mainClass=com.lifedesk.app.Launcher
 
 ```bat
 :: Kiểm chứng toàn bộ tầng dịch vụ: CRUD, persistence sau reload, BigDecimal,
-:: CSV dedupe, backup/restore, agent policy, rule engine... (39 check)
+:: CSV dedupe, backup/restore, agent policy, rule engine... (40 check)
 java -cp "target\lifedesk.jar;target\lib\*" com.lifedesk.app.SmokeMain services
 
 :: Mở UI thật, tự chụp screenshot từng view rồi thoát
@@ -67,11 +105,14 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1 -Type app-image `
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1 -Type msi ...
 ```
 
-> **Lưu ý đã kiểm chứng trên máy build:** `jpackage` tạo app-image thành công, nhưng chạy
-> `LifeDesk.exe` trên máy này bị **Application Control policy (Smart App Control) chặn** vì exe
-> chưa ký số (`An Application Control policy has blocked this file`). Trên máy đích: cho phép
-> chạy exe trong policy, hoặc ký số, hoặc chạy bằng lệnh `java -cp ... Launcher` ở mục 2
-> (đã kiểm chứng chạy đúng).
+> **Đã kiểm chứng trên máy build:** app-image 165MB tạo thành công, chứa đủ
+> `app\lifedesk.jar`, `app\lib\*` và runtime bundle 120MB; chạy smoke test ngay trên
+> jar/lib trong package: **PASS 40/40**. Việc chạy `LifeDesk.exe` trên chính máy build này bị
+> **Application Control policy (Smart App Control) chặn** vì exe chưa ký số. Trên máy đích, chọn
+> một trong các cách: (1) "Run anyway" / cho phép trong SmartScreen, (2) ký số exe
+> (`signtool sign /fd SHA256 ...`), (3) chạy bằng JDK thường theo lệnh mục 2b (đã kiểm chứng chạy đúng).
+> jpackage mặc định bỏ `java.exe` trong runtime bundle (launcher là `LifeDesk.exe`) — hành vi chuẩn.
+> MSI cần WiX Toolset 3.x; máy build này chưa cài WiX nên chỉ tạo được app-image.
 
 ## 4. Cấu hình dữ liệu
 

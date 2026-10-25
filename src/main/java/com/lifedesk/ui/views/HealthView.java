@@ -46,6 +46,7 @@ public class HealthView extends View {
     private final Map<String, TextField> metricInputs = new HashMap<>();
     private final ComboBox<String> trendField = new ComboBox<>();
     private final VBox chartHost = new VBox();
+    private com.lifedesk.ui.components.NoteLinkPicker dayNoteLinks;
 
     public HealthView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -75,15 +76,23 @@ public class HealthView extends View {
         Button delete = new Button("🗑 Xóa ngày này");
         delete.setOnAction(e -> deleteEntry());
 
-        HBox formRow1 = new HBox(10,
+        HBox formRow1 = new HBox(14,
                 labeled("Ngày", entryDate),
                 labeled("Giờ ngủ (0-24)", sleepField),
                 labeled("Phút vận động", exerciseField),
                 labeled("Cân nặng (kg)", weightField));
-        HBox formRow2 = new HBox(10, labeled("Ghi chú sức khỏe", noteField), new VBox(2, new Label(""), save, delete));
-        noteField.setPrefWidth(400);
+        formRow1.getChildren().forEach(n -> HBox.setHgrow(n, Priority.ALWAYS));
+        entryDate.setMaxWidth(Double.MAX_VALUE);
+        sleepField.setMaxWidth(Double.MAX_VALUE);
+        exerciseField.setMaxWidth(Double.MAX_VALUE);
+        weightField.setMaxWidth(Double.MAX_VALUE);
+        HBox formRow2 = new HBox(14, labeled("Ghi chú sức khỏe", noteField), new VBox(6, save, delete));
+        HBox.setHgrow(formRow2.getChildren().get(0), Priority.ALWAYS);
+        noteField.setMaxWidth(Double.MAX_VALUE);
+        dayNoteLinks = new com.lifedesk.ui.components.NoteLinkPicker(ctx, "health",
+                "date:" + entryDate.getValue(), "Ghi chú liên quan cho ngày này (sổ tay, đơn thuốc…):");
 
-        VBox formCard = new VBox(10, formRow1, metricFields, formRow2);
+        VBox formCard = new VBox(10, formRow1, metricFields, formRow2, dayNoteLinks);
         formCard.getStyleClass().add("card");
 
         // ---- trends
@@ -120,6 +129,9 @@ public class HealthView extends View {
     }
 
     private void loadEntry() {
+        if (dayNoteLinks != null) {
+            dayNoteLinks.setRecordId("date:" + entryDate.getValue());
+        }
         metricInputs.clear();
         metricFields.getChildren().clear();
         var metrics = ctx.health().metrics();
@@ -222,7 +234,37 @@ public class HealthView extends View {
         for (MetricDef m : ctx.health().metrics()) {
             HBox row = new HBox(8, new Label(m.name + (m.unit.isBlank() ? "" : " (" + m.unit + ")")
                     + (m.target != null ? " — mục tiêu " + m.target.toPlainString() : "")));
-            Button del = new Button("🗑");
+            Button edit = new Button("Sửa");
+            edit.setOnAction(e -> {
+                javafx.scene.control.Dialog<Boolean> dialog = Dialogs.newDialog();
+                dialog.setTitle("Sửa chỉ số");
+                dialog.setHeaderText(null);
+                dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
+                        javafx.scene.control.ButtonType.CANCEL);
+                TextField nameField = new TextField(m.name);
+                TextField unitField = new TextField(m.unit);
+                TextField targetField = new TextField(m.target == null ? "" : m.target.toPlainString());
+                dialog.getDialogPane().setContent(new VBox(8,
+                        new Label("Tên *"), nameField, new Label("Đơn vị"), unitField,
+                        new Label("Mục tiêu cá nhân"), targetField));
+                dialog.setResultConverter(bt -> bt.getButtonData()
+                        == javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+                dialog.showAndWait().ifPresent(ok -> {
+                    if (!ok) {
+                        return;
+                    }
+                    try {
+                        ctx.health().updateMetric(m.id, nameField.getText(), unitField.getText(),
+                                targetField.getText().isBlank() ? null : new BigDecimal(targetField.getText().trim()));
+                        loadEntry();
+                    } catch (NumberFormatException ex) {
+                        Dialogs.error("Mục tiêu không hợp lệ", "Nhập số hoặc để trống.");
+                    } catch (RuntimeException ex) {
+                        Dialogs.error("Không sửa được chỉ số", ex.getMessage());
+                    }
+                });
+            });
+            Button del = new Button("Xóa");
             del.setOnAction(e -> {
                 ctx.health().deleteMetric(m.id);
                 list.getChildren().remove(row);
@@ -231,7 +273,7 @@ public class HealthView extends View {
             row.getChildren().add(del);
             list.getChildren().add(row);
         }
-        javafx.scene.control.Dialog<MetricDef> dialog = new javafx.scene.control.Dialog<>();
+        javafx.scene.control.Dialog<MetricDef> dialog = Dialogs.newDialog();
         dialog.setTitle("Chỉ số sức khỏe tùy chọn");
         dialog.setHeaderText("Thêm chỉ số bạn muốn theo dõi (tự nguyện, không mang tính y tế)");
         dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);

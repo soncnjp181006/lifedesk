@@ -3,15 +3,44 @@ package com.lifedesk.ui;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.TextArea;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.Priority;
 
+import java.util.List;
 import java.util.Optional;
 
-/** Modal dialogs with consistent styling (theme CSS applies automatically). */
+/**
+ * Modal dialogs with consistent styling. Every dialog gets the active theme's
+ * stylesheets (JavaFX dialogs do NOT automatically inherit the owner scene's
+ * stylesheets) and the focused stage as owner.
+ */
 public final class Dialogs {
+    /** Active theme stylesheets, wired by MainWindow; applied to every dialog. */
+    private static volatile List<String> globalStylesheets = List.of();
+
     private Dialogs() {
+    }
+
+    public static void setGlobalStylesheets(List<String> stylesheets) {
+        globalStylesheets = List.copyOf(stylesheets);
+    }
+
+    /** Create a dialog that inherits the app theme + owner window. */
+    public static <T> Dialog<T> newDialog() {
+        Dialog<T> d = new Dialog<>();
+        style(d);
+        return d;
+    }
+
+    /** Apply theme stylesheets + owner to an existing dialog. */
+    public static void style(Dialog<?> d) {
+        d.getDialogPane().getStylesheets().setAll(globalStylesheets);
+        javafx.stage.Window owner = activeStage();
+        if (owner != null) {
+            d.initOwner(owner);
+        }
     }
 
     public static void info(String title, String message) {
@@ -32,19 +61,10 @@ public final class Dialogs {
             a.setTitle(title);
             a.setHeaderText(null);
             a.setContentText(message);
-            a.initOwner(activeStage());
+            style(a);
             a.showAndWait();
         };
         Fx.runLater(show);
-    }
-
-    private static javafx.stage.Stage activeStage() {
-        for (javafx.stage.Window w : javafx.stage.Window.getWindows()) {
-            if (w instanceof javafx.stage.Stage s && s.isFocused()) {
-                return s;
-            }
-        }
-        return null;
     }
 
     public static boolean confirm(String title, String message) {
@@ -52,7 +72,7 @@ public final class Dialogs {
         a.setTitle(title);
         a.setHeaderText(null);
         a.setContentText(message);
-        a.initOwner(activeStage());
+        style(a);
         Optional<ButtonType> result = a.showAndWait();
         return result.isPresent() && result.get().getButtonData() == ButtonBar.ButtonData.OK_DONE;
     }
@@ -71,7 +91,7 @@ public final class Dialogs {
         GridPane.setVgrow(area, Priority.ALWAYS);
         GridPane.setHgrow(area, Priority.ALWAYS);
         a.getDialogPane().setContent(area);
-        a.initOwner(activeStage());
+        style(a);
         return a.showAndWait().map(bt -> bt.getButtonData() == ButtonBar.ButtonData.OK_DONE).orElse(false);
     }
 
@@ -81,7 +101,16 @@ public final class Dialogs {
         d.setTitle(title);
         d.setHeaderText(null);
         d.setContentText(message);
-        d.initOwner(activeStage());
+        style(d);
         return d.showAndWait().map(String::trim);
+    }
+
+    private static javafx.stage.Stage activeStage() {
+        for (javafx.stage.Window w : javafx.stage.Window.getWindows()) {
+            if (w instanceof javafx.stage.Stage s && s.isFocused()) {
+                return s;
+            }
+        }
+        return null;
     }
 }

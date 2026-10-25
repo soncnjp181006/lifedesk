@@ -117,8 +117,10 @@ public class ReminderScheduler {
                         "tasks", t.id);
             } else if (t.dueDate.isEqual(today)) {
                 if (t.dueTime != null) {
-                    LocalTime remindAt = t.dueTime.minusMinutes(Math.max(0, config.reminderMinutesBefore));
-                    if (!now.isBefore(remindAt) && now.isBefore(t.dueTime.plusMinutes(30))) {
+                    // Minutes-until-due handles the midnight wrap correctly
+                    // (LocalTime +/- comparisons break when the window crosses 00:00).
+                    long minsToDue = java.time.temporal.ChronoUnit.MINUTES.between(now, t.dueTime);
+                    if (minsToDue <= config.reminderMinutesBefore && minsToDue >= -30) {
                         notifyOnce("task-due-" + t.id + "-" + today,
                                 "Sắp đến hạn",
                                 t.title + " lúc " + t.dueTime,

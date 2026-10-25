@@ -166,6 +166,37 @@ public class FinanceService {
         return c;
     }
 
+    public Category renameCategory(String id, String newName) {
+        Category c = categoryById(id);
+        String trimmed = Validators.requireNonBlank(newName, "Tên danh mục");
+        boolean dup = categories.stream()
+                .anyMatch(x -> !x.id.equals(id) && x.name.equalsIgnoreCase(trimmed) && x.type == c.type && !x.archived);
+        if (dup) {
+            throw new ValidationException("Đã tồn tại danh mục cùng tên: " + trimmed);
+        }
+        c.name = trimmed;
+        persistCategories();
+        change.fire();
+        return c;
+    }
+
+    /** Delete a category; refused while transactions still reference it (data integrity). */
+    public void deleteCategory(String id) {
+        Category c = categoryById(id);
+        boolean used = discoverYears().stream()
+                .anyMatch(y -> year(y).stream().anyMatch(t -> t.categoryId.equals(id)));
+        if (used) {
+            throw new ValidationException("Danh mục '" + c.name + "' đang có giao dịch — không thể xóa. "
+                    + "Hãy đổi tên nó thay vì xóa.");
+        }
+        if (budgets.removeIf(b -> b.categoryId.equals(id))) {
+            persistBudgets();
+        }
+        categories.remove(c);
+        persistCategories();
+        change.fire();
+    }
+
     // ------------------------------------------------------------------ transactions
 
     private List<Transaction> year(int year) {
@@ -432,6 +463,22 @@ public class FinanceService {
         persistDebts();
         change.fire();
         return d;
+    }
+
+    public void updateDebt(Debt updated) {
+        Debt existing = debts.stream().filter(d -> d.id.equals(updated.id)).findFirst()
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy khoản nợ: " + updated.id));
+        if (updated.amount == null || updated.amount.signum() <= 0) {
+            throw new ValidationException("Số tiền phải là một số dương");
+        }
+        existing.direction = updated.direction;
+        existing.party = Validators.requireNonBlank(updated.party, "Đối tượng");
+        existing.amount = updated.amount;
+        existing.incurredDate = updated.incurredDate;
+        existing.dueDate = updated.dueDate;
+        existing.note = updated.note;
+        persistDebts();
+        change.fire();
     }
 
     public void settleDebt(String id) {

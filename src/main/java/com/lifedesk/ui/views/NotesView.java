@@ -45,6 +45,7 @@ public class NotesView extends View {
     private final Label statusHint = new Label("");
     private final BorderPane editorPane = new BorderPane();
     private final PauseTransition autosave = new PauseTransition(Duration.seconds(1.5));
+    private HBox editorBar;
 
     private NoteMeta current;
     private String loadedHash = "";
@@ -80,7 +81,9 @@ public class NotesView extends View {
                     setText(null);
                     setGraphic(null);
                 } else {
-                    Label title = new Label((item.starred ? "⭐ " : "") + item.title);
+                    int linkCount = item.links.values().stream().mapToInt(java.util.Set::size).sum();
+                    Label title = new Label((item.starred ? "★ " : "") + item.title
+                            + (linkCount > 0 ? "  🔗" + linkCount : ""));
                     Label meta = new Label(item.folder.isEmpty() ? "(gốc)" : item.folder);
                     meta.getStyleClass().add("dim-label");
                     setGraphic(new VBox(1, title, meta));
@@ -131,7 +134,7 @@ public class NotesView extends View {
         });
         statusHint.getStyleClass().add("dim-label");
 
-        HBox editorBar = new HBox(8, titleField, new Region(), tagsField, saveBtn, previewToggle);
+        editorBar = new HBox(8, titleField, new Region(), tagsField, saveBtn, previewToggle);
         editorBar.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(titleField, Priority.ALWAYS);
 
@@ -152,16 +155,23 @@ public class NotesView extends View {
                 });
 
         editorPane.setBottom(statusHint);
-        editorPane.setVisible(false);
         // Pre-render an empty themed page so the preview never flashes white.
         preview.render("", ctx.themeManager().previewPalette(ctx.config().theme));
 
         SplitPane root = new SplitPane(left, editorPane);
-        VBox empty = new VBox(new EmptyState("📝", "Chọn hoặc tạo một ghi chú để bắt đầu."));
-        empty.setAlignment(Pos.CENTER);
-        root.getItems().add(empty);
-        root.setDividerPositions(0.28, 0.62);
+        SplitPane.setResizableWithParent(editorPane, Boolean.TRUE);
+        root.setDividerPositions(0.30);
+        showNotesEmptyState();
         return root;
+    }
+
+    private final com.lifedesk.ui.components.EmptyState noNoteState =
+            new com.lifedesk.ui.components.EmptyState("📝", "Chọn hoặc tạo một ghi chú để bắt đầu.");
+
+    private void showNotesEmptyState() {
+        editorPane.setTop(null);
+        editorPane.setCenter(noNoteState);
+        editorPane.setBottom(null);
     }
 
     private void layoutEditorSplit() {
@@ -185,7 +195,10 @@ public class NotesView extends View {
     private void refreshFolders() {
         String current = folderList.getSelectionModel().getSelectedItem();
         folderList.getItems().setAll("(tất cả)");
-        folderList.getItems().addAll(ctx.notes().folders());
+        // blank folder = root; shown as "(gốc)" instead of an empty row
+        ctx.notes().folders().stream()
+                .filter(f -> !f.isBlank())
+                .forEach(folderList.getItems()::add);
         folderList.getSelectionModel().select(
                 current != null && folderList.getItems().contains(current) ? current : "(tất cả)");
     }
@@ -206,16 +219,21 @@ public class NotesView extends View {
         }
         saveNow(); // flush previous note before switching
         current = meta;
-        editorPane.setVisible(meta != null);
         if (meta == null) {
+            showNotesEmptyState();
             return;
         }
+        editorPane.setTop(editorBar);
+        editorPane.setBottom(statusHint);
+        layoutEditorSplit();
         String content = ctx.notes().readContent(meta.id);
         loadedHash = com.lifedesk.common.Fingerprint.sha256(content);
         editor.setText(content);
         titleField.setText(meta.title);
         tagsField.setText(String.join(", ", meta.tags));
-        statusHint.setText("Đã mở \"" + meta.title + "\" — tự động lưu sau 1.5s ngừng gõ.");
+        String links = ctx.notes().linksSummary(meta.id);
+        statusHint.setText("Đã mở \"" + meta.title + "\" — tự động lưu sau 1.5s ngừng gõ."
+                + (links.isBlank() ? "" : "  Liên kết: " + links));
         renderPreview();
     }
 
@@ -297,7 +315,7 @@ public class NotesView extends View {
             ctx.notes().delete(current.id);
             current = null;
             editor.clear();
-            editorPane.setVisible(false);
+            showNotesEmptyState();
             refreshNoteList();
         }
     }

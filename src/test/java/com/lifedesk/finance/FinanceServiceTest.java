@@ -118,6 +118,47 @@ class FinanceServiceTest {
     }
 
     @Test
+    void categoryRenameAndDeleteGuards() {
+        FinanceService svc = service();
+        var cat = svc.categories(TxType.EXPENSE).get(0);
+        // rename works
+        svc.renameCategory(cat.id, "Ăn uống mới");
+        assertEquals("Ăn uống mới", svc.categoryById(cat.id).name);
+        // duplicate rename rejected
+        var other = svc.addCategory("Di chuyển test", TxType.EXPENSE);
+        assertThrows(RuntimeException.class, () -> svc.renameCategory(other.id, "Ăn uống mới"));
+        // delete blocked while transactions reference the category
+        svc.addTransaction(LocalDate.now(), TxType.EXPENSE, new BigDecimal("1000"), cat.id,
+                PaymentMethod.CASH, "x", null, null, false);
+        assertThrows(RuntimeException.class, () -> svc.deleteCategory(cat.id));
+        // delete of an unused category also removes its budgets and works
+        svc.addBudget(YearMonth.now(), other.id, new BigDecimal("500000"));
+        svc.deleteCategory(other.id);
+        assertTrue(svc.categories(TxType.EXPENSE).stream().noneMatch(c -> c.id.equals(other.id)));
+        assertTrue(svc.budgetsFor(YearMonth.now()).stream().noneMatch(b -> b.categoryId.equals(other.id)));
+        // renaming missing category fails
+        assertThrows(RuntimeException.class, () -> svc.renameCategory("nope", "x"));
+    }
+
+    @Test
+    void debtUpdateEditsExisting() {
+        FinanceService svc = service();
+        Debt d = svc.addDebt(DebtDirection.RECEIVABLE, "Nam", new BigDecimal("2000000"),
+                LocalDate.now(), LocalDate.now().plusDays(7), "");
+        d.party = "Nam cập nhật";
+        d.amount = new BigDecimal("2500000");
+        d.note = "thêm lãi";
+        svc.updateDebt(d);
+        var updated = svc.debts(DebtDirection.RECEIVABLE, DebtStatus.OPEN).get(0);
+        assertEquals("Nam cập nhật", updated.party);
+        assertEquals(new BigDecimal("2500000"), updated.amount);
+        assertThrows(RuntimeException.class, () -> {
+            d.amount = new BigDecimal("-1");
+            svc.updateDebt(d);
+        });
+    }
+
+    @Test
     void debtLifecycle() {
         FinanceService svc = service();
         Debt d = svc.addDebt(DebtDirection.RECEIVABLE, "Nam", new BigDecimal("2000000"),

@@ -267,16 +267,11 @@ public final class SmokeMain {
         Path screenshot = Path.of(uiArgs.length > 1 ? uiArgs[1] : "target/ui-smoke.png");
         Files.createDirectories(screenshot.toAbsolutePath().getParent());
 
-        // seed some data so the UI shows content
+        // no seeded data: the UI opens empty, exactly what a fresh user sees
         AppConfig config = new AppConfig();
         config.dataDir = dataDir.toString();
         config.remindersEnabled = false;
         AppContext ctx = new AppContext(dataDir, config);
-        ctx.tasks().create("Việc mẫu cho smoke UI", "tạo tự động", Priority.HIGH, LocalDate.now(), null, "Demo", List.of(), null);
-        ctx.notes().create("Ghi chú mẫu", "", "# Xin chào\n\nĐây là **markdown** preview.", null);
-        ctx.finance().addTransaction(LocalDate.now(), TxType.EXPENSE, new BigDecimal("250000"),
-                ctx.finance().categories(TxType.EXPENSE).get(0).id,
-                com.lifedesk.finance.PaymentMethod.CASH, "cafe", null, null, false);
         ctx.shutdown();
 
         System.out.println("Launching JavaFX UI smoke; screenshot -> " + screenshot.toAbsolutePath());
@@ -330,15 +325,25 @@ public final class SmokeMain {
                     {"TASKS", "target/ui-smoke-tasks.png"},
                     {"NOTES", "target/ui-smoke-notes.png"},
                     {"FINANCE", "target/ui-smoke-finance.png"},
+                    {"HABITS", "target/ui-smoke-habits.png"},
+                    {"HEALTH", "target/ui-smoke-health.png"},
+                    {"LEARNING", "target/ui-smoke-learning.png"},
+                    {"AI", "target/ui-smoke-ai.png"},
                     {"AUTOMATION", "target/ui-smoke-automation.png"},
                     {"SETTINGS", "target/ui-smoke-settings.png"},
             };
             for (String[] v : extraViews) {
                 Path viewShot = screenshot.toAbsolutePath().getParent().resolve(Path.of(v[1]).getFileName());
+                final String seedNoteId = seedNoteIdHolder;
                 java.util.concurrent.CompletableFuture<Boolean> ok = new java.util.concurrent.CompletableFuture<>();
                 javafx.application.Platform.runLater(() -> {
                     try {
                         LifeDeskApp.mainWindowRef.showView(com.lifedesk.ui.MainWindow.ViewId.valueOf(v[0]));
+                        // For the notes view, actually open the seeded note so the
+                        // screenshot proves the editor + preview really appear.
+                        if ("NOTES".equals(v[0]) && seedNoteId != null) {
+                            LifeDeskApp.mainWindowRef.openRecord("NOTE", seedNoteId);
+                        }
                         ok.complete(true);
                     } catch (Throwable t) {
                         ok.completeExceptionally(t);
@@ -402,6 +407,7 @@ public final class SmokeMain {
     }
 
     private static String[] uiArgs = new String[0];
+    private static String seedNoteIdHolder;
 
     private SmokeMain() {
     }

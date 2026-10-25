@@ -65,6 +65,8 @@ public class LifeDeskApp extends Application {
         stage.setScene(scene);
         applyWindowSettings(stage);
         stage.setTitle("LifeDesk — Trợ lý năng suất cá nhân");
+        stage.setMinWidth(1080);
+        stage.setMinHeight(680);
         stage.setOnCloseRequest(e -> saveWindowSettings(stage));
         stage.show();
         context.startBackgroundServices();

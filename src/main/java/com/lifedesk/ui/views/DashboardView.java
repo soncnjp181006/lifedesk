@@ -62,8 +62,12 @@ public class DashboardView extends View {
 
         HBox header = new HBox(10);
         header.setAlignment(Pos.CENTER_LEFT);
+        VBox titleBlock = new VBox(1);
         Label title = new Label("Dashboard");
         title.getStyleClass().add("title-label");
+        Label subtitle = new Label("Tổng quan công việc, tài chính, thói quen và học tập của bạn");
+        subtitle.getStyleClass().add("page-subtitle");
+        titleBlock.getChildren().addAll(title, subtitle);
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
@@ -113,7 +117,7 @@ public class DashboardView extends View {
         Button manage = new Button("Quản lý widget");
         manage.setOnAction(e -> showWidgetManager());
 
-        header.getChildren().addAll(title, spacer, new Label("Khoảng:"), preset,
+        header.getChildren().addAll(titleBlock, spacer, new Label("Khoảng:"), preset,
                 new Label("từ"), from, new Label("đến"), to, manage);
 
         widgetGrid.setPrefWrapLength(1200);
@@ -176,7 +180,7 @@ public class DashboardView extends View {
     // ------------------------------------------------------------------ widgets
 
     private Card todayWidget() {
-        Card card = new Card("📋 Việc hôm nay");
+        Card card = new Card("Việc hôm nay");
         List<Task> list = new ArrayList<>(ctx.tasks().dueToday());
         if (list.isEmpty()) {
             card.content(Card.dim("Không có việc đến hạn hôm nay 🎉"));
@@ -204,7 +208,7 @@ public class DashboardView extends View {
     }
 
     private Card overdueWidget() {
-        Card card = new Card("⏰ Quá hạn");
+        Card card = new Card("Quá hạn");
         List<Task> list = new ArrayList<>(ctx.tasks().overdue());
         Label big = new Label(String.valueOf(list.size()));
         big.getStyleClass().addAll("metric-big", list.isEmpty() ? "metric-pos" : "metric-neg");
@@ -223,7 +227,7 @@ public class DashboardView extends View {
     }
 
     private Card upcomingWidget() {
-        Card card = new Card("📅 Sắp tới (7 ngày)");
+        Card card = new Card("Sắp tới (7 ngày)");
         List<Task> list = new ArrayList<>(ctx.tasks().upcoming(7));
         if (list.isEmpty()) {
             card.content(Card.dim("Trống trong 7 ngày tới"));
@@ -237,7 +241,7 @@ public class DashboardView extends View {
     }
 
     private Card financeWidget() {
-        Card card = new Card("💰 Thu chi (" + rangeFrom.format(DF) + " → " + rangeTo.format(DF) + ")");
+        Card card = new Card("Thu chi (" + rangeFrom.format(DF) + " → " + rangeTo.format(DF) + ")");
         NumberAxis x = new NumberAxis();
         x.setLabel("Ngày trong khoảng");
         x.setMinorTickVisible(false);
@@ -265,7 +269,7 @@ public class DashboardView extends View {
     }
 
     private Card budgetWidget() {
-        Card card = new Card("🎯 Ngân sách " + java.time.YearMonth.now());
+        Card card = new Card("Ngân sách " + java.time.YearMonth.now());
         var statuses = ctx.finance().budgetStatus(java.time.YearMonth.now());
         if (statuses.isEmpty()) {
             card.content(Card.dim("Chưa đặt ngân sách cho tháng này (tab Tài chính)"));
@@ -291,7 +295,7 @@ public class DashboardView extends View {
     }
 
     private Card habitsWidget() {
-        Card card = new Card("🔥 Thói quen");
+        Card card = new Card("Thói quen");
         List<Habit> habits = ctx.habits().habits(false);
         if (habits.isEmpty()) {
             card.content(Card.dim("Chưa có thói quen nào"));
@@ -313,7 +317,7 @@ public class DashboardView extends View {
     }
 
     private Card goalsWidget() {
-        Card card = new Card("🏁 Mục tiêu");
+        Card card = new Card("Mục tiêu");
         var goals = ctx.habits().goals().stream()
                 .filter(g -> g.status() == com.lifedesk.habits.GoalStatus.ACTIVE).toList();
         if (goals.isEmpty()) {
@@ -349,7 +353,7 @@ public class DashboardView extends View {
     }
 
     private Card learningWidget() {
-        Card card = new Card("📚 Học tập");
+        Card card = new Card("Học tập");
         LearningService ls = ctx.learning();
         long minutes = ls.minutesBetween(LocalDate.now().minusDays(6), LocalDate.now());
         VBox box = new VBox(4,
@@ -366,7 +370,7 @@ public class DashboardView extends View {
     }
 
     private Card automationWidget() {
-        Card card = new Card("🤖 Automation");
+        Card card = new Card("Automation");
         var runs = ctx.agentService().runs();
         if (runs.isEmpty()) {
             card.content(Card.dim("Chưa có agent run nào"));
@@ -385,7 +389,7 @@ public class DashboardView extends View {
     }
 
     private Card healthWidget() {
-        Card card = new Card("🩺 Sức khỏe 30 ngày");
+        Card card = new Card("Sức khỏe 30 ngày");
         Double sleep = ctx.health().averageDays(com.lifedesk.health.HealthService.HealthField.SLEEP, 30);
         Double exercise = ctx.health().averageDays(com.lifedesk.health.HealthService.HealthField.EXERCISE, 30);
         Double weight = ctx.health().averageDays(com.lifedesk.health.HealthService.HealthField.WEIGHT, 30);
