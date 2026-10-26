@@ -55,17 +55,44 @@ class FinanceServiceTest {
     }
 
     @Test
-    void duplicateTransactionRejectedButAllowedWhenForced() {
+    void duplicateSameDayBlockedButDifferentDayAllowed() {
         FinanceService svc = service();
         String cat = svc.categories(TxType.EXPENSE).get(0).id;
+        // Same-day double-entry is blocked
         svc.addTransaction(LocalDate.now(), TxType.EXPENSE, new BigDecimal("50000"), cat, PaymentMethod.CASH,
                 "cà phê", null, "ext-9", false);
         assertThrows(RuntimeException.class, () -> svc.addTransaction(LocalDate.now(), TxType.EXPENSE,
                 new BigDecimal("50000"), cat, PaymentMethod.CASH, "cà phê", null, "ext-9", false));
-        // allowDuplicate bypass is explicit
+        // The same coffee every day is legitimate - different date must be accepted
+        svc.addTransaction(LocalDate.now().minusDays(1), TxType.EXPENSE, new BigDecimal("50000"), cat,
+                PaymentMethod.CASH, "cà phê", null, "ext-9", false);
+        assertEquals(2, svc.transactionCount());
+        // Explicit force still bypasses the same-day guard
         svc.addTransaction(LocalDate.now(), TxType.EXPENSE, new BigDecimal("50000"), cat, PaymentMethod.CASH,
                 "cà phê", null, "ext-9", true);
-        assertEquals(2, svc.transactionCount());
+        assertEquals(3, svc.transactionCount());
+    }
+
+    @Test
+    void recurringBudgetAppliesToEveryMonth() {
+        FinanceService svc = service();
+        var cat = svc.addCategory("Tiền nhà test", TxType.EXPENSE);
+        // recurring template: applies to every month without re-entry
+        Budget template = svc.addBudget(YearMonth.now(), cat.id, new BigDecimal("3000000"), true);
+
+        assertEquals(1, svc.budgetsFor(YearMonth.now()).size());
+        assertEquals(1, svc.budgetsFor(YearMonth.now().plusMonths(2)).size());
+        Budget effective = svc.budgetsFor(YearMonth.now().plusMonths(2)).get(0);
+        assertEquals(template.id, effective.id);
+        assertTrue(effective.recurring);
+        assertEquals(new BigDecimal("3000000"), effective.limitAmount);
+
+        // an explicit month budget overrides the template for that category+month
+        svc.addBudget(YearMonth.now().plusMonths(2), cat.id, new BigDecimal("5000000"));
+        var override = svc.budgetsFor(YearMonth.now().plusMonths(2));
+        assertEquals(1, override.size());
+        assertFalse(override.get(0).recurring);
+        assertEquals(new BigDecimal("5000000"), override.get(0).limitAmount);
     }
 
     @Test

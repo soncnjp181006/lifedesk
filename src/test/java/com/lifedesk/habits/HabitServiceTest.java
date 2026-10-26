@@ -38,14 +38,17 @@ class HabitServiceTest {
     void scheduledDaysOnlyCountOnSchedule() {
         HabitService svc = service();
         Habit weekday = svc.addHabit("Tập gym", null, Set.of(DayOfWeek.MONDAY), "accent");
-        // Complete every day this week so far; only Mondays count for the streak.
+        // Deterministic on any weekday: complete the last two Mondays only.
         LocalDate today = LocalDate.now();
-        for (LocalDate d = today.minusDays(10); !d.isAfter(today); d = d.plusDays(1)) {
-            if (d.getDayOfWeek() == DayOfWeek.MONDAY) {
-                svc.setCompletion(weekday.id, d, true, "bù lịch sử " + d, "user");
-            }
-        }
-        assertEquals(1, svc.currentStreak(weekday)); // only today-or-last Monday
+        LocalDate lastMonday = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate mondayBefore = lastMonday.minusWeeks(1);
+        svc.setCompletion(weekday.id, lastMonday, true, "bù " + lastMonday, "user");
+        assertEquals(1, svc.currentStreak(weekday)); // days between Mondays are unscheduled
+        svc.setCompletion(weekday.id, mondayBefore, true, "bù " + mondayBefore, "user");
+        assertEquals(2, svc.currentStreak(weekday));
+        // the gap week (unscheduled) must NOT break the streak; the rate is
+        // computed over SCHEDULED days only - both Mondays completed = 100%
+        assertEquals(1.0, svc.completionRate(weekday, 14), 1e-9);
     }
 
     @Test

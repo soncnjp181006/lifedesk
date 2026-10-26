@@ -264,6 +264,8 @@ public final class SmokeMain {
     private static void runUiSmoke() throws Exception {
         Path dataDir = Files.createTempDirectory("lifedesk-uismoke-");
         System.setProperty("lifedesk.data", dataDir.toString());
+        // Own config dir too, so the smoke never reads/writes the user's real config.
+        System.setProperty("lifedesk.config", dataDir.resolve("config").toString());
         Path screenshot = Path.of(uiArgs.length > 1 ? uiArgs[1] : "target/ui-smoke.png");
         Files.createDirectories(screenshot.toAbsolutePath().getParent());
 

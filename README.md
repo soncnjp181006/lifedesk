@@ -82,6 +82,15 @@ Hoặc dùng Maven:
 mvn compile exec:java -Dexec.mainClass=com.lifedesk.app.Launcher
 ```
 
+### Chạy nhanh từ source (dev)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scriptsun.ps1
+```
+(chạy bằng `javaw` — không có console, app sống độc lập với PowerShell; dữ liệu thật tại
+`%APPDATA%\LifeDesk\data`. Muốn thư mục dữ liệu riêng cho thử nghiệm, thêm
+`-Dlifedesk.data=<thư mục>` vào mảng ArgumentList trong `scriptsun.ps1`.)
+
 ### Smoke test tự động (không cần GUI)
 
 ```bat

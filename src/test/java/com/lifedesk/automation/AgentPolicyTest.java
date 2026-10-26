@@ -67,6 +67,15 @@ class AgentPolicyTest {
         ctx.agentService().validatePlan(plan, true);
     }
 
+    /** Wait for a run to finish, then let async persists settle before JUnit cleans the temp dir. */
+    private static void awaitTerminal(AgentRun run) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 15000;
+        while (!run.isTerminal() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(50);
+        }
+        Thread.sleep(500);
+    }
+
     @Test
     void destructiveStepWithoutApprovalHandlerCancelsRun() throws Exception {
         AppContext ctx = context();
@@ -74,10 +83,7 @@ class AgentPolicyTest {
         var plan = new AgentPlan();
         plan.steps = List.of(step("note.delete", kv("noteId", note.id)));
         AgentRun run = ctx.agentService().submitRun(plan, true, "manual");
-        long deadline = System.currentTimeMillis() + 15000;
-        while (!run.isTerminal() && System.currentTimeMillis() < deadline) {
-            Thread.sleep(50);
-        }
+awaitTerminal(run);
         assertEquals(RunStatus.CANCELLED, run.status);
         assertEquals("DENIED", run.steps.get(run.steps.size() - 1).status);
         // The note must still exist: denial must prevent deletion.
@@ -92,10 +98,7 @@ class AgentPolicyTest {
         var plan = new AgentPlan();
         plan.steps = List.of(step("note.delete", kv("noteId", note.id)));
         AgentRun run = ctx.agentService().submitRun(plan, true, "manual");
-        long deadline = System.currentTimeMillis() + 15000;
-        while (!run.isTerminal() && System.currentTimeMillis() < deadline) {
-            Thread.sleep(50);
-        }
+awaitTerminal(run);
         assertEquals(RunStatus.COMPLETED, run.status);
         assertTrue(ctx.notes().findByTitle("Chấp nhận xóa").isEmpty());
         ctx.agentService().approvals().setHandler(null);
@@ -121,10 +124,7 @@ class AgentPolicyTest {
                 step("dashboard.summary", new JsonObject()),
                 step("task.create", kv("title", "Agent E2E")));
         AgentRun run = ctx.agentService().submitRun(plan, true, "manual");
-        long deadline = System.currentTimeMillis() + 15000;
-        while (!run.isTerminal() && System.currentTimeMillis() < deadline) {
-            Thread.sleep(50);
-        }
+awaitTerminal(run);
         assertEquals(RunStatus.COMPLETED, run.status);
         assertEquals(1, ctx.tasks().search("Agent E2E", null, null).size());
         // every step recorded with attempts

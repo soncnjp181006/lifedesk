@@ -38,11 +38,11 @@ public class LifeDeskApp extends Application {
             ConfigService configService = new ConfigService(ConfigService.defaultConfigDir());
             AppConfig config = configService.load();
             Path dataDir = ConfigService.ensureDataDir(config.dataDir);
-            // Re-check the system property override (smoke tests) after config load.
+            // Re-check the system property override (smoke tests). IMPORTANT: never
+            // write the override into config - it would poison the next real launch.
             String propData = System.getProperty("lifedesk.data");
             if (propData != null && !propData.isBlank()) {
                 dataDir = ConfigService.ensureDataDir(propData);
-                config.dataDir = dataDir.toString();
             }
             dataLock = SingleInstanceLock.acquire(dataDir);
             context = new AppContext(dataDir, config);

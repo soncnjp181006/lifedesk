@@ -24,6 +24,7 @@ import javafx.scene.chart.CategoryAxis;
 import javafx.scene.chart.NumberAxis;
 import javafx.scene.chart.PieChart;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
@@ -533,7 +534,8 @@ public class FinanceView extends View {
 
     private void buildBudgetTable() {
         TableColumn<Budget, String> monthCol = new TableColumn<>("Tháng");
-        monthCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().month.toString()));
+        monthCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().recurring
+                ? "♻ lặp hàng tháng" : p.getValue().month.toString()));
         TableColumn<Budget, String> catCol = new TableColumn<>("Danh mục");
         catCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(safeBudgetCategory(p.getValue())));
         TableColumn<Budget, String> limitCol = new TableColumn<>("Hạn mức");
@@ -580,8 +582,10 @@ public class FinanceView extends View {
             category.getSelectionModel().selectFirst();
         }
         TextField limit = new TextField(existing == null ? "" : existing.limitAmount.toPlainString());
+        CheckBox recurring = new CheckBox("Lặp lại hàng tháng (áp dụng cho mọi tháng)");
+        recurring.setSelected(existing != null && existing.recurring);
         VBox content = new VBox(10, new HBox(10, labeled("Tháng", month), labeled("Danh mục chi", category)),
-                labeled("Hạn mức (VND)", limit));
+                labeled("Hạn mức (VND)", limit), recurring);
         content.setPadding(new javafx.geometry.Insets(10));
         dialog.getDialogPane().setContent(content);
         dialog.setResultConverter(bt -> {
@@ -590,7 +594,7 @@ public class FinanceView extends View {
             }
             try {
                 BigDecimal value = new BigDecimal(limit.getText().trim());
-                return ctx.finance().addBudget(month.getValue(), category.getValue().id, value);
+                return ctx.finance().addBudget(month.getValue(), category.getValue().id, value, recurring.isSelected());
             } catch (NumberFormatException e) {
                 Dialogs.error("Số tiền không hợp lệ", "Nhập số, ví dụ 5000000");
                 return null;

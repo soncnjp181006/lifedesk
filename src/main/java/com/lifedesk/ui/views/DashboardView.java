@@ -21,7 +21,7 @@ import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ScrollPane;
-import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -42,7 +42,8 @@ import java.util.Map;
 public class DashboardView extends View {
     private static final DateTimeFormatter DF = DateTimeFormatter.ofPattern("dd/MM");
 
-    private final FlowPane widgetGrid = new FlowPane(14, 14);
+    private final javafx.scene.layout.GridPane widgetGrid = new javafx.scene.layout.GridPane();
+    private final javafx.scene.layout.ColumnConstraints widgetCol = new javafx.scene.layout.ColumnConstraints();
     private LocalDate rangeFrom = LocalDate.now();
     private LocalDate rangeTo = LocalDate.now();
     private final Map<String, Node> widgets = new LinkedHashMap<>();
@@ -120,7 +121,11 @@ public class DashboardView extends View {
         header.getChildren().addAll(titleBlock, spacer, new Label("Khoảng:"), preset,
                 new Label("từ"), from, new Label("đến"), to, manage);
 
-        widgetGrid.setPrefWrapLength(1200);
+        widgetGrid.setHgap(14);
+        widgetGrid.setVgap(14);
+        widgetCol.setPercentWidth(100.0 / 3);
+        widgetCol.setHgrow(Priority.ALWAYS);
+        widgetGrid.getColumnConstraints().addAll(widgetCol, widgetCol, widgetCol);
 
         VBox root = new VBox(12, header, widgetGrid);
         VBox.setVgrow(widgetGrid, Priority.ALWAYS);
@@ -160,20 +165,29 @@ public class DashboardView extends View {
         widgets.put("w_health", healthWidget());
 
         widgetGrid.getChildren().clear();
+        int col = 0;
+        int row = 0;
         for (String id : ctx.config().dashboardWidgetOrder) {
             Boolean on = ctx.config().dashboardWidgets.get(id);
             Node w = widgets.get(id);
             if (on != null && on && w != null) {
                 if (w instanceof Card c) {
-                    c.setPrefWidth(390);
-                    c.setMinHeight(120);
+                    c.setMaxWidth(Double.MAX_VALUE);
+                    c.setMinHeight(140);
+                    GridPane.setHgrow(c, Priority.ALWAYS);
+                    GridPane.setFillWidth(c, true);
                 }
-                widgetGrid.getChildren().add(w);
+                widgetGrid.add(w, col, row);
+                col++;
+                if (col == 3) {
+                    col = 0;
+                    row++;
+                }
             }
         }
         if (widgetGrid.getChildren().isEmpty()) {
-            widgetGrid.getChildren().add(new EmptyState("🧩",
-                    "Tất cả widget đang tắt. Bấm \"Quản lý widget\" để bật lại."));
+            widgetGrid.add(new EmptyState("🧩",
+                    "Tất cả widget đang tắt. Bấm \"Quản lý widget\" để bật lại."), 0, 0, 3, 1);
         }
     }
 
@@ -241,11 +255,21 @@ public class DashboardView extends View {
     }
 
     private Card financeWidget() {
-        Card card = new Card("Thu chi (" + rangeFrom.format(DF) + " → " + rangeTo.format(DF) + ")");
+        // A single-day line chart is always flat - when the filter is one day,
+        // show the whole current month instead (what real dashboards do).
+        java.time.LocalDate chartFrom = rangeFrom;
+        java.time.LocalDate chartTo = rangeTo;
+        String chartTitle = rangeFrom.format(DF) + " → " + rangeTo.format(DF);
+        if (chartFrom.equals(chartTo)) {
+            chartFrom = rangeFrom.withDayOfMonth(1);
+            chartTo = rangeFrom.withDayOfMonth(rangeFrom.lengthOfMonth());
+            chartTitle = "tháng " + rangeFrom.format(java.time.format.DateTimeFormatter.ofPattern("MM/yyyy"));
+        }
+        Card card = new Card("Thu chi (" + chartTitle + ")");
         NumberAxis x = new NumberAxis();
         x.setLabel("Ngày trong khoảng");
         x.setMinorTickVisible(false);
-        x.setTickUnit(Math.max(1, (rangeTo.toEpochDay() - rangeFrom.toEpochDay()) / 6));
+        x.setTickUnit(Math.max(1, (chartTo.toEpochDay() - chartFrom.toEpochDay()) / 6));
         NumberAxis y = new NumberAxis();
         y.setLabel("VND");
         LineChart<Number, Number> chart = new LineChart<>(x, y);
@@ -253,12 +277,12 @@ public class DashboardView extends View {
         chart.setCreateSymbols(false);
         chart.setPrefHeight(200);
 
-        List<FinanceService.DayPoint> series = ctx.finance().dailySeries(rangeFrom, rangeTo);
+        List<FinanceService.DayPoint> series = ctx.finance().dailySeries(chartFrom, chartTo);
         XYChart.Series<Number, Number> income = new XYChart.Series<>();
         income.setName("Thu nhập");
         XYChart.Series<Number, Number> expense = new XYChart.Series<>();
         expense.setName("Chi tiêu");
-        long start = rangeFrom.toEpochDay();
+        long start = chartFrom.toEpochDay();
         for (FinanceService.DayPoint p : series) {
             income.getData().add(new XYChart.Data<>(p.date().toEpochDay() - start, p.income().doubleValue()));
             expense.getData().add(new XYChart.Data<>(p.date().toEpochDay() - start, p.expense().doubleValue()));

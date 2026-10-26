@@ -281,7 +281,15 @@ public class FinanceService {
         }
         String fp = txFingerprint(date, type, amount, description, externalId);
         if (!allowDuplicate && fingerprints.contains(fp)) {
-            throw new ValidationException("Giao dịch trùng lặp đã tồn tại (ngày " + date + ", số tiền " + amount.toPlainString() + ")");
+            // Real-world rule: identical entries on DIFFERENT days are legitimate
+            // (daily coffee, monthly rent) - only block a same-day double-entry.
+            // CSV import still deduplicates against the full fingerprint set.
+            boolean sameDay = year(date.getYear()).stream()
+                    .anyMatch(t -> t.importFingerprint.equals(fp) && t.date.equals(date));
+            if (sameDay) {
+                throw new ValidationException("Giao dịch trùng lặp trong cùng ngày " + date
+                        + " (" + amount.toPlainString() + ")");
+            }
         }
         Transaction t = new Transaction();
         t.date = date;
@@ -389,16 +397,33 @@ public class FinanceService {
     }
 
     public List<Budget> budgetsFor(YearMonth month) {
-        return budgets.stream().filter(b -> b.month.equals(month)).toList();
+        List<Budget> out = new ArrayList<>(budgets.stream().filter(b -> !b.recurring && b.month.equals(month)).toList());
+        for (Budget rec : budgets.stream().filter(b -> b.recurring).toList()) {
+            boolean overridden = out.stream().anyMatch(b -> b.categoryId.equals(rec.categoryId));
+            if (!overridden) {
+                Budget effective = new Budget(month, rec.categoryId, rec.limitAmount);
+                effective.id = rec.id; // keep identity for edit/delete operations
+                effective.recurring = true;
+                out.add(effective);
+            }
+        }
+        return out;
     }
 
-    public Budget addBudget(YearMonth month, String categoryId, BigDecimal limit) {
+    /**
+     * Create or update a budget. With {@code recurring = true} the budget is a
+     * monthly template that applies to every month (real-app pattern: budget
+     * templates are separate from per-month overrides).
+     */
+    public Budget addBudget(YearMonth month, String categoryId, BigDecimal limit, boolean recurring) {
         if (limit == null || limit.signum() < 0) {
             throw new ValidationException("Hạn mức ngân sách không hợp lệ");
         }
         categoryById(categoryId);
         Optional<Budget> existing = budgets.stream()
-                .filter(b -> b.month.equals(month) && b.categoryId.equals(categoryId)).findFirst();
+                .filter(b -> b.recurring == recurring && b.categoryId.equals(categoryId)
+                        && (recurring || b.month.equals(month)))
+                .findFirst();
         if (existing.isPresent()) {
             existing.get().limitAmount = limit;
             persistBudgets();
@@ -406,10 +431,15 @@ public class FinanceService {
             return existing.get();
         }
         Budget b = new Budget(month, categoryId, limit);
+        b.recurring = recurring;
         budgets.add(b);
         persistBudgets();
         change.fire();
         return b;
+    }
+
+    public Budget addBudget(YearMonth month, String categoryId, BigDecimal limit) {
+        return addBudget(month, categoryId, limit, false);
     }
 
     public void deleteBudget(String id) {

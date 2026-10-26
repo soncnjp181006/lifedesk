@@ -203,6 +203,10 @@
     -fx-text-fill: -ld-text-dim;
     -fx-font-size: 11.5px;
     -fx-font-weight: bold;
+    -fx-alignment: baseline-left;
+}
+.table-view .column-header.graphic-header .label {
+    -fx-alignment: baseline-left;
 }
 .table-view .table-row-cell {
     -fx-background-color: -ld-card;

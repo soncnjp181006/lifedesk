@@ -369,7 +369,7 @@ public class TasksView extends View {
         ComboBox<TaskStatus> status = new ComboBox<>();
         status.getItems().addAll(TaskStatus.values());
         status.setValue(existing == null ? TaskStatus.TODO : existing.status);
-        DatePicker dueDate = new DatePicker(existing == null ? LocalDate.now() : existing.dueDate);
+        DatePicker dueDate = new DatePicker(existing == null ? null : existing.dueDate);
         Spinner<Integer> hh = new Spinner<>(0, 23, existing != null && existing.dueTime != null ? existing.dueTime.getHour() : 9);
         Spinner<Integer> mm = new Spinner<>(0, 59, existing != null && existing.dueTime != null ? existing.dueTime.getMinute() : 0);
         CheckBox hasTime = new CheckBox("Có giờ");
