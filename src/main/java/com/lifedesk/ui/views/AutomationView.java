@@ -14,6 +14,7 @@ import com.lifedesk.ui.Fx;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.EmptyState;
+import com.lifedesk.ui.components.IconView;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.geometry.Pos;
@@ -57,6 +58,8 @@ public class AutomationView extends View {
     private final TextArea stepDetail = new TextArea();
     private final ListView<Workflow> workflowList = new ListView<>();
     private final TextArea registryView = new TextArea();
+    private final TabPane tabs = new TabPane();
+    private Tab workflowsTab;
 
     public AutomationView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -82,10 +85,10 @@ public class AutomationView extends View {
 
         // ---------------- plan builder
         buildStepTable();
-        stepTable.setPlaceholder(new EmptyState("🧩", "Thêm bước cho kế hoạch (mỗi bước = 1 tool + tham số JSON)."));
+        stepTable.setPlaceholder(new EmptyState("puzzle", "Thêm bước cho kế hoạch (mỗi bước = 1 tool + tham số JSON)."));
         ComboBox<String> toolPick = new ComboBox<>();
         ctx.agentService().registry().all().values().forEach(t -> toolPick.getItems().add(t.descriptor().name()));
-        Button addStep = new Button("+ Thêm bước");
+        Button addStep = new Button("Thêm bước", new IconView("plus", 15));
         addStep.setOnAction(e -> {
             PlanStep step = new PlanStep();
             step.tool = toolPick.getValue() == null ? toolPick.getItems().isEmpty() ? "" : toolPick.getItems().get(0) : toolPick.getValue();
@@ -95,9 +98,9 @@ public class AutomationView extends View {
             planSteps.add(step);
             stepTable.getItems().setAll(planSteps);
         });
-        Button editStep = new Button("✎ Sửa bước");
+        Button editStep = new Button("Sửa bước", new IconView("pencil", 15));
         editStep.setOnAction(e -> editSelectedStep());
-        Button delStep = new Button("🗑 Xóa bước");
+        Button delStep = new Button("Xóa bước", new IconView("trash", 15));
         delStep.setOnAction(e -> {
             PlanStep step = stepTable.getSelectionModel().getSelectedItem();
             if (step != null) {
@@ -105,34 +108,41 @@ public class AutomationView extends View {
                 stepTable.getItems().setAll(planSteps);
             }
         });
-        Button runBtn = new Button("▶ Thực thi kế hoạch");
+        Button runBtn = new Button("Thực thi kế hoạch", new IconView("play", 15));
         runBtn.getStyleClass().add("primary-btn");
         runBtn.setOnAction(e -> executePlan());
-        Button cancelBtn = new Button("⏹ Hủy run đang chọn");
+        Button cancelBtn = new Button("Hủy run đang chọn", new IconView("square", 15));
         cancelBtn.setOnAction(e -> cancelSelectedRun());
 
-        HBox planToolbar = new HBox(8, new Label("Tool:"), toolPick, addStep, editStep, delStep, approvePlan, runBtn);
-        planToolbar.setAlignment(Pos.CENTER_LEFT);
+        toolPick.setPrefWidth(220);
+        HBox planRow = new HBox(8, new Label("Tool:"), toolPick, addStep, editStep, delStep);
+        planRow.setAlignment(Pos.CENTER_LEFT);
+        // The approval checkbox needs its full label; at 1080px it was clipped mid-word.
+        HBox runRow = new HBox(10, approvePlan, runBtn);
+        runRow.setAlignment(Pos.CENTER_LEFT);
+        VBox planToolbar = new VBox(8, planRow, runRow);
 
         VBox planPane = new VBox(10, planToolbar, stepTable);
         VBox.setVgrow(stepTable, Priority.ALWAYS);
 
         // ---------------- runs
         buildRunTable();
-        runTable.setPlaceholder(new EmptyState("🤖", "Chưa có agent run nào."));
+        runTable.setPlaceholder(new EmptyState("bot", "Chưa có agent run nào."));
         stepDetail.setEditable(false);
         stepDetail.setPromptText("Chọn một run để xem chi tiết từng bước…");
         VBox runsPane = new VBox(10, new HBox(8, cancelBtn), runTable, new Label("Chi tiết các bước:"), stepDetail);
         VBox.setVgrow(runTable, Priority.ALWAYS);
 
         // ---------------- workflows
-        Button addWorkflow = new Button("+ Lưu kế hoạch thành workflow");
+        Button addWorkflow = new Button("Lưu kế hoạch thành workflow", new IconView("plus", 15));
         addWorkflow.setOnAction(e -> saveAsWorkflow());
-        Button editWorkflow = new Button("✎ Lịch / bật tắt");
+        Button editWorkflow = new Button("Lịch / bật tắt", new IconView("pencil", 15));
         editWorkflow.setOnAction(e -> editWorkflow());
-        Button runNow = new Button("▶ Chạy ngay");
+        Button runNow = new Button("Chạy ngay", new IconView("play", 15));
         runNow.setOnAction(e -> runWorkflowNow());
-        Button delWorkflow = new Button("🗑");
+        Button delWorkflow = new Button("", new IconView("trash", 15));
+        delWorkflow.getStyleClass().add("icon-btn");
+        delWorkflow.setTooltip(new Tooltip("Xóa workflow"));
         delWorkflow.setOnAction(e -> deleteWorkflow());
         workflowList.setCellFactory(v -> new ListCell<>() {
             @Override
@@ -162,12 +172,13 @@ public class AutomationView extends View {
         registryView.setText(sb.toString());
         registryView.setPrefRowCount(18);
 
-        TabPane tabs = new TabPane();
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        workflowsTab = new Tab("Workflows",
+                new VBox(10, new HBox(8, addWorkflow, editWorkflow, runNow, delWorkflow), workflowList));
         tabs.getTabs().addAll(
                 new Tab("Kế hoạch", planPane),
                 new Tab("Lịch sử chạy", runsPane),
-                new Tab("Workflows", new VBox(10, new HBox(8, addWorkflow, editWorkflow, runNow, delWorkflow), workflowList)),
+                workflowsTab,
                 new Tab("Tool registry & chính sách", new VBox(10, registryView, policyNote)));
 
         ctx.agentService().changes().addListener(() -> javafx.application.Platform.runLater(this::refreshRuns));
@@ -297,7 +308,7 @@ public class AutomationView extends View {
         StringBuilder sb = new StringBuilder();
         sb.append("Run ").append(run.id).append(" — ").append(run.status).append('\n');
         if (run.awaitingStepId != null) {
-            sb.append("⏳ Đang chờ phê duyệt bước: ").append(run.awaitingStepId).append('\n');
+            sb.append("[chờ phê duyệt] bước: ").append(run.awaitingStepId).append('\n');
         }
         for (var s : run.steps) {
             sb.append("\n[").append(s.status).append("] ").append(s.tool)
@@ -413,6 +424,21 @@ public class AutomationView extends View {
     public void onShow() {
         refreshRuns();
         refreshWorkflows();
+    }
+
+    /** Deep links to a workflow land on the Workflows tab with that row selected. */
+    @Override
+    public void openRecord(String recordId) {
+        refreshWorkflows();
+        for (int i = 0; i < workflowList.getItems().size(); i++) {
+            if (workflowList.getItems().get(i).id.equals(recordId)) {
+                tabs.getSelectionModel().select(workflowsTab);
+                workflowList.getSelectionModel().select(i);
+                workflowList.scrollTo(i);
+                return;
+            }
+        }
+        main.status("Không tìm thấy workflow: " + recordId);
     }
 
     private VBox labeled(String text, Node field) {

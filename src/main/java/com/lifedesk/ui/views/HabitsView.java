@@ -11,6 +11,7 @@ import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.EmptyState;
+import com.lifedesk.ui.components.IconView;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -68,15 +69,15 @@ public class HabitsView extends View {
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
         todayOnlyMode = new ToggleButton("Chỉ việc hôm nay");
-        Button weekBtn = new Button("📊 Tổng kết tuần");
+        Button weekBtn = new Button("Tổng kết tuần", new IconView("chart-column", 15));
         weekBtn.setOnAction(e -> showWeeklySummary());
-        Button logBtn = new Button("📜 Nhật ký thay đổi");
+        Button logBtn = new Button("Nhật ký thay đổi", new IconView("scroll-text", 15));
         logBtn.setOnAction(e -> showChangeLog());
         HBox header = new HBox(10, title, spacer, todayOnlyMode, weekBtn, logBtn);
         header.setAlignment(Pos.CENTER_LEFT);
 
         // ---- habits tab
-        Button addHabit = new Button("+ Thói quen mới");
+        Button addHabit = new Button("Thói quen mới", new IconView("plus", 15));
         addHabit.getStyleClass().add("primary-btn");
         addHabit.setOnAction(e -> openHabitEditor(null));
         Label markHint = new Label("Bấm nút ngày để ghi nhận hoàn thành; chỉnh sửa lịch sử sẽ được ghi nhật ký.");
@@ -89,18 +90,18 @@ public class HabitsView extends View {
 
         // ---- goals tab
         buildGoalTable();
-        goalTable.setPlaceholder(new EmptyState("🏁", "Chưa có mục tiêu nào."));
-        Button addGoal = new Button("+ Mục tiêu mới");
+        goalTable.setPlaceholder(new EmptyState("flag", "Chưa có mục tiêu nào."));
+        Button addGoal = new Button("Mục tiêu mới", new IconView("plus", 15));
         addGoal.getStyleClass().add("primary-btn");
         addGoal.setOnAction(e -> openGoalEditor(null));
-        Button editGoal = new Button("✎ Sửa");
+        Button editGoal = new Button("Sửa", new IconView("pencil", 15));
         editGoal.setOnAction(e -> {
             Goal g = goalTable.getSelectionModel().getSelectedItem();
             if (g != null) {
                 openGoalEditor(g);
             }
         });
-        Button delGoal = new Button("🗑 Xóa");
+        Button delGoal = new Button("Xóa", new IconView("trash", 15));
         delGoal.setOnAction(e -> {
             Goal g = goalTable.getSelectionModel().getSelectedItem();
             if (g != null && Dialogs.confirm("Xóa mục tiêu", "Xóa \"" + g.title() + "\"?")) {
@@ -131,7 +132,7 @@ public class HabitsView extends View {
         habitCards.getChildren().clear();
         List<Habit> habits = ctx.habits().habits(false);
         if (habits.isEmpty()) {
-            habitCards.getChildren().add(new EmptyState("🔥", "Chưa có thói quen nào. Bấm \"Thói quen mới\"."));
+            habitCards.getChildren().add(new EmptyState("flame", "Chưa có thói quen nào. Bấm \"Thói quen mới\"."));
             return;
         }
         boolean todayOnly = todayOnlyMode != null && todayOnlyMode.isSelected();
@@ -165,10 +166,13 @@ public class HabitsView extends View {
         header.setAlignment(Pos.CENTER_LEFT);
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Button edit = new Button("✎");
+        Button edit = new Button("", new IconView("pencil", 15));
+        edit.getStyleClass().add("icon-btn");
         edit.setTooltip(new Tooltip("Sửa thói quen"));
         edit.setOnAction(e -> openHabitEditor(h));
-        Button del = new Button("🗑");
+        Button del = new Button("", new IconView("trash", 15));
+        del.getStyleClass().add("icon-btn");
+        del.setTooltip(new Tooltip("Xóa thói quen"));
         del.setOnAction(e -> {
             if (Dialogs.confirm("Xóa thói quen", "Xóa \"" + h.name + "\"?")) {
                 ctx.habits().deleteHabit(h.id);
@@ -189,7 +193,7 @@ public class HabitsView extends View {
             ToggleButton dayBtn = new ToggleButton(label);
             dayBtn.setSelected(done);
             dayBtn.setDisable(!scheduled || d.isAfter(today));
-            dayBtn.setTooltip(new Tooltip(d + (scheduled ? "" : " (không lịch)") + (done ? " ✓" : "")));
+            dayBtn.setTooltip(new Tooltip(d + (scheduled ? "" : " (không lịch)") + (done ? " — đã điểm" : "")));
             dayBtn.getStyleClass().add(done ? "primary-btn" : "ghost-btn");
             dayBtn.setOnAction(e -> {
                 boolean target = !ctx.habits().isCompleted(h.id, d);

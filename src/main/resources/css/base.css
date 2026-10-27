@@ -1,287 +1,392 @@
 /* ==========================================================================
-   LifeDesk design system.
-   Every rule uses looked-up colors (-ld-*) defined by the active theme file.
-   Java source never sets colors; adding a theme = adding one CSS file.
+   LifeDesk design system — Swiss / dense professional.
+   Token vocabulary follows Tailwind's design language (slate neutral ramp,
+   4px spacing scale, fixed type/radius/elevation steps) expressed in the only
+   property set JavaFX understands: `-fx-*` plus looked-up colors (-ld-*).
+   Java source never sets colors; adding a theme = adding one palette file.
    ========================================================================== */
+
+/* ---------- scale reference (documentation, not CSS variables) ----------
+   spacing   : 4 8 12 16 20 24 32            (sp-1 .. sp-8)
+   type      : 11 12 13 14 16 20 26          (overline .. display)
+   radius    : 4 6 8 10 14 999               (xs sm md lg xl full)
+   elevation : flat surfaces use 1px border; dropshadow only for floating
+               layers (popup 8, modal 16, menu 20) — Swiss rule: borders
+               describe structure, shadows describe altitude.
+   ------------------------------------------------------------------------ */
 
 .root {
     -fx-font-family: "Segoe UI Variable Text", "Segoe UI", "Arial", sans-serif;
-    -fx-font-size: 13px;
+    -fx-font-size: 13px;                    /* sp/body — dense but still readable */
+    -fx-background-color: -ld-bg;
+    -fx-focus-color: -ld-accent;            /* visible 2px ring, rule: focus-states */
+    -fx-faint-focus-color: transparent;     /* kill JavaFX's default blurry halo  */
+    -fx-accent: -ld-accent;
+    -fx-selection-bar: -ld-accent-soft;
+    -fx-selection-bar-text: -ld-text;
+    -fx-text-background-color: -ld-text;
+    -fx-control-inner-background: -ld-input;
+    -fx-inner-border: -ld-border;
+    -fx-body-color: -ld-elev;
+    -fx-background: -ld-bg;
 }
 
-/* ---------- typography ---------- */
+/* ======================================================================
+   1. Typography — roles, not raw sizes
+   ====================================================================== */
+
 .label {
     -fx-text-fill: -ld-text;
 }
+
+/* overline: 11px + tracking, the Swiss section marker */
+.overline {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ld-text-dim;
+    -fx-opacity: 0.9;
+}
+
 .dim-label {
     -fx-text-fill: -ld-text-dim;
     -fx-font-size: 12px;
 }
+
 .title-label {
-    -fx-font-size: 22px;
+    -fx-font-size: 20px;
     -fx-font-weight: bold;
+    -fx-text-fill: -ld-text;
 }
+
 .page-subtitle {
     -fx-text-fill: -ld-text-dim;
     -fx-font-size: 12.5px;
 }
+
 .section-label {
     -fx-font-size: 13px;
     -fx-font-weight: bold;
-}
-.overline {
-    -fx-font-size: 10.5px;
-    -fx-font-weight: bold;
-    -fx-text-fill: -ld-text-dim;
+    -fx-text-fill: -ld-text;
 }
 
-/* ---------- buttons ---------- */
+.card-title {
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ld-text;
+}
+
+.card-headline {
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ld-text;
+}
+
+/* Numeric data must align: tabular figures via a monospaced fallback face.
+   Applied by Java where money/counters are rendered (.metric-big, .tnum). */
+.metric-big {
+    -fx-font-family: "Segoe UI Variable Display", "Segoe UI", "Arial", sans-serif;
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ld-text;
+}
+
+.tnum {
+    -fx-font-family: "Consolas", "Cascadia Mono", "Segoe UI Mono", monospace;
+    -fx-font-size: 12.5px;
+}
+
+.metric-pos { -fx-text-fill: -ld-ok; }
+.metric-neg { -fx-text-fill: -ld-danger; }
+
+/* ---------- icons -------------------------------------------------------------------
+   IconView (ui/components/IconView.java) loads /icons/<name>.svg — Lucide geometry with
+   the presentation attributes stripped. Colour, weight and caps live HERE, not in the
+   SVG and not in Java, so an icon re-tints the moment the palette changes.
+   Stroke weight is in the icon's own 24-unit space, so it scales with the icon exactly
+   like the web reference does. Tint variants: .icon-accent / .icon-ok / .icon-danger /
+   .icon-warn / .icon-dim.
+   ----------------------------------------------------------------------------------- */
+.ld-icon-part {
+    -fx-fill: transparent;
+    -fx-stroke: -ld-text;
+    -fx-stroke-width: 1.9;
+    -fx-stroke-line-cap: round;
+    -fx-stroke-line-join: round;
+}
+.icon-accent .ld-icon-part { -fx-stroke: -ld-accent; }
+.icon-dim    .ld-icon-part { -fx-stroke: -ld-text-dim; }
+.icon-ok     .ld-icon-part { -fx-stroke: -ld-ok; }
+.icon-warn   .ld-icon-part { -fx-stroke: -ld-warn; }
+.icon-danger .ld-icon-part { -fx-stroke: -ld-danger; }
+.icon-info   .ld-icon-part { -fx-stroke: -ld-info; }
+
+/* A button's icon inherits the button's foreground state (hover/pressed/disabled). */
+.button .ld-icon-part, .nav-item .ld-icon-part, .icon-btn .ld-icon-part {
+    -fx-stroke: -ld-text;
+}
+.primary-btn .ld-icon-part { -fx-stroke: -ld-accent-text; }
+.danger-btn .ld-icon-part  { -fx-stroke: white; }
+.nav-item.active .ld-icon-part { -fx-stroke: -ld-accent; }
+.button:disabled .ld-icon-part { -fx-stroke: -ld-text-dim; }
+
+/* ToggleButton is its own style family in JavaFX — keep its icon in step with its label. */
+.toggle-button .ld-icon-part { -fx-stroke: -ld-text-dim; }
+.toggle-button:hover .ld-icon-part { -fx-stroke: -ld-text; }
+.toggle-button:selected .ld-icon-part { -fx-stroke: -ld-accent; }
+
+/* Empty-state art is deliberately larger and quieter than inline glyphs. */
+.empty-state .ld-icon-part {
+    -fx-stroke: -ld-text-dim;
+    -fx-stroke-width: 1.4;
+}
+
+/* ======================================================================
+   2. Buttons — one accent per screen (rule: primary-action)
+   ====================================================================== */
+
 .button {
     -fx-background-color: -ld-elev;
     -fx-text-fill: -ld-text;
-    -fx-background-radius: 9;
-    -fx-border-radius: 9;
-    -fx-border-color: transparent;
-    -fx-padding: 7 14 7 14;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 1;
+    -fx-padding: 6 12 6 12;
     -fx-cursor: hand;
+    -fx-font-size: 12.5px;
     -fx-font-weight: normal;
+    -fx-graphic-text-gap: 6;
 }
+
 .button:hover {
-    -fx-background-color: derive(-ld-elev, 12%);
+    -fx-background-color: derive(-ld-elev, 10%);
+    -fx-border-color: derive(-ld-border, 12%);
 }
+
 .button:focused {
     -fx-background-color: -ld-elev;
     -fx-border-color: -ld-accent;
-    -fx-border-width: 1.5;
+    -fx-border-width: 2;
+    -fx-padding: 5 11 5 11;               /* keep outer size stable while focused */
 }
+
 .button:pressed {
-    -fx-background-color: -ld-border;
+    -fx-background-color: derive(-ld-elev, -10%);
+    -fx-border-color: -ld-accent;
 }
+
+.button:disabled {
+    -fx-opacity: 0.42;
+    -fx-cursor: default;
+}
+
 .primary-btn {
     -fx-background-color: -ld-accent;
     -fx-text-fill: -ld-accent-text;
+    -fx-border-color: -ld-accent;
     -fx-font-weight: bold;
 }
+
 .primary-btn:hover {
-    -fx-background-color: derive(-ld-accent, 14%);
+    -fx-background-color: derive(-ld-accent, 12%);
+    -fx-border-color: derive(-ld-accent, 12%);
 }
+
 .primary-btn:focused {
     -fx-background-color: -ld-accent;
     -fx-border-color: -ld-accent-text;
-    -fx-border-width: 1.5;
+    -fx-border-width: 2;
 }
+
 .primary-btn:pressed {
     -fx-background-color: derive(-ld-accent, -14%);
 }
+
+/* Destructive actions are colored AND separated (rule: destructive-emphasis) */
 .danger-btn {
     -fx-background-color: -ld-danger;
-    -fx-text-fill: white;
+    -fx-text-fill: -ld-accent-text;
+    -fx-border-color: -ld-danger;
     -fx-font-weight: bold;
 }
+
 .danger-btn:hover {
-    -fx-background-color: derive(-ld-danger, 14%);
-}
-.ghost-btn {
-    -fx-background-color: transparent;
-}
-.ghost-btn:hover {
-    -fx-background-color: -ld-elev;
-}
-.icon-btn {
-    -fx-background-color: transparent;
-    -fx-background-radius: 999;
-    -fx-padding: 6 9 6 9;
-    -fx-font-size: 14px;
-}
-.icon-btn:hover {
-    -fx-background-color: -ld-elev;
+    -fx-background-color: derive(-ld-danger, 12%);
 }
 
-/* ---------- text input ---------- */
+.ghost-btn {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.ghost-btn:hover {
+    -fx-background-color: -ld-elev;
+    -fx-border-color: -ld-border;
+}
+
+.icon-btn {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-padding: 6 8 6 8;
+    -fx-font-size: 13px;
+    -fx-min-width: 30;                     /* hit area, rule: touch-target-size    */
+    -fx-alignment: center;
+}
+
+.icon-btn:hover {
+    -fx-background-color: -ld-elev;
+    -fx-border-color: -ld-border;
+}
+
+.icon-btn:focused {
+    -fx-background-color: -ld-elev;
+    -fx-border-color: -ld-accent;
+    -fx-border-width: 2;
+}
+
+/* ======================================================================
+   3. Text input
+   ====================================================================== */
+
 .text-field, .text-area, .password-field {
     -fx-background-color: -ld-input;
     -fx-text-fill: -ld-text;
     -fx-prompt-text-fill: -ld-text-dim;
-    -fx-background-radius: 9;
-    -fx-border-radius: 9;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
     -fx-border-color: -ld-border;
     -fx-border-width: 1;
-    -fx-padding: 7 11 7 11;
+    -fx-padding: 6 10 6 10;
     -fx-highlight-fill: -ld-accent-soft;
+    -fx-highlight-text-fill: -ld-text;
 }
-.text-field:focused, .text-area:focused {
+
+.text-field:focused, .text-area:focused, .password-field:focused {
     -fx-border-color: -ld-accent;
-    -fx-border-width: 1.5;
-    -fx-padding: 6.5 10.5 6.5 10.5;
+    -fx-border-width: 2;
+    -fx-padding: 5 9 5 9;
 }
+
 .text-area .content {
     -fx-background-color: -ld-input;
 }
+
 .search-field {
     -fx-background-radius: 999;
     -fx-border-radius: 999;
-    -fx-padding: 7 16 7 16;
+    -fx-padding: 6 14 6 14;
     -fx-min-width: 300;
 }
 
-/* ---------- combo / choice / date / spinner ---------- */
+.search-field:focused {
+    -fx-padding: 5 13 5 13;
+}
+
+/* ======================================================================
+   4. Choice controls
+   ====================================================================== */
+
 .combo-box, .date-picker, .spinner {
     -fx-background-color: -ld-input;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 9;
-    -fx-background-radius: 9;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
     -fx-border-width: 1;
     -fx-padding: 1 2 1 2;
+    -fx-cursor: hand;
 }
-.combo-box:focused, .date-picker:focused {
+
+.combo-box:focused, .date-picker:focused, .spinner:focused {
     -fx-border-color: -ld-accent;
+    -fx-border-width: 2;
 }
+
 .combo-box .list-cell, .date-picker .cell, .spinner .text-field {
     -fx-text-fill: -ld-text;
     -fx-background-color: transparent;
 }
+
 .combo-box .arrow, .date-picker .arrow {
     -fx-background-color: -ld-text-dim;
 }
+
 .combo-box-popup .list-view {
     -fx-background-color: -ld-card;
     -fx-border-color: -ld-border;
     -fx-border-width: 1;
-    -fx-background-radius: 10;
-    -fx-border-radius: 10;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
     -fx-padding: 4;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.30), 18, 0.2, 0, 5);
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.32), 20, 0.25, 0, 6);
 }
+
 .combo-box-popup .list-cell {
-    -fx-background-radius: 7;
+    -fx-background-radius: 4;
     -fx-padding: 6 10 6 10;
+    -fx-text-fill: -ld-text;
 }
+
 .combo-box-popup .list-cell:filled:hover {
     -fx-background-color: -ld-elev;
 }
+
 .combo-box-popup .list-cell:filled:selected {
-    -fx-background-color: -ld-accent;
-    -fx-text-fill: -ld-accent-text;
+    -fx-background-color: -ld-accent-soft;
+    -fx-text-fill: -ld-accent;
 }
+
 .spinner .text-field {
     -fx-border-width: 0;
     -fx-background-color: transparent;
     -fx-padding: 4 6 4 6;
 }
 
-/* ---------- tables ---------- */
-.table-view {
-    -fx-background-color: -ld-card;
-    -fx-border-color: -ld-border;
-    -fx-border-radius: 12;
-    -fx-background-radius: 12;
-    -fx-control-inner-background: -ld-card;
-    -fx-accent: -ld-accent;
-    -fx-selection-bar: -ld-accent-soft;
-    -fx-selection-bar-text: -ld-text;
-    -fx-table-vertical-border-color: transparent;
-    -fx-table-header-border-color: -ld-border;
-    -fx-table-cell-border-color: transparent;
-}
-.table-view .table-cell {
-    -fx-text-fill: -ld-text;
-    -fx-padding: 4 10 4 10;
-    -fx-border-color: transparent;
-}
-.table-view .column-header-background {
-    -fx-background-color: transparent;
-    -fx-background-radius: 12 12 0 0;
-    -fx-padding: 4 6 2 6;
-}
-.table-view .column-header, .table-view .filler {
-    -fx-background-color: transparent;
-    -fx-size: 40;
-    -fx-border-width: 0 0 1 0;
-    -fx-border-color: transparent transparent -ld-border transparent;
-}
-.table-view .column-header .label {
-    -fx-text-fill: -ld-text-dim;
-    -fx-font-size: 11.5px;
-    -fx-font-weight: bold;
-    -fx-alignment: baseline-left;
-}
-.table-view .column-header.graphic-header .label {
-    -fx-alignment: baseline-left;
-}
-.table-view .table-row-cell {
-    -fx-background-color: -ld-card;
-    -fx-border-color: transparent;
-    -fx-padding: 4 0 4 0;
-}
-.table-view .table-row-cell:filled:hover {
-    -fx-background-color: -ld-elev;
-}
-.table-view .table-row-cell:selected {
-    -fx-background-color: -ld-accent-soft;
-    -fx-border-color: -ld-accent transparent -ld-accent transparent;
-    -fx-border-width: 0 0 0 2;
-}
-.table-view .table-row-cell:selected .label {
-    -fx-text-fill: -ld-text;
-}
-.table-view .placeholder {
-    -fx-background-color: transparent;
-}
-.table-view .placeholder .label {
-    -fx-text-fill: -ld-text-dim;
-    -fx-font-size: 13px;
-}
-
-/* ---------- lists ---------- */
-.list-view {
-    -fx-background-color: -ld-card;
-    -fx-border-color: -ld-border;
-    -fx-border-radius: 12;
-    -fx-background-radius: 12;
-}
-.list-cell {
-    -fx-background-color: transparent;
-    -fx-text-fill: -ld-text;
-    -fx-padding: 8 12 8 12;
-}
-.list-cell:filled:hover {
-    -fx-background-color: -ld-elev;
-}
-.list-cell:filled:selected {
-    -fx-background-color: -ld-accent-soft;
-}
-
-/* ---------- checkbox / radio / toggle ---------- */
 .check-box, .radio-button, .toggle-button {
     -fx-text-fill: -ld-text;
     -fx-cursor: hand;
 }
+
 .check-box .box, .radio-button .radio {
     -fx-background-color: -ld-input;
     -fx-border-color: -ld-border;
     -fx-border-radius: 4;
     -fx-background-radius: 4;
 }
-.check-box:selected .mark {
-    -fx-background-color: -ld-accent;
+
+/* A radio that is square reads as a checkbox; keep the two controls distinct. */
+.radio-button .radio {
+    -fx-border-radius: 999;
+    -fx-background-radius: 999;
 }
-.check-box:selected .box {
-    -fx-background-color: -ld-accent-soft;
-    -fx-border-color: -ld-accent;
-}
+
 .radio-button:selected .dot {
     -fx-background-color: -ld-accent;
 }
+
+.check-box:focused .box, .radio-button:focused .radio {
+    -fx-border-color: -ld-accent;
+    -fx-border-width: 2;
+}
+
+.check-box:selected .mark { -fx-background-color: -ld-accent-text; }
+
+.check-box:selected .box {
+    -fx-background-color: -ld-accent;
+    -fx-border-color: -ld-accent;
+}
+
 .toggle-button {
     -fx-background-color: transparent;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 9;
-    -fx-background-radius: 9;
-    -fx-padding: 6 13 6 13;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-padding: 5 12 5 12;
 }
-.toggle-button:hover {
-    -fx-background-color: -ld-elev;
-}
+
+.toggle-button:hover { -fx-background-color: -ld-elev; }
+
 .toggle-button:selected {
     -fx-background-color: -ld-accent-soft;
     -fx-text-fill: -ld-accent;
@@ -289,311 +394,477 @@
     -fx-font-weight: bold;
 }
 
-/* ---------- scroll bars & panes ---------- */
-.scroll-pane {
+/* ======================================================================
+   5. Tables — dense grid, header as overline
+   ====================================================================== */
+
+.table-view {
+    -fx-background-color: -ld-card;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-control-inner-background: -ld-card;
+    -fx-table-vertical-border-color: transparent;
+    -fx-table-header-border-color: -ld-border;
+    -fx-table-cell-border-color: transparent;
+}
+
+.table-view .table-cell {
+    -fx-text-fill: -ld-text;
+    -fx-padding: 5 10 5 10;
+    -fx-border-color: transparent;
+    -fx-font-size: 12.5px;
+}
+
+.table-view .column-header-background {
+    -fx-background-color: -ld-surface;
+    -fx-background-radius: 8 8 0 0;
+    -fx-padding: 2 6 0 6;
+}
+
+.table-view .column-header, .table-view .filler {
+    -fx-background-color: transparent;
+    -fx-size: 32;
+    -fx-border-width: 0 0 1 0;
+    -fx-border-color: transparent transparent -ld-border transparent;
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: -ld-text-dim;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-alignment: baseline-left;
+}
+
+.table-view .column-header.graphic-header .label {
+    -fx-alignment: baseline-left;
+}
+
+.table-view .table-row-cell {
+    -fx-background-color: -ld-card;
+    -fx-border-color: transparent;
+    -fx-padding: 2 0 2 0;
+}
+
+.table-view .table-row-cell:odd {
+    -fx-background-color: derive(-ld-card, 3%);
+}
+
+.table-view .table-row-cell:filled:hover {
+    -fx-background-color: -ld-elev;
+}
+
+.table-view .table-row-cell:selected {
+    -fx-background-color: -ld-accent-soft;
+    -fx-border-color: -ld-accent transparent -ld-accent transparent;
+    -fx-border-width: 0 0 0 3;                 /* 3px rail = current row, not color only */
+}
+
+.table-view .table-row-cell:selected .label {
+    -fx-text-fill: -ld-text;
+}
+
+.table-view .placeholder { -fx-background-color: transparent; }
+
+.table-view .placeholder .label {
+    -fx-text-fill: -ld-text-dim;
+    -fx-font-size: 13px;
+}
+
+/* ======================================================================
+   6. Lists
+   ====================================================================== */
+
+.list-view {
+    -fx-background-color: -ld-card;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+}
+
+.list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: -ld-text;
+    -fx-padding: 7 10 7 10;
+}
+
+.list-cell:filled:hover { -fx-background-color: -ld-elev; }
+
+.list-cell:filled:selected {
+    -fx-background-color: -ld-accent-soft;
+    -fx-border-color: -ld-accent transparent transparent transparent;
+    -fx-border-width: 0 0 0 3;
+}
+
+/* ======================================================================
+   7. Scroll
+   ====================================================================== */
+
+.scroll-pane, .scroll-pane .viewport, .scroll-pane .content {
     -fx-background-color: transparent;
     -fx-background-insets: 0;
 }
-.scroll-pane .viewport {
-    -fx-background-color: transparent;
-}
-.scroll-pane .content {
-    -fx-background-color: transparent;
-}
+
 .scroll-bar {
     -fx-background-color: transparent;
     -fx-padding: 2;
 }
+
 .scroll-bar .thumb {
-    -fx-background-color: -ld-border;
+    /* functional (not structural) mark: WCAG 1.4.11 wants >=3:1, so the thumb
+       uses the state-neutral -ld-text-dim rather than the 1px divider color. */
+    -fx-background-color: -ld-text-dim;
     -fx-background-radius: 999;
 }
-.scroll-bar .thumb:hover {
-    -fx-background-color: -ld-text-dim;
+
+.scroll-bar .thumb:hover, .scroll-bar .thumb:pressed {
+    -fx-background-color: -ld-text;
 }
+
 .scroll-bar .increment-button, .scroll-bar .decrement-button {
     -fx-background-color: transparent;
     -fx-padding: 1;
 }
+
 .scroll-bar .increment-arrow, .scroll-bar .decrement-arrow {
     -fx-background-color: transparent;
     -fx-shape: "";
     -fx-padding: 0;
 }
 
-/* ---------- layout chrome ---------- */
+/* ======================================================================
+   8. Layout chrome
+   ====================================================================== */
+
 .sidebar {
     -fx-background-color: -ld-surface;
     -fx-border-color: -ld-border;
     -fx-border-width: 0 1 0 0;
-    -fx-min-width: 210;
-    -fx-padding: 14 10 12 10;
-    -fx-spacing: 3;
+    -fx-min-width: 208;
+    -fx-padding: 12 8 12 8;
+    -fx-spacing: 2;
 }
+
 .brand-title {
-    -fx-font-size: 16px;
+    -fx-font-size: 15px;
     -fx-font-weight: bold;
-    -fx-text-fill: -ld-accent;
+    -fx-text-fill: -ld-text;
 }
+
 .brand-subtitle {
     -fx-font-size: 10.5px;
     -fx-text-fill: -ld-text-dim;
 }
+
 .nav-item {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
-    -fx-background-radius: 9;
+    -fx-border-width: 0 0 0 3;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
     -fx-alignment: baseline-left;
-    -fx-padding: 8 12 8 12;
+    -fx-padding: 7 10 7 10;
     -fx-max-width: infinity;
-    -fx-font-size: 13px;
+    -fx-font-size: 12.5px;
+    -fx-text-fill: -ld-text-dim;
+    -fx-graphic-text-gap: 9;
+    -fx-cursor: hand;
 }
+
 .nav-item:hover {
     -fx-background-color: -ld-elev;
+    -fx-text-fill: -ld-text;
 }
+
+.nav-item:focused {
+    -fx-border-color: -ld-accent transparent transparent transparent;
+    -fx-border-width: 0 0 2 3;
+}
+
+/* rule: nav-state-active — weight AND rail AND fill, never color alone */
 .nav-item.active {
-    -fx-background-color: -ld-accent;
-    -fx-text-fill: -ld-accent-text;
+    -fx-background-color: -ld-accent-soft;
+    -fx-border-color: -ld-accent transparent transparent transparent;
+    -fx-border-width: 0 0 0 3;
+    -fx-text-fill: -ld-accent;
     -fx-font-weight: bold;
 }
+
 .nav-item.active .label {
-    -fx-text-fill: -ld-accent-text;
+    -fx-text-fill: -ld-accent;
 }
+
 .topbar {
     -fx-background-color: -ld-surface;
     -fx-border-color: -ld-border;
     -fx-border-width: 0 0 1 0;
-    -fx-padding: 10 18 10 18;
-    -fx-spacing: 12;
+    -fx-padding: 8 16 8 16;
+    -fx-spacing: 10;
 }
+
 .content-area {
     -fx-background-color: -ld-bg;
-    -fx-padding: 20 22 20 22;
+    -fx-padding: 16 18 16 18;
 }
+
 .statusbar {
     -fx-background-color: -ld-surface;
     -fx-border-color: -ld-border;
     -fx-border-width: 1 0 0 0;
-    -fx-padding: 5 14 5 14;
+    -fx-padding: 4 12 4 12;
     -fx-font-size: 11px;
-}
-.statusbar .label {
-    -fx-text-fill: -ld-text-dim;
-}
-
-/* ---------- cards & widgets ---------- */
-.card {
-    -fx-background-color: -ld-card;
-    -fx-background-radius: 14;
-    -fx-border-color: -ld-border;
-    -fx-border-radius: 14;
-    -fx-border-width: 1;
-    -fx-padding: 16;
-    -fx-spacing: 9;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.10), 10, 0.12, 0, 3);
-}
-.card-title {
-    -fx-font-size: 13.5px;
-    -fx-font-weight: bold;
-}
-.card-headline {
-    -fx-font-size: 15px;
-    -fx-font-weight: bold;
-}
-.metric-big {
-    -fx-font-size: 24px;
-    -fx-font-weight: bold;
-}
-.metric-pos {
-    -fx-text-fill: -ld-ok;
-}
-.metric-neg {
-    -fx-text-fill: -ld-danger;
-}
-.summary-card {
-    -fx-background-color: -ld-card;
-    -fx-background-radius: 14;
-    -fx-border-color: -ld-border;
-    -fx-border-radius: 14;
-    -fx-border-width: 1;
-    -fx-padding: 14 18 14 18;
-    -fx-spacing: 3;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.10), 10, 0.12, 0, 3);
-}
-.quick-add-bar {
-    -fx-background-color: -ld-card;
-    -fx-background-radius: 14;
-    -fx-border-color: -ld-border;
-    -fx-border-radius: 14;
-    -fx-border-width: 1;
-    -fx-padding: 12 14 12 14;
-    -fx-spacing: 10;
-}
-
-/* ---------- chips & badges ---------- */
-.chip {
-    -fx-background-radius: 999;
-    -fx-padding: 2.5 10 2.5 10;
-    -fx-font-size: 10.5px;
-    -fx-font-weight: bold;
-    -fx-background-color: -ld-elev;
-    -fx-text-fill: -ld-text;
-}
-.chip-todo    { -fx-background-color: -ld-accent-soft; -fx-text-fill: -ld-accent; }
-.chip-doing   { -fx-background-color: derive(-ld-warn, 70%); -fx-text-fill: -ld-warn; }
-.chip-done    { -fx-background-color: derive(-ld-ok, 72%);   -fx-text-fill: -ld-ok; }
-.chip-cancelled { -fx-background-color: -ld-elev; -fx-text-fill: -ld-text-dim; }
-.chip-overdue { -fx-background-color: derive(-ld-danger, 76%); -fx-text-fill: -ld-danger; }
-.chip-urgent  { -fx-background-color: derive(-ld-danger, 76%); -fx-text-fill: -ld-danger; }
-.chip-high    { -fx-background-color: derive(-ld-warn, 72%); -fx-text-fill: -ld-warn; }
-.chip-medium  { -fx-background-color: -ld-accent-soft; -fx-text-fill: -ld-accent; }
-.chip-low     { -fx-background-color: -ld-elev; -fx-text-fill: -ld-text-dim; }
-.chip-info    { -fx-background-color: derive(-ld-info, 76%); -fx-text-fill: -ld-info; }
-
-/* ---------- states ---------- */
-.empty-state {
-    -fx-alignment: center;
-    -fx-spacing: 10;
-    -fx-padding: 40;
-}
-.empty-state .icon {
-    -fx-font-size: 38px;
-    -fx-opacity: 0.45;
-}
-.empty-state .msg {
-    -fx-text-fill: -ld-text-dim;
-    -fx-font-size: 13.5px;
-}
-.error-banner {
-    -fx-background-color: derive(-ld-danger, 80%);
-    -fx-border-color: -ld-danger;
-    -fx-border-radius: 9;
-    -fx-background-radius: 9;
-    -fx-border-width: 1;
-    -fx-padding: 8 12 8 12;
-    -fx-text-fill: -ld-danger;
-}
-.loading-pane {
-    -fx-alignment: center;
     -fx-spacing: 12;
 }
 
-/* ---------- progress ---------- */
+.statusbar .label { -fx-text-fill: -ld-text-dim; }
+
+/* ======================================================================
+   9. Surfaces
+   ====================================================================== */
+
+.card {
+    -fx-background-color: -ld-card;
+    -fx-background-radius: 8;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-padding: 14;
+    -fx-spacing: 8;
+}
+
+.summary-card {
+    -fx-background-color: -ld-card;
+    -fx-background-radius: 8;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-padding: 12 14 12 14;
+    -fx-spacing: 4;
+}
+
+.quick-add-bar {
+    -fx-background-color: -ld-card;
+    -fx-background-radius: 8;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-padding: 10 12 10 12;
+    -fx-spacing: 8;
+}
+
+/* ======================================================================
+   10. Chips — 3px text needs AA contrast, so tint is derived from the
+       theme's own soft tokens rather than a fixed derive() percentage.
+   ====================================================================== */
+
+.chip {
+    -fx-background-radius: 999;
+    -fx-border-radius: 999;
+    -fx-border-width: 1;
+    -fx-padding: 1 8 1 8;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-background-color: -ld-elev;
+    -fx-border-color: -ld-border;
+    -fx-text-fill: -ld-text;
+}
+
+.chip-todo      { -fx-background-color: -ld-accent-soft; -fx-border-color: -ld-accent; -fx-text-fill: -ld-accent; }
+.chip-medium    { -fx-background-color: -ld-accent-soft; -fx-border-color: -ld-accent; -fx-text-fill: -ld-accent; }
+.chip-doing     { -fx-background-color: -ld-warn-soft;   -fx-border-color: -ld-warn;   -fx-text-fill: -ld-warn; }
+.chip-high      { -fx-background-color: -ld-warn-soft;   -fx-border-color: -ld-warn;   -fx-text-fill: -ld-warn; }
+.chip-done      { -fx-background-color: -ld-ok-soft;     -fx-border-color: -ld-ok;     -fx-text-fill: -ld-ok; }
+.chip-overdue   { -fx-background-color: -ld-danger-soft; -fx-border-color: -ld-danger; -fx-text-fill: -ld-danger; }
+.chip-urgent    { -fx-background-color: -ld-danger-soft; -fx-border-color: -ld-danger; -fx-text-fill: -ld-danger; }
+.chip-info      { -fx-background-color: -ld-info-soft;   -fx-border-color: -ld-info;   -fx-text-fill: -ld-info; }
+.chip-cancelled { -fx-background-color: -ld-elev;        -fx-border-color: -ld-border; -fx-text-fill: -ld-text-dim; }
+.chip-low       { -fx-background-color: -ld-elev;        -fx-border-color: -ld-border; -fx-text-fill: -ld-text-dim; }
+
+/* ======================================================================
+   11. States
+   ====================================================================== */
+
+.empty-state {
+    -fx-alignment: center;
+    -fx-spacing: 8;
+    -fx-padding: 32;
+}
+
+.empty-state .icon {
+    -fx-font-size: 15px;
+    -fx-text-fill: -ld-text-dim;
+}
+
+.empty-state .msg {
+    -fx-text-fill: -ld-text;
+    -fx-font-size: 13.5px;
+}
+
+.error-banner {
+    -fx-background-color: -ld-danger-soft;
+    -fx-border-color: -ld-danger;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-border-width: 1;
+    -fx-padding: 8 12 8 12;
+    -fx-text-fill: -ld-danger;
+    -fx-font-weight: bold;
+}
+
+.loading-pane {
+    -fx-alignment: center;
+    -fx-spacing: 10;
+}
+
+/* ======================================================================
+   12. Progress
+   ====================================================================== */
+
 .progress-bar > .track {
     -fx-background-color: -ld-elev;
     -fx-background-radius: 999;
     -fx-background-insets: 0;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 999;
+    -fx-border-width: 1;
 }
+
 .progress-bar > .bar {
     -fx-background-color: -ld-accent;
     -fx-background-radius: 999;
-    -fx-background-insets: 0;
-    -fx-padding: 4;
+    -fx-background-insets: 2;
+    -fx-padding: 3;
 }
-.progress-bar.ok > .bar    { -fx-background-color: -ld-ok; }
-.progress-bar.warn > .bar  { -fx-background-color: -ld-warn; }
-.progress-bar.danger > .bar{ -fx-background-color: -ld-danger; }
 
-/* ---------- tabs (pill style) ---------- */
-.tab-pane {
-    -fx-background-color: transparent;
-}
+.progress-bar.ok > .bar     { -fx-background-color: -ld-ok; }
+.progress-bar.warn > .bar   { -fx-background-color: -ld-warn; }
+.progress-bar.danger > .bar { -fx-background-color: -ld-danger; }
+
+/* HabitsView/DashboardView put these on bars too (bare state classes). */
+.ok     { -fx-background-color: -ld-ok; }
+.warn   { -fx-background-color: -ld-warn; }
+.danger { -fx-background-color: -ld-danger; }
+.fit    { -fx-max-width: infinity; }
+
+/* ======================================================================
+   13. Tabs (pill)
+   ====================================================================== */
+
+.tab-pane { -fx-background-color: transparent; }
+
 .tab-pane > .tab-header-area {
     -fx-background-color: transparent;
-    -fx-padding: 2 0 8 0;
+    -fx-padding: 0 0 8 0;
 }
+
 .tab-pane > .tab-header-area .tab-header-background {
     -fx-background-color: transparent;
     -fx-border-color: transparent transparent -ld-border transparent;
     -fx-border-width: 0 0 1 0;
 }
+
 .tab-pane .tab {
     -fx-background-color: transparent;
-    -fx-background-radius: 9;
-    -fx-padding: 5 6 5 6;
+    -fx-background-radius: 6;
+    -fx-padding: 3 4 3 4;
     -fx-border-width: 0;
 }
-.tab-pane .tab:hover {
-    -fx-background-color: -ld-elev;
-}
+
+.tab-pane .tab:hover { -fx-background-color: -ld-elev; }
+
 .tab-pane .tab:selected {
     -fx-background-color: -ld-accent-soft;
 }
+
 .tab-pane .tab .tab-label {
     -fx-text-fill: -ld-text-dim;
     -fx-font-weight: normal;
-    -fx-padding: 3 10 3 10;
+    -fx-font-size: 12.5px;
+    -fx-padding: 4 10 4 10;
     -fx-background-color: transparent;
 }
+
 .tab-pane .tab:selected .tab-label {
     -fx-text-fill: -ld-accent;
     -fx-font-weight: bold;
 }
+
 .tab-pane .tab .focus-indicator {
     -fx-border-color: transparent;
     -fx-border-width: 0;
     -fx-border-insets: 0;
 }
 
-/* ---------- split pane ---------- */
 .split-pane {
     -fx-background-color: -ld-bg;
     -fx-background-insets: 0;
 }
+
 .split-pane-divider {
     -fx-background-color: -ld-border;
     -fx-padding: 0 0.75 0 0.75;
 }
 
-/* ---------- date picker popup (must match theme, never white) ---------- */
+/* ======================================================================
+   14. Floating layers — calendar, dialogs, popups
+   ====================================================================== */
+
 .date-picker-popup {
     -fx-background-color: -ld-card;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 12;
-    -fx-background-radius: 12;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-border-width: 1;
     -fx-padding: 8;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.35), 20, 0.2, 0, 6);
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.35), 22, 0.25, 0, 8);
 }
-.date-picker-popup > * {
-    -fx-background-color: transparent;
-}
+
+.date-picker-popup > * { -fx-background-color: transparent; }
+
 .date-picker-popup .month-year-pane {
     -fx-background-color: transparent;
-    -fx-padding: 4 6 8 6;
+    -fx-padding: 2 4 8 4;
 }
+
 .date-picker-popup .month-year-pane .label {
     -fx-text-fill: -ld-text;
     -fx-font-weight: bold;
 }
+
 .date-picker-popup .month-year-pane .button {
     -fx-background-color: -ld-elev;
     -fx-text-fill: -ld-text;
-    -fx-background-radius: 8;
+    -fx-background-radius: 4;
     -fx-padding: 3 8 3 8;
 }
+
 .date-picker-popup .month-year-pane .button:hover {
-    -fx-background-color: derive(-ld-elev, 14%);
+    -fx-background-color: derive(-ld-elev, 12%);
 }
+
 .date-picker-popup .day-name-cell {
     -fx-text-fill: -ld-text-dim;
     -fx-font-weight: bold;
+    -fx-font-size: 11px;
     -fx-background-color: transparent;
 }
+
 .date-picker-popup .day-cell {
     -fx-text-fill: -ld-text;
     -fx-background-color: transparent;
     -fx-border-color: transparent;
-    -fx-border-radius: 6;
-    -fx-background-radius: 6;
-    -fx-padding: 2 4 2 4;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-padding: 3 5 3 5;
 }
-.date-picker-popup .day-cell:hover {
-    -fx-background-color: -ld-elev;
-}
+
+.date-picker-popup .day-cell:hover { -fx-background-color: -ld-elev; }
+
 .date-picker-popup .day-cell:disabled {
     -fx-text-fill: -ld-text-dim;
     -fx-opacity: 0.4;
 }
+
 .date-picker-popup .hijra-day-cell,
 .date-picker-popup .secondary-day-cell,
 .date-picker-popup .week-number-cell {
@@ -601,169 +872,213 @@
     -fx-opacity: 0.55;
     -fx-background-color: transparent;
 }
+
 .date-picker-popup .day-cell.today,
 .date-picker-popup .day-cell.today:hover {
     -fx-border-color: -ld-accent;
-    -fx-border-width: 1.5;
+    -fx-border-width: 2;
 }
+
 .date-picker-popup .day-cell.selected,
 .date-picker-popup .day-cell.selected:hover {
     -fx-background-color: -ld-accent;
     -fx-text-fill: -ld-accent-text;
+    -fx-font-weight: bold;
 }
 
-/* ---------- generic popups ---------- */
-.popup {
-    -fx-background-color: transparent;
-}
+.popup { -fx-background-color: transparent; }
 
-/* ---------- dialog button bar ---------- */
-.dialog-pane .button-bar .button {
-    -fx-background-color: -ld-elev;
-    -fx-text-fill: -ld-text;
+.dialog-pane {
+    -fx-background-color: -ld-card;
+    -fx-border-color: -ld-border;
     -fx-background-radius: 8;
 }
-.dialog-pane .button-bar .button:hover {
-    -fx-background-color: derive(-ld-elev, 12%);
-}
+
 .dialog-pane .header-panel {
     -fx-background-color: -ld-surface;
+    -fx-border-color: transparent transparent -ld-border transparent;
+    -fx-border-width: 0 0 1 0;
 }
 
-/* ---------- notifications popup ---------- */
+.dialog-pane .label { -fx-text-fill: -ld-text; }
+
+.dialog-pane .button-bar {
+    -fx-background-color: transparent;
+    -fx-padding: 10 14 12 14;
+}
+
+.dialog-pane .button, .dialog-pane .button-bar .button {
+    -fx-background-color: -ld-elev;
+    -fx-text-fill: -ld-text;
+    -fx-background-radius: 6;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 1;
+    -fx-border-radius: 6;
+    -fx-padding: 6 14 6 14;
+}
+
+.dialog-pane .button:hover, .dialog-pane .button-bar .button:hover {
+    -fx-background-color: derive(-ld-elev, 12%);
+}
+
+.dialog-pane .button:default, .dialog-pane .button-bar .button:default {
+    -fx-background-color: -ld-accent;
+    -fx-text-fill: -ld-accent-text;
+    -fx-border-color: -ld-accent;
+    -fx-font-weight: bold;
+}
+
 .notif-popup {
     -fx-background-color: -ld-card;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 14;
-    -fx-background-radius: 14;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
     -fx-border-width: 1;
-    -fx-padding: 12;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.30), 22, 0.2, 0, 6);
-}
-.notif-item {
-    -fx-padding: 9 11 9 11;
-    -fx-background-radius: 10;
-}
-.notif-item:hover {
-    -fx-background-color: -ld-elev;
-}
-.notif-item.unread {
-    -fx-border-color: -ld-accent transparent transparent transparent;
-    -fx-border-width: 2 0 0 0;
+    -fx-padding: 10;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.32), 24, 0.25, 0, 8);
 }
 
-/* ---------- chat ---------- */
+.notif-item {
+    -fx-padding: 8 10 8 10;
+    -fx-background-radius: 6;
+    -fx-border-color: transparent;
+    -fx-border-width: 0 0 0 3;
+    -fx-border-radius: 6;
+    -fx-cursor: hand;
+}
+
+.notif-item:hover { -fx-background-color: -ld-elev; }
+
+/* unread = rail + weight, not tint alone (rule: color-not-only) */
+.notif-item.unread {
+    -fx-background-color: -ld-accent-soft;
+    -fx-border-color: -ld-accent transparent transparent transparent;
+    -fx-border-width: 0 0 0 3;
+}
+
+.notif-item.unread .label { -fx-font-weight: bold; }
+
+/* ======================================================================
+   15. Chat
+   ====================================================================== */
+
 .chat-bubble-user {
     -fx-background-color: -ld-accent;
     -fx-text-fill: -ld-accent-text;
-    -fx-background-radius: 14 14 4 14;
-    -fx-padding: 9 13 9 13;
+    -fx-background-radius: 8 8 2 8;
+    -fx-padding: 8 12 8 12;
 }
+
 .chat-bubble-user .label, .chat-bubble-user Text {
     -fx-text-fill: -ld-accent-text;
 }
+
 .chat-bubble-ai {
-    -fx-background-color: -ld-elev;
-    -fx-background-radius: 14 14 14 4;
-    -fx-padding: 9 13 9 13;
+    -fx-background-color: -ld-card;
+    -fx-background-radius: 8 8 8 2;
+    -fx-padding: 8 12 8 12;
     -fx-border-color: -ld-border;
     -fx-border-width: 1;
-    -fx-border-radius: 14 14 14 4;
+    -fx-border-radius: 8 8 8 2;
 }
+
 .chat-bubble-system {
     -fx-background-color: transparent;
     -fx-text-fill: -ld-text-dim;
-    -fx-padding: 4 8 4 8;
+    -fx-font-size: 11.5px;
+    -fx-padding: 3 8 3 8;
 }
 
-/* ---------- charts ---------- */
-.chart {
-    -fx-background-color: transparent;
-}
-.chart-plot-background {
-    -fx-background-color: transparent;
-}
+/* ======================================================================
+   16. Charts
+   ====================================================================== */
+
+.chart, .chart-plot-background { -fx-background-color: transparent; }
+
 .chart-vertical-grid-lines, .chart-horizontal-grid-lines {
     -fx-stroke: -ld-border;
     -fx-stroke-width: 0.5;
-    -fx-opacity: 0.55;
+    -fx-opacity: 0.6;
 }
+
 .chart-vertical-zero-line, .chart-horizontal-zero-line {
     -fx-stroke: -ld-text-dim;
 }
+
 .axis {
     -fx-tick-label-fill: -ld-text-dim;
-    -fx-tick-length: 5;
+    -fx-tick-length: 4;
     -fx-border-color: transparent;
+    -fx-font-size: 11px;
 }
+
 .chart-title {
     -fx-text-fill: -ld-text;
-    -fx-font-size: 12px;
+    -fx-font-size: 12.5px;
+    -fx-font-weight: bold;
 }
+
 .axis-label {
     -fx-text-fill: -ld-text-dim;
     -fx-font-size: 11px;
 }
-.series0 .chart-line-symbol { -fx-stroke: -ld-chart-1; -fx-background-color: -ld-chart-1, -ld-card; }
-.series1 .chart-line-symbol { -fx-stroke: -ld-chart-2; -fx-background-color: -ld-chart-2, -ld-card; }
-.series2 .chart-line-symbol { -fx-stroke: -ld-chart-3; -fx-background-color: -ld-chart-3, -ld-card; }
-.series3 .chart-line-symbol { -fx-stroke: -ld-chart-4; -fx-background-color: -ld-chart-4, -ld-card; }
-.series0 .chart-series-line { -fx-stroke: -ld-chart-1; -fx-stroke-width: 2.5; }
-.series1 .chart-series-line { -fx-stroke: -ld-chart-2; -fx-stroke-width: 2.5; }
-.series2 .chart-series-line { -fx-stroke: -ld-chart-3; -fx-stroke-width: 2.5; }
-.series3 .chart-series-line { -fx-stroke: -ld-chart-4; -fx-stroke-width: 2.5; }
-.bar-chart .series0 .chart-bar { -fx-background-color: -ld-chart-1; -fx-background-radius: 4 4 0 0; }
-.bar-chart .series1 .chart-bar { -fx-background-color: -ld-chart-2; -fx-background-radius: 4 4 0 0; }
-.bar-chart .series2 .chart-bar { -fx-background-color: -ld-chart-3; -fx-background-radius: 4 4 0 0; }
+
+/* Per-series classes sit on the same node as the mark, not on a parent. */
+.chart-line-symbol.series0 { -fx-stroke: -ld-chart-1; -fx-background-color: -ld-chart-1, -ld-card; }
+.chart-line-symbol.series1 { -fx-stroke: -ld-chart-2; -fx-background-color: -ld-chart-2, -ld-card; }
+.chart-line-symbol.series2 { -fx-stroke: -ld-chart-3; -fx-background-color: -ld-chart-3, -ld-card; }
+.chart-line-symbol.series3 { -fx-stroke: -ld-chart-4; -fx-background-color: -ld-chart-4, -ld-card; }
+.chart-line-symbol.series4 { -fx-stroke: -ld-chart-5; -fx-background-color: -ld-chart-5, -ld-card; }
+.chart-series-line.series0 { -fx-stroke: -ld-chart-1; -fx-stroke-width: 2; }
+.chart-series-line.series1 { -fx-stroke: -ld-chart-2; -fx-stroke-width: 2; }
+.chart-series-line.series2 { -fx-stroke: -ld-chart-3; -fx-stroke-width: 2; }
+.chart-series-line.series3 { -fx-stroke: -ld-chart-4; -fx-stroke-width: 2; }
+.chart-series-line.series4 { -fx-stroke: -ld-chart-5; -fx-stroke-width: 2; }
+.chart-bar.series0 { -fx-background-color: -ld-chart-1; -fx-background-radius: 3 3 0 0; }
+.chart-bar.series1 { -fx-background-color: -ld-chart-2; -fx-background-radius: 3 3 0 0; }
+.chart-bar.series2 { -fx-background-color: -ld-chart-3; -fx-background-radius: 3 3 0 0; }
+.chart-bar.series3 { -fx-background-color: -ld-chart-4; -fx-background-radius: 3 3 0 0; }
+.chart-bar.series4 { -fx-background-color: -ld-chart-5; -fx-background-radius: 3 3 0 0; }
 .default-color0.chart-pie { -fx-pie-color: -ld-chart-1; }
 .default-color1.chart-pie { -fx-pie-color: -ld-chart-2; }
 .default-color2.chart-pie { -fx-pie-color: -ld-chart-3; }
 .default-color3.chart-pie { -fx-pie-color: -ld-chart-4; }
 .default-color4.chart-pie { -fx-pie-color: -ld-chart-5; }
-.chart-pie-label { -fx-text-fill: -ld-text; }
+.chart-pie-label { -fx-text-fill: -ld-text; -fx-font-size: 11px; }
 .chart-legend { -fx-background-color: transparent; }
-.chart-legend-item { -fx-text-fill: -ld-text; }
+.chart-legend-item { -fx-text-fill: -ld-text; -fx-font-size: 11.5px; }
 
-/* ---------- markdown preview wrapper ---------- */
+/* ======================================================================
+   17. Markdown preview shell
+   ====================================================================== */
+
 .md-preview-wrap {
     -fx-background-color: -ld-card;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 12;
+    -fx-border-radius: 8;
     -fx-border-width: 1;
-    -fx-background-radius: 12;
+    -fx-background-radius: 8;
 }
 
-/* ---------- dialogs ---------- */
-.dialog-pane {
-    -fx-background-color: -ld-card;
-    -fx-border-color: -ld-border;
-    -fx-background-radius: 12;
-}
-.dialog-pane .header-panel {
-    -fx-background-color: -ld-surface;
-}
-.dialog-pane .label {
-    -fx-text-fill: -ld-text;
-}
-.dialog-pane .button {
-    -fx-background-color: -ld-elev;
-}
+/* ======================================================================
+   18. Misc
+   ====================================================================== */
 
-/* ---------- tooltip ---------- */
 .tooltip {
     -fx-background-color: -ld-card;
     -fx-text-fill: -ld-text;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 8;
-    -fx-background-radius: 8;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-border-width: 1;
     -fx-padding: 5 10 5 10;
     -fx-font-size: 12px;
 }
 
-/* ---------- separator / menu ---------- */
-.separator .line {
-    -fx-border-color: -ld-border;
-}
+.separator .line { -fx-border-color: -ld-border; }
+
 .menu-bar {
     -fx-background-color: -ld-surface;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 0 0 1 0;
 }

@@ -8,6 +8,7 @@ import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.Card;
+import com.lifedesk.ui.components.IconView;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.chart.LineChart;
@@ -23,6 +24,9 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -37,6 +41,7 @@ import java.util.Map;
  * disclaimer states the app never gives medical advice.
  */
 public class HealthView extends View {
+    private static final DateTimeFormatter DF = DateTimeFormatter.ofPattern("dd/MM");
     private final DatePicker entryDate = new DatePicker(LocalDate.now());
     private final TextField sleepField = new TextField();
     private final TextField exerciseField = new TextField();
@@ -70,10 +75,11 @@ public class HealthView extends View {
 
         // ---- entry form
         entryDate.setOnAction(e -> loadEntry());
-        Button save = new Button("💾 Lưu hôm nay");
+        Button save = new Button("Lưu hôm nay", new IconView("save", 15));
         save.getStyleClass().add("primary-btn");
         save.setOnAction(e -> saveEntry());
-        Button delete = new Button("🗑 Xóa ngày này");
+        addAccelerator(new KeyCodeCombination(KeyCode.S, KeyCombination.CONTROL_DOWN), save::fire);
+        Button delete = new Button("Xóa ngày này", new IconView("trash", 15));
         delete.setOnAction(e -> deleteEntry());
 
         HBox formRow1 = new HBox(14,
@@ -207,7 +213,23 @@ public class HealthView extends View {
             return;
         }
         NumberAxis x = new NumberAxis();
-        x.setLabel("Ngày (epoch-day offset)");
+        x.setLabel("Ngày");
+        x.setMinorTickVisible(false);
+        x.setLowerBound(0);
+        x.setUpperBound(from.until(to, java.time.temporal.ChronoUnit.DAYS));
+        x.setAutoRanging(false);
+        x.setTickUnit(5);
+        x.setTickLabelFormatter(new javafx.util.StringConverter<>() {
+            @Override
+            public String toString(Number n) {
+                return from.plusDays(Math.round(n.doubleValue())).format(DF);
+            }
+
+            @Override
+            public Number fromString(String s) {
+                return 0;
+            }
+        });
         NumberAxis y = new NumberAxis();
         LineChart<Number, Number> chart = new LineChart<>(x, y);
         chart.setTitle(field + " — 30 ngày");
@@ -301,5 +323,15 @@ public class HealthView extends View {
     public void onShow() {
         loadEntry();
         renderTrend();
+    }
+
+    /** A health record is addressed by its date, so deep links jump the date picker to it. */
+    @Override
+    public void openRecord(String recordId) {
+        ctx.health().entries().stream().filter(e -> e.id.equals(recordId)).findFirst()
+                .ifPresent(e -> {
+                    entryDate.setValue(e.date);
+                    renderTrend();
+                });
     }
 }

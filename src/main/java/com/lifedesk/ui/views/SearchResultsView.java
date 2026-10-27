@@ -95,7 +95,7 @@ public class SearchResultsView extends View {
             }
         });
 
-        results.setPlaceholder(new EmptyState("🔍", "Kết quả sẽ hiển thị ở đây sau khi bạn tìm kiếm."));
+        results.setPlaceholder(new EmptyState("search", "Kết quả sẽ hiển thị ở đây sau khi bạn tìm kiếm."));
         groupsBox.getChildren().add(results);
         VBox.setVgrow(results, Priority.ALWAYS);
 
@@ -126,7 +126,7 @@ public class SearchResultsView extends View {
         var all = groups.stream().flatMap(g -> g.results().stream()).toList();
         results.getItems().setAll(all);
         if (all.isEmpty() && !query.getText().isBlank()) {
-            results.setPlaceholder(new EmptyState("🔍", "Không tìm thấy kết quả nào cho \"" + query.getText() + "\"."));
+            results.setPlaceholder(new EmptyState("search", "Không tìm thấy kết quả nào cho \"" + query.getText() + "\"."));
         }
     }
 

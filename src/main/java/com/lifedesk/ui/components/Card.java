@@ -14,6 +14,10 @@ public class Card extends VBox {
     public Card(String title) {
         getStyleClass().add("card");
         setSpacing(8);
+        // Cards live in equal-width grids; without this their content width becomes
+        // their minimum and the whole grid overflows the viewport.
+        setMinWidth(0);
+        setMaxWidth(Double.MAX_VALUE);
         titleLabel.getStyleClass().add("card-title");
         titleLabel.setText(title);
         HBox header = new HBox(titleLabel);

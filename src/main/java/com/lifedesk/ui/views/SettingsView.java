@@ -8,6 +8,7 @@ import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.Fx;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
+import com.lifedesk.ui.components.IconView;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -193,14 +194,14 @@ public class SettingsView extends View {
                 new HBox(8, new Label("Model"), kiloModelField));
 
         // Model browser
-        Button fetchModels = new Button("⬇ Lấy danh sách model");
+        Button fetchModels = new Button("Lấy danh sách model", new IconView("download", 15));
         fetchModels.getStyleClass().add("primary-btn");
         fetchModels.setOnAction(e -> fetchModels());
         modelSearch.setPromptText("Tìm trong danh sách model…");
         modelSearch.textProperty().addListener((o, a, b) -> filterModels());
         Button selectModel = new Button("Dùng model đang chọn");
         selectModel.setOnAction(e -> selectModel());
-        Button pullModel = new Button("⬇ Tải model Ollama (chỉ khi bạn yêu cầu)");
+        Button pullModel = new Button("Tải model Ollama (chỉ khi bạn yêu cầu)", new IconView("download", 15));
         pullModel.setTooltip(new javafx.scene.control.Tooltip(
                 "Chỉ dùng với Ollama: nhập tên model (vd qwen2.5:7b) — ứng dụng KHÔNG tự tải."));
         pullModel.setOnAction(e -> pullModel());
@@ -356,25 +357,25 @@ public class SettingsView extends View {
         Label dirLabel = new Label("Thư mục dữ liệu: " + ctx.dataDir());
         dirLabel.setWrapText(true);
 
-        Button backup = new Button("💾 Tạo bản sao lưu ngay");
+        Button backup = new Button("Tạo bản sao lưu ngay", new IconView("save", 15));
         backup.getStyleClass().add("primary-btn");
         backup.setOnAction(e -> Fx.async(ctx.executors().io(), () -> ctx.backup().backup(ctx.dataDir(),
                         ctx.dataDir().resolve("backups")),
                 zip -> Dialogs.info("Sao lưu xong", "Đã tạo: " + zip),
                 err -> Dialogs.error("Sao lưu thất bại", err.getMessage())));
 
-        Button restore = new Button("♻ Khôi phục từ bản sao lưu");
+        Button restore = new Button("Khôi phục từ bản sao lưu", new IconView("recycle", 15));
         restore.setOnAction(e -> restoreBackup());
 
-        Button integrity = new Button("🧪 Kiểm tra toàn vẹn dữ liệu");
+        Button integrity = new Button("Kiểm tra toàn vẹn dữ liệu", new IconView("flask-conical", 15));
         integrity.setOnAction(e -> Fx.async(ctx.executors().io(),
                 () -> ctx.backup().integrityCheck(ctx.dataDir()),
                 corrupt -> Dialogs.info("Kiểm tra toàn vẹn", corrupt.isEmpty()
-                        ? "Tất cả file JSON đều đọc tốt. ✓"
+                        ? "Tất cả file JSON đều đọc tốt"
                         : "File hỏng:\n- " + String.join("\n- ", corrupt)),
                 err -> Dialogs.error("Lỗi kiểm tra", err.getMessage())));
 
-        Button openData = new Button("📂 Mở thư mục dữ liệu");
+        Button openData = new Button("Mở thư mục dữ liệu", new IconView("folder-open", 15));
         openData.setOnAction(e -> {
             try {
                 java.awt.Desktop.getDesktop().open(ctx.dataDir().toFile());
@@ -422,7 +423,7 @@ public class SettingsView extends View {
     private Node buildRootsTab() {
         VBox list = new VBox(6);
         rebuildRootsList(list);
-        Button add = new Button("+ Cấp quyền thư mục");
+        Button add = new Button("Cấp quyền thư mục", new IconView("plus", 15));
         add.getStyleClass().add("primary-btn");
         add.setOnAction(e -> {
             javafx.stage.DirectoryChooser chooser = new javafx.stage.DirectoryChooser();

@@ -35,6 +35,9 @@ public class LifeDeskApp extends Application {
     @Override
     public void init() {
         try {
+            // The UI is Vietnamese throughout; without this DatePicker renders
+            // US-style mm/dd/yyyy next to labels that say dd/MM.
+            java.util.Locale.setDefault(java.util.Locale.forLanguageTag("vi-VN"));
             ConfigService configService = new ConfigService(ConfigService.defaultConfigDir());
             AppConfig config = configService.load();
             Path dataDir = ConfigService.ensureDataDir(config.dataDir);

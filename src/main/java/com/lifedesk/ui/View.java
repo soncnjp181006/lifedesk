@@ -2,6 +2,7 @@ package com.lifedesk.ui;
 
 import com.lifedesk.app.AppContext;
 import javafx.scene.Node;
+import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 
@@ -33,6 +34,11 @@ public abstract class View extends VBox {
 
     /** Open a specific record (from search results or notifications). */
     public void openRecord(String recordId) {
+    }
+
+    /** Bind a shortcut that is live only while this view is on screen. */
+    protected void addAccelerator(KeyCodeCombination key, Runnable action) {
+        main.addAccelerator(MainWindow.ViewId.valueOf(id()), key, action);
     }
 
     void ensureBuilt() {

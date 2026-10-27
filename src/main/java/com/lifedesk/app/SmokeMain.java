@@ -263,6 +263,13 @@ public final class SmokeMain {
 
     private static void runUiSmoke() throws Exception {
         Path dataDir = Files.createTempDirectory("lifedesk-uismoke-");
+        // Optional fixture: -Dlifedesk.seed=<dir> copies a real dataset in, so the
+        // snapshots show populated views instead of empty states.
+        String seedDir = System.getProperty("lifedesk.seed");
+        if (seedDir != null && !seedDir.isBlank()) {
+            copyTree(Path.of(seedDir), dataDir);
+            System.out.println("Seeded UI smoke data from " + seedDir);
+        }
         System.setProperty("lifedesk.data", dataDir.toString());
         // Own config dir too, so the smoke never reads/writes the user's real config.
         System.setProperty("lifedesk.config", dataDir.resolve("config").toString());
@@ -275,6 +282,7 @@ public final class SmokeMain {
         config.remindersEnabled = false;
         AppContext ctx = new AppContext(dataDir, config);
         ctx.shutdown();
+        seedNoteIdHolder = firstNoteId(dataDir);
 
         System.out.println("Launching JavaFX UI smoke; screenshot -> " + screenshot.toAbsolutePath());
         javafx.application.Platform.setImplicitExit(false);
@@ -323,6 +331,30 @@ public final class SmokeMain {
         }
         // Additional view snapshots for broader UI verification
         if (captured && LifeDeskApp.mainWindowRef != null) {
+            // Shortcut registration is otherwise invisible; assert the map, since the
+            // accelerators are the only keyboard path into the modules.
+            java.util.concurrent.CompletableFuture<int[]> accCount =
+                    new java.util.concurrent.CompletableFuture<>();
+            javafx.application.Platform.runLater(() -> {
+                var acc = LifeDeskApp.primaryStageRef.getScene().getAccelerators();
+                int found = 0;
+                javafx.scene.input.KeyCode[] digits = {
+                        javafx.scene.input.KeyCode.DIGIT1, javafx.scene.input.KeyCode.DIGIT2,
+                        javafx.scene.input.KeyCode.DIGIT3, javafx.scene.input.KeyCode.DIGIT4,
+                        javafx.scene.input.KeyCode.DIGIT5, javafx.scene.input.KeyCode.DIGIT6,
+                        javafx.scene.input.KeyCode.DIGIT7, javafx.scene.input.KeyCode.DIGIT8,
+                        javafx.scene.input.KeyCode.DIGIT9, javafx.scene.input.KeyCode.DIGIT0};
+                for (javafx.scene.input.KeyCode d : digits) {
+                    if (acc.containsKey(new javafx.scene.input.KeyCodeCombination(
+                            d, javafx.scene.input.KeyCombination.CONTROL_DOWN))) {
+                        found++;
+                    }
+                }
+                accCount.complete(new int[]{found, acc.size()});
+            });
+            int[] acc = accCount.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            check("phím tắt Ctrl+1..Ctrl+0 đã đăng ký (" + acc[0] + "/10)", acc[0] == 10);
+            check("tổng accelerator >= 14 (có Ctrl+K, Ctrl+B, Ctrl+,)", acc[1] >= 14);
             String[][] extraViews = {
                     {"TASKS", "target/ui-smoke-tasks.png"},
                     {"NOTES", "target/ui-smoke-notes.png"},
@@ -330,6 +362,7 @@ public final class SmokeMain {
                     {"HABITS", "target/ui-smoke-habits.png"},
                     {"HEALTH", "target/ui-smoke-health.png"},
                     {"LEARNING", "target/ui-smoke-learning.png"},
+                    {"FILES", "target/ui-smoke-files.png"},
                     {"AI", "target/ui-smoke-ai.png"},
                     {"AUTOMATION", "target/ui-smoke-automation.png"},
                     {"SETTINGS", "target/ui-smoke-settings.png"},
@@ -358,8 +391,8 @@ public final class SmokeMain {
                             new java.util.concurrent.CompletableFuture<>();
                     javafx.application.Platform.runLater(() -> {
                         try {
-                            javafx.scene.image.WritableImage img2 =
-                                    LifeDeskApp.primaryStageRef.getScene().snapshot(null);
+                            var scene = LifeDeskApp.primaryStageRef.getScene();
+                            javafx.scene.image.WritableImage img2 = scene.snapshot(null);
                             int width = (int) img2.getWidth();
                             int height = (int) img2.getHeight();
                             java.awt.image.BufferedImage buffered = new java.awt.image.BufferedImage(
@@ -368,6 +401,27 @@ public final class SmokeMain {
                                 for (int x = 0; x < width; x++) {
                                     buffered.setRGB(x, y, img2.getPixelReader().getArgb(x, y));
                                 }
+                            }
+                            // Overflow guard: horizontal clipping is invisible in code review.
+                            javafx.scene.layout.BorderPane bp =
+                                    (javafx.scene.layout.BorderPane) scene.getRoot();
+                            javafx.scene.control.ScrollPane sp =
+                                    (javafx.scene.control.ScrollPane) bp.getCenter();
+                            double viewport = sp.getViewportBounds().getWidth();
+                            double contentW = sp.getContent().getLayoutBounds().getWidth();
+                            String center = "(?)";
+                            var kids = ((javafx.scene.layout.Pane) sp.getContent()).getChildren();
+                            if (!kids.isEmpty()) {
+                                center = kids.get(0) instanceof com.lifedesk.ui.View mv
+                                        ? mv.id() : kids.get(0).getClass().getSimpleName();
+                            }
+                            System.out.println("LAYOUT " + v[0] + " center=" + center
+                                    + " children=" + ((javafx.scene.layout.Pane) sp.getContent()).getChildren().size()
+                                    + " viewport=" + Math.round(viewport)
+                                    + " content=" + Math.round(contentW)
+                                    + (contentW > viewport + 1 ? "  <== OVERFLOW" : "  ok"));
+                            if (System.getProperty("lifedesk.debug.ui") != null) {
+                                dump(sp.getContent(), 0);
                             }
                             cap2.complete(buffered);
                         } catch (Throwable t) {
@@ -395,6 +449,40 @@ public final class SmokeMain {
         Thread.sleep(1500);
         System.out.println("SMOKE RESULT: PASS (UI launched, screenshot captured)");
         System.exit(0);
+    }
+
+    /** First note id in the seeded dataset, so the NOTES snapshot shows a real editor. */
+    private static String firstNoteId(Path dataDir) {
+        Path index = dataDir.resolve("notes").resolve("index.json");
+        try {
+            if (!Files.exists(index)) {
+                return null;
+            }
+            var root = com.google.gson.JsonParser.parseString(Files.readString(index)).getAsJsonObject();
+            var notes = root.getAsJsonObject("data").getAsJsonArray("notes");
+            return notes.isEmpty() ? null : notes.get(0).getAsJsonObject().get("id").getAsString();
+        } catch (RuntimeException | java.io.IOException e) {
+            System.out.println("Seed note lookup failed: " + e);
+            return null;
+        }
+    }
+
+    private static void copyTree(Path from, Path to) throws java.io.IOException {
+        try (var walk = Files.walk(from)) {
+            for (Path src : (Iterable<Path>) walk::iterator) {
+                Path rel = from.relativize(src);
+                if (rel.toString().isEmpty() || rel.getFileName().toString().endsWith(".lock")) {
+                    continue;
+                }
+                Path dst = to.resolve(rel);
+                if (Files.isDirectory(src)) {
+                    Files.createDirectories(dst);
+                } else {
+                    Files.createDirectories(dst.getParent());
+                    Files.copy(src, dst, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        }
     }
 
     private static void dump(javafx.scene.Node n, int depth) {

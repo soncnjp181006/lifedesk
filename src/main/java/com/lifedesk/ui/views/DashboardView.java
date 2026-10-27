@@ -123,6 +123,8 @@ public class DashboardView extends View {
 
         widgetGrid.setHgap(14);
         widgetGrid.setVgap(14);
+        widgetGrid.setMinWidth(0);
+        widgetGrid.setMaxWidth(Double.MAX_VALUE);
         widgetCol.setPercentWidth(100.0 / 3);
         widgetCol.setHgrow(Priority.ALWAYS);
         widgetGrid.getColumnConstraints().addAll(widgetCol, widgetCol, widgetCol);
@@ -186,7 +188,7 @@ public class DashboardView extends View {
             }
         }
         if (widgetGrid.getChildren().isEmpty()) {
-            widgetGrid.add(new EmptyState("🧩",
+            widgetGrid.add(new EmptyState("puzzle",
                     "Tất cả widget đang tắt. Bấm \"Quản lý widget\" để bật lại."), 0, 0, 3, 1);
         }
     }
@@ -197,7 +199,7 @@ public class DashboardView extends View {
         Card card = new Card("Việc hôm nay");
         List<Task> list = new ArrayList<>(ctx.tasks().dueToday());
         if (list.isEmpty()) {
-            card.content(Card.dim("Không có việc đến hạn hôm nay 🎉"));
+            card.content(Card.dim("Không có việc đến hạn hôm nay"));
             return card;
         }
         VBox box = new VBox(4);
@@ -215,7 +217,7 @@ public class DashboardView extends View {
             }
         }
         if (box.getChildren().isEmpty()) {
-            box.getChildren().add(Card.dim("Tất cả việc hôm nay đã xong ✅"));
+            box.getChildren().add(Card.dim("Tất cả việc hôm nay đã xong"));
         }
         card.content(box);
         return card;
@@ -266,16 +268,34 @@ public class DashboardView extends View {
             chartTitle = "tháng " + rangeFrom.format(java.time.format.DateTimeFormatter.ofPattern("MM/yyyy"));
         }
         Card card = new Card("Thu chi (" + chartTitle + ")");
+        final java.time.LocalDate axisFrom = chartFrom;
+        long span = chartTo.toEpochDay() - chartFrom.toEpochDay();
         NumberAxis x = new NumberAxis();
-        x.setLabel("Ngày trong khoảng");
+        x.setLabel("Ngày");
         x.setMinorTickVisible(false);
-        x.setTickUnit(Math.max(1, (chartTo.toEpochDay() - chartFrom.toEpochDay()) / 6));
+        x.setLowerBound(0);
+        x.setUpperBound(span);
+        x.setAutoRanging(false);
+        x.setTickUnit(Math.max(1, Math.round(span / 5.0)));
+        // Raw epoch offsets render as "0.0, 2.5, 5.0"; people read dates.
+        x.setTickLabelFormatter(new javafx.util.StringConverter<>() {
+            @Override
+            public String toString(Number n) {
+                return axisFrom.plusDays(Math.round(n.doubleValue())).format(DF);
+            }
+
+            @Override
+            public Number fromString(String s) {
+                return 0;
+            }
+        });
         NumberAxis y = new NumberAxis();
         y.setLabel("VND");
         LineChart<Number, Number> chart = new LineChart<>(x, y);
         chart.setLegendVisible(true);
         chart.setCreateSymbols(false);
-        chart.setPrefHeight(200);
+        chart.setPrefHeight(230);
+        chart.setMinHeight(210);
 
         List<FinanceService.DayPoint> series = ctx.finance().dailySeries(chartFrom, chartTo);
         XYChart.Series<Number, Number> income = new XYChart.Series<>();

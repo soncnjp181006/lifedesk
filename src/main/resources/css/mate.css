@@ -1,23 +1,31 @@
-/* Mate theme - warm, soft, low-contrast (Mate desktop-inspired) */
+/* ==========================================================================
+   Mate theme — warm grey ramp, MATE green accent.
+   Was documented as "low-contrast"; this revision keeps the warm identity but
+   widens the surface ramp and brightens every foreground to clear WCAG.
+   ========================================================================== */
 .root {
-    -ld-bg: #3c3f41;
-    -ld-surface: #45494c;
-    -ld-card: #4f5357;
-    -ld-input: #565a5e;
-    -ld-elev: #5a5f63;
-    -ld-border: #6b7175;
-    -ld-text: #e8e6e3;
-    -ld-text-dim: #a9b2b8;
-    -ld-accent: #6d9c3f;
-    -ld-accent-text: #f4f8f0;
-    -ld-accent-soft: #3f4d33;
-    -ld-danger: #d1604e;
-    -ld-ok: #87b56a;
-    -ld-warn: #d8a24a;
-    -ld-info: #5f9ea0;
-    -ld-chart-1: #6d9c3f;
-    -ld-chart-2: #87b56a;
-    -ld-chart-3: #d8a24a;
-    -ld-chart-4: #5f9ea0;
-    -ld-chart-5: #d1604e;
+    -ld-bg: #313538;
+    -ld-surface: #3b3f42;
+    -ld-card: #464a4e;
+    -ld-input: #4e5357;
+    -ld-elev: #585d61;
+    -ld-border: #727a7f;
+    -ld-text: #f4f2ef;
+    -ld-text-dim: #d2dade;
+    -ld-accent: #a3d977;
+    -ld-accent-text: #1c2415;
+    -ld-accent-soft: #3f5230;
+    -ld-danger: #ff9f90;
+    -ld-ok: #7fd6a4;
+    -ld-warn: #f5c46a;
+    -ld-info: #86ccd0;
+    -ld-danger-soft: #5a332c;
+    -ld-ok-soft: #2c4a3c;
+    -ld-warn-soft: #55421f;
+    -ld-info-soft: #2b484b;
+    -ld-chart-1: #a3d977;
+    -ld-chart-2: #7fd6a4;
+    -ld-chart-3: #f5c46a;
+    -ld-chart-4: #c5a3f0;
+    -ld-chart-5: #ff9f90;
 }

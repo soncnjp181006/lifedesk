@@ -1,23 +1,31 @@
-/* Light theme */
+/* ==========================================================================
+   Light theme — slate neutral ramp, blue-700 accent (readable on white).
+   Same 24 tokens as every palette; *-soft are pale tints that must keep
+   the matching vivid token at >=4.5:1 as chip foreground.
+   ========================================================================== */
 .root {
-    -ld-bg: #f8f9fb;
-    -ld-surface: #eef1f5;
+    -ld-bg: #f4f6f9;
+    -ld-surface: #eaeef4;
     -ld-card: #ffffff;
     -ld-input: #ffffff;
-    -ld-elev: #e6e9ef;
-    -ld-border: #d5d9e0;
-    -ld-text: #1c2430;
-    -ld-text-dim: #67707d;
-    -ld-accent: #2563eb;
+    -ld-elev: #dde4ee;
+    -ld-border: #bcc6d4;
+    -ld-text: #0f172a;
+    -ld-text-dim: #4e5c6e;
+    -ld-accent: #1d4ed8;
     -ld-accent-text: #ffffff;
     -ld-accent-soft: #dbeafe;
-    -ld-danger: #dc2626;
-    -ld-ok: #16a34a;
-    -ld-warn: #d97706;
-    -ld-info: #0891b2;
-    -ld-chart-1: #2563eb;
-    -ld-chart-2: #16a34a;
-    -ld-chart-3: #d97706;
-    -ld-chart-4: #9333ea;
-    -ld-chart-5: #dc2626;
+    -ld-danger: #b91c1c;
+    -ld-ok: #15803d;
+    -ld-warn: #8c5604;
+    -ld-info: #0e7490;
+    -ld-danger-soft: #fee2e2;
+    -ld-ok-soft: #dcfce7;
+    -ld-warn-soft: #fef3c7;
+    -ld-info-soft: #cffafe;
+    -ld-chart-1: #1d4ed8;
+    -ld-chart-2: #15803d;
+    -ld-chart-3: #8c5604;
+    -ld-chart-4: #7c3aed;
+    -ld-chart-5: #b91c1c;
 }

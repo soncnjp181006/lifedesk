@@ -4,6 +4,7 @@ import com.lifedesk.app.AppContext;
 import com.lifedesk.config.AppConfig;
 import com.lifedesk.notifications.NotificationItem;
 import com.lifedesk.notifications.NotificationService;
+import com.lifedesk.ui.components.IconView;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -13,6 +14,9 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.KeyCombination;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -34,27 +38,30 @@ import java.util.function.Supplier;
  */
 public class MainWindow {
     public enum ViewId {
-        DASHBOARD("Dashboard", "Dash"), TASKS("Công việc", "Việc"), NOTES("Ghi chú", "Ghi"),
-        FINANCE("Tài chính", "Tiền"), HABITS("Thói quen & Mục tiêu", "HT"), HEALTH("Sức khỏe", "SK"),
-        LEARNING("Học tập", "Học"), FILES("Tệp", "Tệp"), AUTOMATION("Automation", "Auto"),
-        AI("Trợ lý AI", "AI"), SEARCH("Kết quả tìm kiếm", "TS"), SETTINGS("Cài đặt", "CĐ");
+        DASHBOARD("Dashboard", "layout-dashboard"), TASKS("Công việc", "list-checks"),
+        NOTES("Ghi chú", "file-text"),
+        FINANCE("Tài chính", "wallet"), HABITS("Thói quen & Mục tiêu", "repeat"),
+        HEALTH("Sức khỏe", "heart-pulse"),
+        LEARNING("Học tập", "book-open"), FILES("Tệp", "folder"), AUTOMATION("Automation", "workflow"),
+        AI("Trợ lý AI", "bot"), SEARCH("Kết quả tìm kiếm", "search"), SETTINGS("Cài đặt", "settings");
 
         public final String label;
-        private final String shortLabel;
+        /** File name under /icons, without extension. */
+        public final String icon;
 
-        ViewId(String label, String shortLabel) {
+        ViewId(String label, String icon) {
             this.label = label;
-            this.shortLabel = shortLabel;
-        }
-
-        public String shortLabel() {
-            return shortLabel;
+            this.icon = icon;
         }
     }
 
     private final Stage stage;
     private final Scene scene;
     private final AppContext ctx;
+    /** Sidebar order; position in this list is the Ctrl+n shortcut digit (10th = Ctrl+0). */
+    private static final List<ViewId> NAV_ORDER = List.of(ViewId.DASHBOARD, ViewId.TASKS, ViewId.NOTES,
+            ViewId.FINANCE, ViewId.HABITS, ViewId.HEALTH, ViewId.LEARNING, ViewId.FILES,
+            ViewId.AUTOMATION, ViewId.AI);
     private final BorderPane root = new BorderPane();
     private final StackPane content = new StackPane();
     private final VBox sidebarBox = new VBox(4);
@@ -106,10 +113,14 @@ public class MainWindow {
         content.getStyleClass().add("content-area");
         ScrollPane centerScroll = new ScrollPane(content);
         centerScroll.setFitToWidth(true);
-        centerScroll.setFitToHeight(true);
+        // Fill the window when the view is short, but scroll instead of squeezing
+        // when it is tall (fitToHeight would compress the dashboard charts).
+        content.minHeightProperty().bind(centerScroll.viewportBoundsProperty()
+                .map(b -> b.getHeight()));
         centerScroll.setStyle("-fx-background-color: transparent;");
         root.setCenter(centerScroll);
         root.setBottom(buildStatusBar());
+        installShortcuts();
         showView(ViewId.DASHBOARD);
     }
 
@@ -120,13 +131,13 @@ public class MainWindow {
         bar.getStyleClass().add("topbar");
         bar.setAlignment(Pos.CENTER_LEFT);
 
-        Button collapseBtn = new Button("☰");
+        Button collapseBtn = new Button("", new IconView("menu", 17));
         collapseBtn.getStyleClass().add("icon-btn");
-        collapseBtn.setTooltip(new Tooltip("Thu gọn/thanh bên"));
+        collapseBtn.setTooltip(new Tooltip("Thu gọn thanh bên"));
         collapseBtn.setOnAction(e -> toggleSidebar());
 
         searchField = new TextField();
-        searchField.setPromptText("Tìm kiếm toàn cục  (Enter)");
+        searchField.setPromptText("Tìm kiếm toàn cục  (Ctrl+K)");
         searchField.getStyleClass().add("search-field");
         HBox.setHgrow(searchField, Priority.SOMETIMES);
         searchField.setOnAction(e -> {
@@ -155,7 +166,7 @@ public class MainWindow {
         });
 
         // Notification bell
-        Button bell = new Button("🔔");
+        Button bell = new Button("", new IconView("bell", 17));
         bell.getStyleClass().add("icon-btn");
         notifBadge = new Label("0");
         notifBadge.getStyleClass().add("chip");
@@ -166,7 +177,7 @@ public class MainWindow {
         bell.setOnAction(e -> toggleNotifPopup(bellStack));
         ctx.notifications().changes().addListener(this::refreshNotifBadge);
 
-        Button settingsBtn = new Button("⚙");
+        Button settingsBtn = new Button("", new IconView("settings", 17));
         settingsBtn.getStyleClass().add("icon-btn");
         settingsBtn.setTooltip(new Tooltip("Cài đặt"));
         settingsBtn.setOnAction(e -> showView(ViewId.SETTINGS));
@@ -207,14 +218,16 @@ public class MainWindow {
             if (id == ViewId.SEARCH) {
                 continue; // opened via search action only
             }
-            Button btn = new Button(sidebarCollapsed ? id.shortLabel() : id.label);
+            Button btn = new Button(sidebarCollapsed ? "" : id.label, new IconView(id.icon, 16));
             btn.getStyleClass().add("nav-item");
             btn.setMaxWidth(Double.MAX_VALUE);
-            btn.setAlignment(Pos.CENTER_LEFT);
+            btn.setAlignment(sidebarCollapsed ? Pos.CENTER : Pos.CENTER_LEFT);
             if (id == current) {
                 btn.getStyleClass().add("active");
             }
             btn.setOnAction(e -> showView(id));
+            String hint = shortcutHint(id);
+            btn.setTooltip(new Tooltip(hint == null ? id.label : id.label + "  (" + hint + ")"));
             sidebarBox.getChildren().add(btn);
         }
     }
@@ -224,6 +237,77 @@ public class MainWindow {
         ctx.config().sidebarCollapsed = sidebarCollapsed;
         rebuildSidebarButtons();
         saveConfig();
+    }
+
+    /**
+     * Shell-wide shortcuts. The audit found the app had none, so every action was a
+     * mouse trip; these cover the two things users reach for constantly — jump to a
+     * module, and start typing a search.
+     */
+    private void installShortcuts() {
+        for (int i = 0; i < NAV_ORDER.size(); i++) {
+            ViewId id = NAV_ORDER.get(i);
+            KeyCodeCombination key = new KeyCodeCombination(navDigit(i), KeyCombination.CONTROL_DOWN);
+            scene.getAccelerators().put(key, () -> showView(id));
+        }
+        scene.getAccelerators().put(new KeyCodeCombination(KeyCode.K, KeyCombination.CONTROL_DOWN),
+                this::focusSearch);
+        scene.getAccelerators().put(new KeyCodeCombination(KeyCode.B, KeyCombination.CONTROL_DOWN),
+                this::toggleSidebar);
+        scene.getAccelerators().put(new KeyCodeCombination(KeyCode.COMMA, KeyCombination.CONTROL_DOWN),
+                () -> showView(ViewId.SETTINGS));
+        scene.getAccelerators().put(new KeyCodeCombination(KeyCode.ESCAPE), this::dismissOverlays);
+    }
+
+    private static KeyCode navDigit(int index) {
+        return switch (index) {
+            case 0 -> KeyCode.DIGIT1;
+            case 1 -> KeyCode.DIGIT2;
+            case 2 -> KeyCode.DIGIT3;
+            case 3 -> KeyCode.DIGIT4;
+            case 4 -> KeyCode.DIGIT5;
+            case 5 -> KeyCode.DIGIT6;
+            case 6 -> KeyCode.DIGIT7;
+            case 7 -> KeyCode.DIGIT8;
+            case 8 -> KeyCode.DIGIT9;
+            default -> KeyCode.DIGIT0;
+        };
+    }
+
+    /** "Ctrl+4" for FINANCE, or null for a view with no shortcut. */
+    private static String shortcutHint(ViewId id) {
+        int i = NAV_ORDER.indexOf(id);
+        if (i < 0) {
+            return null;
+        }
+        return "Ctrl+" + (i == 9 ? 0 : i + 1);
+    }
+
+    /**
+     * Bind a shortcut owned by one view. Views are built once and cached, so the
+     * binding lives for the whole session; the guard keeps it firing only while its
+     * own view is on screen, which is what the user expects from Ctrl+S / Ctrl+N.
+     */
+    public void addAccelerator(ViewId owner, KeyCodeCombination key, Runnable action) {
+        scene.getAccelerators().put(key, () -> {
+            if (current == owner) {
+                action.run();
+            }
+        });
+    }
+
+    private void focusSearch() {
+        searchField.requestFocus();
+        searchField.selectAll();
+    }
+
+    private void dismissOverlays() {
+        if (notifPopup != null && notifPopup.isShowing()) {
+            notifPopup.hide();
+        } else if (searchField.isFocused()) {
+            searchField.clear();
+            content.requestFocus();
+        }
     }
 
     private Node buildStatusBar() {
@@ -294,9 +378,15 @@ public class MainWindow {
                 showView(ViewId.LEARNING);
                 views.get(ViewId.LEARNING).openRecord(refId);
             }
-            case "HEALTH" -> showView(ViewId.HEALTH);
-            case "WORKFLOW" -> showView(ViewId.AUTOMATION);
-            default -> showView(ViewId.DASHBOARD);
+            case "HEALTH" -> {
+                showView(ViewId.HEALTH);
+                views.get(ViewId.HEALTH).openRecord(refId);
+            }
+            case "WORKFLOW" -> {
+                showView(ViewId.AUTOMATION);
+                views.get(ViewId.AUTOMATION).openRecord(refId);
+            }
+            default -> status("Không có liên kết tới loại bản ghi: " + docType);
         }
     }
 
@@ -400,12 +490,22 @@ public class MainWindow {
         }
     }
 
+    /**
+     * Module key used by ReminderScheduler / search hits → the document type that
+     * {@link #openRecord} understands. Total on purpose: a wrong-but-quiet jump to
+     * Tasks is worse than staying put, so an unmapped key keeps its own name and
+     * openRecord's default branch reports it.
+     */
     private String viewFromRef(String refView) {
         return switch (refView) {
             case "tasks" -> "TASK";
             case "notes" -> "NOTE";
             case "habits" -> "HABIT";
-            default -> "TASK";
+            case "finance" -> "TRANSACTION";
+            case "learning" -> "COURSE";
+            case "health" -> "HEALTH";
+            case "automation" -> "WORKFLOW";
+            default -> refView;
         };
     }
 

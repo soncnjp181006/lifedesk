@@ -1,0 +1,6 @@
+<!-- Lucide icon (https://lucide.dev), ISC license. Geometry only: stroke color, stroke-width and
+     line caps are owned by css/base.css so icons follow the active palette. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <circle cx="12" cy="12" r="10"/>
+  <path d="m16 9-5.5 5.5L8 12"/>
+</svg>

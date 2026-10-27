@@ -15,6 +15,7 @@ import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.EmptyState;
+import com.lifedesk.ui.components.IconView;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.collections.FXCollections;
 import javafx.geometry.Pos;
@@ -37,6 +38,9 @@ import javafx.scene.control.Toggle;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -149,13 +153,15 @@ public class FinanceView extends View {
 
     private Node buildTransactionsTab() {
         // ---- month navigator
-        Button prevMonth = new Button("‹");
+        Button prevMonth = new Button("", new IconView("chevron-left", 15));
+        prevMonth.getStyleClass().add("icon-btn");
         prevMonth.setTooltip(new Tooltip("Tháng trước"));
         prevMonth.setOnAction(e -> {
             selMonth = selMonth.minusMonths(1);
             refresh();
         });
-        Button nextMonth = new Button("›");
+        Button nextMonth = new Button("", new IconView("chevron-right", 15));
+        nextMonth.getStyleClass().add("icon-btn");
         nextMonth.setTooltip(new Tooltip("Tháng sau"));
         nextMonth.setOnAction(e -> {
             selMonth = selMonth.plusMonths(1);
@@ -199,12 +205,13 @@ public class FinanceView extends View {
         HBox.setHgrow(quickDesc, Priority.ALWAYS);
         quickDesc.setOnAction(e -> quickAdd());
 
-        Button addBtn = new Button("＋ Thêm giao dịch");
+        Button addBtn = new Button("Thêm giao dịch", new IconView("plus", 15));
         addBtn.getStyleClass().add("primary-btn");
         addBtn.setOnAction(e -> quickAdd());
+        addAccelerator(new KeyCodeCombination(KeyCode.N, KeyCombination.CONTROL_DOWN), addBtn::fire);
         addBtn.setTooltip(new Tooltip("Lưu giao dịch ngay (Enter ở ô Số tiền hoặc Mô tả cũng lưu)"));
 
-        Button addCatBtn = new Button("+ Danh mục");
+        Button addCatBtn = new Button("Danh mục", new IconView("plus", 15));
         addCatBtn.setOnAction(e -> quickAddCategory());
 
         javafx.scene.layout.FlowPane quickBar = new javafx.scene.layout.FlowPane(10, 8,
@@ -219,7 +226,7 @@ public class FinanceView extends View {
         txTypeFilter.getItems().addAll("(tất cả)", "INCOME", "EXPENSE");
         txTypeFilter.setValue("(tất cả)");
         txTypeFilter.setOnAction(e -> refreshTransactions());
-        Button editTx = new Button("✎ Sửa");
+        Button editTx = new Button("Sửa", new IconView("pencil", 15));
         editTx.setOnAction(e -> {
             Transaction t = txTable.getSelectionModel().getSelectedItem();
             if (t != null) {
@@ -235,7 +242,7 @@ public class FinanceView extends View {
         HBox.setHgrow(txSearch, Priority.ALWAYS);
 
         buildTxTable();
-        txTable.setPlaceholder(new EmptyState("💸",
+        txTable.setPlaceholder(new EmptyState("coins",
                 "Chưa có giao dịch trong tháng này.\nNhập thu/chi bằng thanh bên trên — Enter là lưu."));
 
         reloadQuickCategories();
@@ -535,7 +542,7 @@ public class FinanceView extends View {
     private void buildBudgetTable() {
         TableColumn<Budget, String> monthCol = new TableColumn<>("Tháng");
         monthCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().recurring
-                ? "♻ lặp hàng tháng" : p.getValue().month.toString()));
+                ? "lặp hàng tháng" : p.getValue().month.toString()));
         TableColumn<Budget, String> catCol = new TableColumn<>("Danh mục");
         catCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(safeBudgetCategory(p.getValue())));
         TableColumn<Budget, String> limitCol = new TableColumn<>("Hạn mức");

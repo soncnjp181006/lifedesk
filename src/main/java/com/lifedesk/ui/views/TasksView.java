@@ -13,6 +13,7 @@ import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.Chips;
 import com.lifedesk.ui.components.EmptyState;
+import com.lifedesk.ui.components.IconView;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -35,6 +36,9 @@ import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
@@ -93,8 +97,8 @@ public class TasksView extends View {
         statusFilter.setOnAction(e -> refresh());
         priorityFilter.setOnAction(e -> refresh());
 
-        ToggleButton boardToggle = new ToggleButton(".Board");
-        ToggleButton listToggle = new ToggleButton("☰ List");
+        ToggleButton boardToggle = new ToggleButton("Board", new IconView("kanban", 15));
+        ToggleButton listToggle = new ToggleButton("List", new IconView("list", 15));
         listToggle.setSelected(true);
         boardToggle.setOnAction(e -> {
             boardMode = true;
@@ -109,7 +113,8 @@ public class TasksView extends View {
             refresh();
         });
 
-        Button newBtn = new Button("+ Công việc mới");
+        Button newBtn = new Button("Công việc mới", new IconView("plus", 15));
+        addAccelerator(new KeyCodeCombination(KeyCode.N, KeyCombination.CONTROL_DOWN), newBtn::fire);
         newBtn.getStyleClass().add("primary-btn");
         newBtn.setOnAction(e -> openEditor(null));
 
@@ -122,7 +127,7 @@ public class TasksView extends View {
         HBox.setHgrow(r, javafx.scene.layout.Priority.NEVER);
 
         buildTable();
-        table.setPlaceholder(new EmptyState("📋", "Chưa có công việc nào. Bấm \"Công việc mới\" để bắt đầu."));
+        table.setPlaceholder(new EmptyState("clipboard-list", "Chưa có công việc nào. Bấm \"Công việc mới\" để bắt đầu."));
 
         buildBoard();
 
@@ -225,12 +230,17 @@ public class TasksView extends View {
         TableColumn<Task, Task> actionsCol = new TableColumn<>("Thao tác");
         actionsCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue()));
         actionsCol.setCellFactory(col -> new TableCell<>() {
-            private final Button done = new Button("✓");
-            private final Button edit = new Button("✎");
-            private final Button del = new Button("🗑");
+            private final Button done = new Button("", new IconView("check", 14));
+            private final Button edit = new Button("", new IconView("pencil", 14));
+            private final Button del = new Button("", new IconView("trash", 14));
 
             {
+                done.getStyleClass().add("icon-btn");
+                edit.getStyleClass().add("icon-btn");
+                del.getStyleClass().add("icon-btn");
                 done.setTooltip(new Tooltip("Hoàn thành"));
+                edit.setTooltip(new Tooltip("Sửa công việc"));
+                del.setTooltip(new Tooltip("Xóa công việc"));
                 done.setOnAction(e -> {
                     Task t = getTableRow() == null ? null : getTableRow().getItem();
                     if (t != null) {
@@ -400,7 +410,7 @@ public class TasksView extends View {
             }
         }
         rebuildChecklist.run();
-        Button addCheck = new Button("+ Mục checklist");
+        Button addCheck = new Button("Mục checklist", new IconView("plus", 15));
         addCheck.setOnAction(e -> {
             CheckBox cb = new CheckBox();
             TextField tf = new TextField();

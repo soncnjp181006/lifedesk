@@ -6,6 +6,7 @@ import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.EmptyState;
+import com.lifedesk.ui.components.IconView;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -31,6 +32,9 @@ public class AiChatView extends View {
     private final TextField input = new TextField();
     private final Label providerStatus = new Label();
     private volatile boolean busy = false;
+    private Node emptyState;
+    /** Guards against a slow probe from an earlier refresh overwriting a newer one. */
+    private int statusTicket = 0;
 
     public AiChatView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -47,7 +51,7 @@ public class AiChatView extends View {
         title.getStyleClass().add("title-label");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Button settingsBtn = new Button("⚙ Cài đặt AI");
+        Button settingsBtn = new Button("Cài đặt AI", new IconView("settings", 15));
         settingsBtn.setOnAction(e -> main.showView(MainWindow.ViewId.SETTINGS));
         HBox header = new HBox(10, title, spacer, providerStatus, settingsBtn);
         header.setAlignment(Pos.CENTER_LEFT);
@@ -66,7 +70,7 @@ public class AiChatView extends View {
 
         input.setPromptText("Nhập câu hỏi hoặc lệnh… (Enter để gửi)");
         input.setOnAction(e -> send());
-        Button sendBtn = new Button("Gửi ➤");
+        Button sendBtn = new Button("Gửi", new IconView("send", 15));
         sendBtn.getStyleClass().add("primary-btn");
         sendBtn.setOnAction(e -> send());
 
@@ -86,6 +90,11 @@ public class AiChatView extends View {
 
         VBox root = new VBox(10, header, quickRow, chatScroll, inputRow, disclaimer);
         VBox.setVgrow(chatScroll, Priority.ALWAYS);
+        if (history.isEmpty()) {
+            emptyState = new EmptyState("bot",
+                    "Chưa có hội thoại. Bấm một gợi ý phía trên hoặc gõ câu hỏi bên dưới.");
+            chatBox.getChildren().add(emptyState);
+        }
         refreshStatus();
         return root;
     }
@@ -93,17 +102,50 @@ public class AiChatView extends View {
     private void refreshStatus() {
         if (!ctx.ai().enabled()) {
             providerStatus.setText("AI: ĐANG TẮT (bật trong Cài đặt)");
-            chatBox.getChildren().setAll(new EmptyState("🤖",
+            providerStatus.setGraphic(null);
+            chatBox.getChildren().setAll(new EmptyState("bot",
                     "Tính năng AI đang tắt trong Cài đặt → AI. Các module khác vẫn hoạt động bình thường.",
                     settingsButton()));
             return;
         }
         var provider = ctx.ai().currentProvider();
-        provider.ifPresentOrElse(p -> {
-            boolean online = p.isAvailable();
-            providerStatus.setText("Provider: " + p.displayName() + (online ? "  ● sẵn sàng" : "  ● không kết nối được"));
-            providerStatus.getStyleClass().add("dim-label");
-        }, () -> providerStatus.setText("AI: tắt"));
+        if (provider.isEmpty()) {
+            providerStatus.setGraphic(null);
+            providerStatus.setText("AI: tắt");
+            return;
+        }
+        AiProvider p = provider.get();
+        renderStatus(p, null);
+        // Availability is a real HTTP call (3-8s timeout); probing it on the
+        // JavaFX thread would freeze the whole window on every show.
+        final int ticket = ++statusTicket;
+        Thread probe = new Thread(() -> {
+            boolean probed;
+            try {
+                probed = p.isAvailable();
+            } catch (RuntimeException e) {
+                probed = false;
+            }
+            final boolean online = probed;
+            javafx.application.Platform.runLater(() -> {
+                if (ticket == statusTicket) {
+                    renderStatus(p, online);
+                }
+            });
+        }, "lifedesk-ai-status");
+        probe.setDaemon(true);
+        probe.start();
+    }
+
+    /** {@code online == null} means the probe has not answered yet. */
+    private void renderStatus(AiProvider p, Boolean online) {
+        providerStatus.getStyleClass().add("dim-label");
+        providerStatus.setText("Provider: " + p.displayName()
+                + (online == null ? "  (đang kiểm tra)" : online ? "  sẵn sàng" : "  không kết nối được"));
+        providerStatus.setGraphic(online == null
+                ? new IconView("hourglass", 13, "icon-dim")
+                : new IconView(online ? "circle-check" : "triangle-alert", 13,
+                        online ? "icon-ok" : "icon-danger"));
     }
 
     private Button settingsButton() {
@@ -142,7 +184,7 @@ public class AiChatView extends View {
                 },
                 err -> {
                     thinking.getChildren().setAll(wrapLabel(
-                            "⚠ Lỗi provider: " + err.getMessage()
+                            "Lỗi provider: " + err.getMessage()
                                     + "\n(Thử lại, đổi provider trong Cài đặt → AI, hoặc dùng engine quy tắc offline.)",
                             "chat-bubble-ai"));
                     busy = false;
@@ -157,6 +199,7 @@ public class AiChatView extends View {
     }
 
     private VBox addBubble(String who, String text) {
+        chatBox.getChildren().remove(emptyState);
         VBox bubble = wrapLabel(text, "user".equals(who) ? "chat-bubble-user" : "chat-bubble-ai");
         HBox row = new HBox(bubble);
         if ("user".equals(who)) {

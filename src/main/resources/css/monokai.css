@@ -1,20 +1,28 @@
-/* Monokai theme */
+/* ==========================================================================
+   Monokai theme — classic Monokai hues on the #272822 ramp.
+   -ld-danger was #f92672: only 3.2:1 as text on card, so the text/UI token is
+   the lighter pink #ff6f97 (4.6:1) while the chart series keeps the brand red.
+   ========================================================================== */
 .root {
     -ld-bg: #272822;
-    -ld-surface: #2d2e27;
-    -ld-card: #33342c;
-    -ld-input: #3a3b32;
-    -ld-elev: #3e3f36;
-    -ld-border: #4a4b41;
+    -ld-surface: #2e2f28;
+    -ld-card: #35362d;
+    -ld-input: #3e3f34;
+    -ld-elev: #45463b;
+    -ld-border: #5f6052;
     -ld-text: #f8f8f2;
-    -ld-text-dim: #a6a693;
+    -ld-text-dim: #bcbca9;
     -ld-accent: #a6e22e;
     -ld-accent-text: #1e1f1a;
-    -ld-accent-soft: #3b4426;
-    -ld-danger: #f92672;
-    -ld-ok: #a6e22e;
+    -ld-accent-soft: #3b4a22;
+    -ld-danger: #ff6f97;
+    -ld-ok: #7ce38b;
     -ld-warn: #e6db74;
     -ld-info: #66d9ef;
+    -ld-danger-soft: #4a2233;
+    -ld-ok-soft: #2a4a2c;
+    -ld-warn-soft: #4d4626;
+    -ld-info-soft: #1f4550;
     -ld-chart-1: #a6e22e;
     -ld-chart-2: #66d9ef;
     -ld-chart-3: #e6db74;

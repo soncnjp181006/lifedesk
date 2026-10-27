@@ -7,6 +7,7 @@ import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.EmptyState;
+import com.lifedesk.ui.components.IconView;
 import javafx.animation.PauseTransition;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -19,6 +20,9 @@ import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -82,8 +86,11 @@ public class NotesView extends View {
                     setGraphic(null);
                 } else {
                     int linkCount = item.links.values().stream().mapToInt(java.util.Set::size).sum();
-                    Label title = new Label((item.starred ? "★ " : "") + item.title
-                            + (linkCount > 0 ? "  🔗" + linkCount : ""));
+                    Label title = new Label(item.title
+                            + (linkCount > 0 ? " (" + linkCount + " liên kết)" : ""));
+                    if (item.starred) {
+                        title.setGraphic(new IconView("star", 14));
+                    }
                     Label meta = new Label(item.folder.isEmpty() ? "(gốc)" : item.folder);
                     meta.getStyleClass().add("dim-label");
                     setGraphic(new VBox(1, title, meta));
@@ -96,13 +103,16 @@ public class NotesView extends View {
         searchField.setPromptText("Tìm ghi chú…");
         searchField.textProperty().addListener((o, a, b) -> refreshNoteList());
 
-        Button newBtn = new Button("+ Ghi chú mới");
+        Button newBtn = new Button("Ghi chú mới", new IconView("plus", 15));
+        addAccelerator(new KeyCodeCombination(KeyCode.N, KeyCombination.CONTROL_DOWN), newBtn::fire);
         newBtn.getStyleClass().add("primary-btn");
         newBtn.setOnAction(e -> createNote());
-        Button delBtn = new Button("🗑");
+        Button delBtn = new Button("", new IconView("trash", 15));
+        delBtn.getStyleClass().add("icon-btn");
         delBtn.setTooltip(new Tooltip("Xóa ghi chú đang chọn"));
         delBtn.setOnAction(e -> deleteCurrent());
-        Button starBtn = new Button("⭐");
+        Button starBtn = new Button("", new IconView("star", 15));
+        starBtn.getStyleClass().add("icon-btn");
         starBtn.setTooltip(new Tooltip("Đánh dấu quan trọng"));
         starBtn.setOnAction(e -> toggleStar());
 
@@ -124,9 +134,10 @@ public class NotesView extends View {
             }
         });
 
-        Button saveBtn = new Button("💾 Lưu ngay");
+        Button saveBtn = new Button("Lưu ngay", new IconView("save", 15));
         saveBtn.setOnAction(e -> saveNow());
-        ToggleButton previewToggle = new ToggleButton("👁 Xem trước");
+        addAccelerator(new KeyCodeCombination(KeyCode.S, KeyCombination.CONTROL_DOWN), saveBtn::fire);
+        ToggleButton previewToggle = new ToggleButton("Xem trước", new IconView("eye", 15));
         previewToggle.setSelected(true);
         previewToggle.setOnAction(e -> {
             previewMode = previewToggle.isSelected();
@@ -166,7 +177,7 @@ public class NotesView extends View {
     }
 
     private final com.lifedesk.ui.components.EmptyState noNoteState =
-            new com.lifedesk.ui.components.EmptyState("📝", "Chọn hoặc tạo một ghi chú để bắt đầu.");
+            new com.lifedesk.ui.components.EmptyState("sticky-note", "Chọn hoặc tạo một ghi chú để bắt đầu.");
 
     private void showNotesEmptyState() {
         editorPane.setTop(null);

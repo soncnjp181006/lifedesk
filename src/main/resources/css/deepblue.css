@@ -1,23 +1,29 @@
-/* Deep Blue theme */
+/* ==========================================================================
+   Deep Blue theme — navy ramp, azure accent.
+   ========================================================================== */
 .root {
-    -ld-bg: #0d1b2a;
-    -ld-surface: #12233a;
-    -ld-card: #172c47;
-    -ld-input: #1d3557;
-    -ld-elev: #1e3760;
-    -ld-border: #2a4a75;
-    -ld-text: #e4edf8;
-    -ld-text-dim: #8fa8c6;
-    -ld-accent: #3b82f6;
-    -ld-accent-text: #eaf2ff;
-    -ld-accent-soft: #1d3a66;
-    -ld-danger: #e4574f;
-    -ld-ok: #34b585;
-    -ld-warn: #e0a03c;
-    -ld-info: #38bdf8;
-    -ld-chart-1: #3b82f6;
-    -ld-chart-2: #34b585;
-    -ld-chart-3: #e0a03c;
+    -ld-bg: #0a1726;
+    -ld-surface: #10203a;
+    -ld-card: #16294a;
+    -ld-input: #1c3358;
+    -ld-elev: #22406c;
+    -ld-border: #35597f;
+    -ld-text: #e8f1fb;
+    -ld-text-dim: #a3bcd9;
+    -ld-accent: #64b0ff;
+    -ld-accent-text: #071320;
+    -ld-accent-soft: #1c3b66;
+    -ld-danger: #ff7a70;
+    -ld-ok: #45d39a;
+    -ld-warn: #f5b54a;
+    -ld-info: #4ecbf5;
+    -ld-danger-soft: #3d1e21;
+    -ld-ok-soft: #143a2e;
+    -ld-warn-soft: #3d2e13;
+    -ld-info-soft: #143644;
+    -ld-chart-1: #64b0ff;
+    -ld-chart-2: #45d39a;
+    -ld-chart-3: #f5b54a;
     -ld-chart-4: #a78bfa;
-    -ld-chart-5: #e4574f;
+    -ld-chart-5: #ff7a70;
 }

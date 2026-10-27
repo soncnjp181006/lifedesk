@@ -10,6 +10,7 @@ import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.EmptyState;
+import com.lifedesk.ui.components.IconView;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -59,7 +60,7 @@ public class LearningView extends View {
         title.getStyleClass().add("title-label");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Button reviewBtn = new Button("🎯 Ôn tập (" + ctx.learning().dueCount() + " thẻ đến hạn)");
+        Button reviewBtn = new Button("Ôn tập (" + ctx.learning().dueCount() + " thẻ đến hạn)", new IconView("target", 15));
         reviewBtn.getStyleClass().add("primary-btn");
         reviewBtn.setOnAction(e -> startReview());
         HBox header = new HBox(10, title, spacer, dueLabel, reviewBtn);
@@ -67,10 +68,10 @@ public class LearningView extends View {
 
         // ---- courses
         buildCourseTable();
-        courseTable.setPlaceholder(new EmptyState("📚", "Chưa có khóa học nào."));
-        Button addCourse = new Button("+ Khóa học");
+        courseTable.setPlaceholder(new EmptyState("library-big", "Chưa có khóa học nào."));
+        Button addCourse = new Button("Khóa học", new IconView("plus", 15));
         addCourse.setOnAction(e -> openCourseEditor(null));
-        Button editCourse = new Button("✎ Sửa");
+        Button editCourse = new Button("Sửa", new IconView("pencil", 15));
         editCourse.setOnAction(e -> {
             Course c = courseTable.getSelectionModel().getSelectedItem();
             if (c != null) {
@@ -108,7 +109,7 @@ public class LearningView extends View {
         VBox.setVgrow(deckList, Priority.ALWAYS);
         deckStats.getStyleClass().add("dim-label");
         buildCardTable();
-        Button addDeck = new Button("+ Bộ thẻ");
+        Button addDeck = new Button("Bộ thẻ", new IconView("plus", 15));
         addDeck.setOnAction(e -> {
             String name = Dialogs.prompt("Bộ thẻ mới", "Tên bộ thẻ:", "").orElse(null);
             if (name != null && !name.isBlank()) {
@@ -128,14 +129,16 @@ public class LearningView extends View {
                 refresh();
             }
         });
-        Button addCard = new Button("+ Thẻ");
+        Button addCard = new Button("Thẻ", new IconView("plus", 15));
         addCard.setOnAction(e -> addCard());
         javafx.scene.control.Button editCardBtn = new javafx.scene.control.Button("Sửa thẻ");
         editCardBtn.setOnAction(e -> editSelectedCard());
         Button reviewDeckBtn = new Button("Ôn tập bộ đang chọn");
         reviewDeckBtn.getStyleClass().add("primary-btn");
         reviewDeckBtn.setOnAction(e -> startReview());
-        Button delCard = new Button("🗑");
+        Button delCard = new Button("", new IconView("trash", 15));
+        delCard.getStyleClass().add("icon-btn");
+        delCard.setTooltip(new Tooltip("Xóa thẻ"));
         delCard.setOnAction(e -> {
             Flashcard f = cardTable.getSelectionModel().getSelectedItem();
             if (f != null && Dialogs.confirm("Xóa thẻ", "Xóa thẻ này?")) {
@@ -322,7 +325,7 @@ public class LearningView extends View {
         pathCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue()));
         materialTable.getColumns().setAll(java.util.List.of(pathCol));
         materialTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        materialTable.setPlaceholder(new EmptyState("📄", "Chưa có tài liệu nào. Bấm \"Thêm tài liệu…\" để gắn file vào khóa."));
+        materialTable.setPlaceholder(new EmptyState("file-text", "Chưa có tài liệu nào. Bấm \"Thêm tài liệu…\" để gắn file vào khóa."));
         materialTable.setOnMouseClicked(e -> {
             if (e.getClickCount() == 2) {
                 openSelectedMaterial();
@@ -383,7 +386,7 @@ public class LearningView extends View {
         topicCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().topic));
         sessionTable.getColumns().setAll(java.util.List.of(dateCol, minutesCol, topicCol));
         sessionTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        sessionTable.setPlaceholder(new EmptyState("⏱", "Chưa có buổi học nào cho khóa đang chọn."));
+        sessionTable.setPlaceholder(new EmptyState("clock", "Chưa có buổi học nào cho khóa đang chọn."));
     }
 
     private void refreshSessions() {
@@ -507,7 +510,7 @@ public class LearningView extends View {
         Deck selectedDeck = deckList.getSelectionModel().getSelectedItem();
         var due = ctx.learning().dueCards(selectedDeck == null ? null : selectedDeck.id);
         if (due.isEmpty()) {
-            Dialogs.info("Ôn tập", "Không có thẻ nào đến hạn hôm nay. 🎉");
+            Dialogs.info("Ôn tập", "Không có thẻ nào đến hạn hôm nay.");
             return;
         }
         int total = due.size();
@@ -523,14 +526,24 @@ public class LearningView extends View {
         javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dialog = Dialogs.newDialog();
         dialog.setTitle("Ôn tập");
         dialog.setHeaderText(null);
-        javafx.scene.control.ButtonType wrong = new javafx.scene.control.ButtonType("Sai ❌",
+        javafx.scene.control.ButtonType wrong = new javafx.scene.control.ButtonType("Sai",
                 javafx.scene.control.ButtonBar.ButtonData.NO);
-        javafx.scene.control.ButtonType right = new javafx.scene.control.ButtonType("Đúng ✓",
+        javafx.scene.control.ButtonType right = new javafx.scene.control.ButtonType("Đúng",
                 javafx.scene.control.ButtonBar.ButtonData.YES);
         dialog.getDialogPane().getButtonTypes().setAll(wrong, right, javafx.scene.control.ButtonType.CANCEL);
         VBox content = new VBox(12, progressLabel, frontLabel, backLabel);
         content.setPadding(new javafx.geometry.Insets(14));
         dialog.getDialogPane().setContent(content);
+        // The bundled JavaFX ButtonType has no graphic-aware constructor, so attach the
+        // icons to the real dialog buttons once the pane has laid them out.
+        dialog.getDialogPane().applyCss();
+        dialog.getDialogPane().layout();
+        if (dialog.getDialogPane().lookupButton(wrong) instanceof Button wrongBtn) {
+            wrongBtn.setGraphic(new IconView("circle-x", 15));
+        }
+        if (dialog.getDialogPane().lookupButton(right) instanceof Button rightBtn) {
+            rightBtn.setGraphic(new IconView("circle-check", 15));
+        }
 
         while (index[0] < total && !cancelled[0]) {
             Flashcard card = due.get(index[0]);

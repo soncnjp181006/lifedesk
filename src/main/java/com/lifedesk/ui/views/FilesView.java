@@ -8,6 +8,7 @@ import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.EmptyState;
+import com.lifedesk.ui.components.IconView;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -69,7 +70,7 @@ public class FilesView extends View {
         title.getStyleClass().add("title-label");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Button addRoot = new Button("+ Cấp quyền thư mục");
+        Button addRoot = new Button("Cấp quyền thư mục", new IconView("plus", 15));
         addRoot.setOnAction(e -> addAllowedRoot());
         HBox header = new HBox(10, title, spacer, addRoot);
         header.setAlignment(Pos.CENTER_LEFT);
@@ -91,8 +92,13 @@ public class FilesView extends View {
         nameQuery.setPromptText("Tên file chứa…");
         extQuery.setPromptText("Phần mở rộng (vd: pdf, docx)");
         minSize.setPromptText("Dung lượng tối thiểu (byte)");
+        nameQuery.setPrefColumnCount(16);
+        extQuery.setPrefColumnCount(16);
+        minSize.setPrefColumnCount(14);
+        rootCombo.setPrefWidth(240);
+        rootCombo.setPromptText("Thư mục đã cấp quyền");
         recursive.setSelected(true);
-        Button searchBtn = new Button("🔍 Tìm kiếm");
+        Button searchBtn = new Button("Tìm kiếm", new IconView("search", 15));
         searchBtn.getStyleClass().add("primary-btn");
         searchBtn.setOnAction(e -> runSearch());
         Button cancelSearch = new Button("Hủy tìm");
@@ -101,23 +107,25 @@ public class FilesView extends View {
                 searchTask.cancel(true);
             }
         });
-        Button browseBtn = new Button("📂 Duyệt thư mục");
+        Button browseBtn = new Button("Duyệt thư mục", new IconView("folder-open", 15));
         browseBtn.setOnAction(e -> browse());
-        Button openBtn = new Button("🚀 Mở bằng app mặc định");
+        Button openBtn = new Button("Mở bằng app mặc định", new IconView("external-link", 15));
         openBtn.setOnAction(e -> openSelected());
-        Button favBtn = new Button("⭐ Thêm vào yêu thích");
+        Button favBtn = new Button("Thêm vào yêu thích", new IconView("star", 15));
         favBtn.setOnAction(e -> addFavorite());
         Button favRemove = new Button("Bỏ yêu thích");
         favRemove.setOnAction(e -> removeFavorite());
 
-        HBox searchRow = new HBox(8, rootCombo, browseBtn, nameQuery, extQuery, minSize, recursive,
-                searchBtn, cancelSearch);
+        // Two rows: a single row clipped every filter's placeholder at 1080px.
+        HBox searchRow = new HBox(8, rootCombo, browseBtn, nameQuery, searchBtn, cancelSearch);
         searchRow.setAlignment(Pos.CENTER_LEFT);
+        HBox filterRow = new HBox(8, extQuery, minSize, recursive);
+        filterRow.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(nameQuery, Priority.ALWAYS);
         HBox.setHgrow(rootCombo, Priority.SOMETIMES);
 
         buildTable();
-        table.setPlaceholder(new EmptyState("📁", "Chọn một thư mục đã cấp quyền để duyệt hoặc tìm kiếm."));
+        table.setPlaceholder(new EmptyState("folder", "Chọn một thư mục đã cấp quyền để duyệt hoặc tìm kiếm."));
 
         favorites.setPrefWidth(240);
         favorites.setCellFactory(v -> new ListCell<>() {
@@ -140,12 +148,16 @@ public class FilesView extends View {
                 }
             }
         });
-        VBox favBox = new VBox(8, new Label("Thư mục yêu thích"), favorites, new HBox(6, favBtn, favRemove));
+        VBox favActions = new VBox(6, favBtn, favRemove);
+        favBtn.setMaxWidth(Double.MAX_VALUE);
+        favRemove.setMaxWidth(Double.MAX_VALUE);
+        VBox favBox = new VBox(8, new Label("Thư mục yêu thích"), favorites, favActions);
         favBox.setPrefWidth(260);
 
-        HBox content = new HBox(12, new VBox(10, searchRow, table), favBox);
-        HBox.setHgrow(content.getChildren().get(0), Priority.ALWAYS);
+        VBox mainPane = new VBox(10, searchRow, filterRow, table);
         VBox.setVgrow(table, Priority.ALWAYS);
+        HBox content = new HBox(12, mainPane, favBox);
+        HBox.setHgrow(mainPane, Priority.ALWAYS);
 
         VBox root = new VBox(10, header, scopeNote, content);
         VBox.setVgrow(root, Priority.ALWAYS);
@@ -165,7 +177,9 @@ public class FilesView extends View {
                     setGraphic(null);
                 } else {
                     setText(null);
-                    setGraphic(new Label((item.directory() ? "📁 " : "📄 ") + item.name()));
+                    Label name = new Label(item.name());
+                    name.setGraphic(new IconView(item.directory() ? "folder" : "file-text", 14));
+                    setGraphic(name);
                 }
             }
         });
