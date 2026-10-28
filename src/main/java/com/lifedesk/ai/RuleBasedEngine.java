@@ -87,7 +87,9 @@ public class RuleBasedEngine implements AiProvider {
 
     @Override
     public boolean supportsModelListing() {
-        return true;
+        // The rule engine has no selectable models; advertising one made the model
+        // browser show "rule-engine-1.0" as if it had been fetched from a provider.
+        return false;
     }
 
     @Override

@@ -40,6 +40,7 @@ public class SettingsView extends View {
     private final List<ModelInfo> fetchedModels = new java.util.ArrayList<>();
     private final Label aiStatusLabel = new Label("");
     private final Label activeModelLabel = new Label();
+    private final ComboBox<String> modelProviderPick = new ComboBox<>();
 
     public SettingsView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -114,9 +115,9 @@ public class SettingsView extends View {
         providerRow.setAlignment(Pos.CENTER_LEFT);
 
         // Ollama settings
-        TextField ollamaUrl = new TextField(ai.ollama.baseUrl);
-        ollamaUrl.setOnAction(e -> {
-            ai.ollama.baseUrl = ollamaUrl.getText().trim();
+        ollamaUrlField = new TextField(ai.ollama.baseUrl);
+        ollamaUrlField.setOnAction(e -> {
+            commitAiFields();
             saveConfig();
         });
         ollamaModelField = new TextField(ai.ollama.model);
@@ -126,67 +127,45 @@ public class SettingsView extends View {
             saveConfig();
         });
         Button testOllama = new Button("Kiểm tra kết nối Ollama");
-        testOllama.setOnAction(e -> Fx.async(ctx.executors().ai(),
-                () -> new AiProvider() {
-                    @Override
-                    public String id() {
-                        return "x";
-                    }
-
-                    @Override
-                    public String displayName() {
-                        return "";
-                    }
-
-                    @Override
-                    public boolean isAvailable() {
-                        return new com.lifedesk.ai.OllamaProvider(ai.ollama).isAvailable();
-                    }
-
-                    @Override
-                    public java.util.List<ModelInfo> listModels() {
-                        return List.of();
-                    }
-
-                    @Override
-                    public String chat(java.util.List<com.lifedesk.ai.ChatMessage> messages, String model) {
-                        return "";
-                    }
-
-                    @Override
-                    public boolean supportsModelListing() {
-                        return false;
-                    }
-                }.isAvailable(),
-                ok -> aiStatusLabel.setText(ok ? "Ollama: kết nối OK" : "Ollama: KHÔNG kết nối được (đang chạy?)"),
-                err -> aiStatusLabel.setText("Ollama lỗi: " + err.getMessage())));
+        testOllama.setOnAction(e -> {
+            commitAiFields();
+            saveConfig();
+            Fx.async(ctx.executors().ai(),
+                    () -> new com.lifedesk.ai.OllamaProvider(ctx.config().ai.ollama).isAvailable(),
+                    ok -> aiStatusLabel.setText(ok ? "Ollama: kết nối OK" : "Ollama: KHÔNG kết nối được (đang chạy?)"),
+                    err -> aiStatusLabel.setText("Ollama lỗi: " + err.getMessage()));
+        });
 
         VBox ollamaBox = new VBox(8, new Label("Ollama (local):"),
-                new HBox(8, new Label("Endpoint"), ollamaUrl, testOllama),
+                new HBox(8, new Label("Endpoint"), ollamaUrlField, testOllama),
                 new HBox(8, new Label("Model"), ollamaModelField));
 
         // Kilo settings
-        TextField kiloUrl = new TextField(ai.kilo.baseUrl);
-        kiloUrl.setOnAction(e -> {
-            ai.kilo.baseUrl = kiloUrl.getText().trim();
+        kiloUrlField = new TextField(ai.kilo.baseUrl);
+        kiloUrlField.setOnAction(e -> {
+            commitAiFields();
             saveConfig();
         });
-        TextField kiloKey = new TextField(ai.kilo.apiKey);
-        kiloKey.setPromptText("API key (lưu cục bộ trong data/ai của bạn)");
-        kiloKey.setOnAction(e -> {
-            ai.kilo.apiKey = kiloKey.getText().trim();
+        kiloKeyField = new TextField(ai.kilo.apiKey);
+        kiloKeyField.setPromptText("API key (dán JWT/key, lưu cục bộ trong config của bạn)");
+        kiloKeyField.setOnAction(e -> {
+            commitAiFields();
             saveConfig();
         });
         kiloModelField = new TextField(ai.kilo.model);
         kiloModelField.setOnAction(e -> {
-            ai.kilo.model = kiloModelField.getText().trim();
+            commitAiFields();
             saveConfig();
         });
         Button testKilo = new Button("Kiểm tra API key");
-        testKilo.setOnAction(e -> Fx.async(ctx.executors().ai(),
-                () -> new com.lifedesk.ai.OpenAiCompatibleProvider(ai.kilo).isAvailable(),
-                ok -> aiStatusLabel.setText(ok ? "Kilo: API key OK" : "Kilo: KHÔNG truy cập được (kiểm tra key/URL)"),
-                err -> aiStatusLabel.setText("Kilo lỗi: " + err.getMessage())));
+        testKilo.setOnAction(e -> {
+            commitAiFields();
+            saveConfig();
+            Fx.async(ctx.executors().ai(),
+                    () -> new com.lifedesk.ai.OpenAiCompatibleProvider(ctx.config().ai.kilo).isAvailable(),
+                    ok -> aiStatusLabel.setText(ok ? "Kilo: API key OK" : "Kilo: KHÔNG truy cập được (kiểm tra key/URL)"),
+                    err -> aiStatusLabel.setText("Kilo lỗi: " + err.getMessage()));
+        });
 
         Label kiloHint = new Label("Chuẩn: https://ai-gateway.kilo.ai/api/v1 — "
                 + "danh sách model lấy từ {base}/models, chat từ {base}/chat/completions.");
@@ -194,11 +173,16 @@ public class SettingsView extends View {
         kiloHint.setWrapText(true);
         VBox kiloBox = new VBox(8, new Label("Kilo (cloud, OpenAI-compatible):"),
                 kiloHint,
-                new HBox(8, new Label("Base URL"), kiloUrl, testKilo),
-                new HBox(8, new Label("API key"), kiloKey),
+                new HBox(8, new Label("Base URL"), kiloUrlField, testKilo),
+                new HBox(8, new Label("API key"), kiloKeyField),
                 new HBox(8, new Label("Model"), kiloModelField));
+        installAiFieldCommits();
 
-        // Model browser
+        // Model browser: fetching follows this picker, not the active provider, so you can
+        // inspect Kilo's real catalogue while the built-in engine is selected.
+        modelProviderPick.getItems().setAll("Kilo (cloud)", "Ollama (local)");
+        modelProviderPick.setValue(com.lifedesk.ai.OllamaProvider.ID.equals(ai.providerId)
+                ? "Ollama (local)" : "Kilo (cloud)");
         Button fetchModels = new Button("Lấy danh sách model", new IconView("download", 15));
         fetchModels.getStyleClass().add("primary-btn");
         fetchModels.setOnAction(e -> fetchModels());
@@ -212,7 +196,7 @@ public class SettingsView extends View {
         pullModel.setOnAction(e -> pullModel());
 
         buildModelTable();
-        modelTable.setPlaceholder(new Label("Bấm \"Lấy danh sách model\" để xem model từ provider hiện tại."));
+        modelTable.setPlaceholder(new Label("Bấm \"Lấy danh sách model\" để lấy từ provider đã chọn bên trái."));
         modelTable.setPrefHeight(340);
         modelTable.setMaxWidth(Double.MAX_VALUE);
         VBox.setVgrow(modelTable, Priority.ALWAYS);
@@ -236,7 +220,8 @@ public class SettingsView extends View {
 
         VBox box = new VBox(12, enabled, providerRow, ollamaBox, kiloBox,
                 new HBox(10, new Label("Model đang dùng:"), activeModelLabel),
-                new HBox(8, fetchModels, modelSearch, selectModel, pullModel),
+                new HBox(8, new Label("Lấy từ:"), modelProviderPick, fetchModels, modelSearch,
+                        selectModel, pullModel),
                 modelTable, includeData, aiStatusLabel);
         refreshAiStatus();
         return wrapScroll(box);
@@ -269,14 +254,56 @@ public class SettingsView extends View {
                 () -> aiStatusLabel.setText("AI tắt"));
     }
 
+    /**
+     * Text fields only committed on Enter, so a pasted key/URL never reached the
+     * provider. Copy every AI field into config before any AI action runs.
+     */
+    private void commitAiFields() {
+        var ai = ctx.config().ai;
+        if (ollamaUrlField != null) {
+            ai.ollama.baseUrl = ollamaUrlField.getText().trim();
+        }
+        if (ollamaModelField != null) {
+            ai.ollama.model = ollamaModelField.getText().trim();
+        }
+        if (kiloUrlField != null) {
+            ai.kilo.baseUrl = kiloUrlField.getText().trim();
+        }
+        if (kiloKeyField != null) {
+            ai.kilo.apiKey = kiloKeyField.getText().trim();
+        }
+        if (kiloModelField != null) {
+            ai.kilo.model = kiloModelField.getText().trim();
+        }
+    }
+
+    private void installAiFieldCommits() {
+        for (TextField f : new TextField[]{ollamaUrlField, ollamaModelField,
+                kiloUrlField, kiloKeyField, kiloModelField}) {
+            if (f == null) {
+                continue;
+            }
+            f.focusedProperty().addListener((o, was, is) -> {
+                if (!is) {
+                    commitAiFields();
+                    saveConfig();
+                }
+            });
+        }
+    }
+
     private void fetchModels() {
+        commitAiFields();
+        saveConfig();
         if (!ctx.ai().enabled()) {
             Dialogs.info("AI tắt", "Bật AI trước khi lấy danh sách model.");
             return;
         }
-        AiProvider p = ctx.ai().currentProvider().orElse(null);
+        String providerId = "Ollama (local)".equals(modelProviderPick.getValue())
+                ? com.lifedesk.ai.OllamaProvider.ID : com.lifedesk.ai.OpenAiCompatibleProvider.ID;
+        var p = ctx.ai().byId(providerId);
         if (p == null || !p.supportsModelListing()) {
-            Dialogs.info("Provider không liệt kê model", "Engine quy tắc không có danh sách model. Chọn Ollama hoặc Kilo.");
+            Dialogs.info("Provider không liệt kê model", "Chọn Kilo hoặc Ollama để lấy danh sách model.");
             return;
         }
         main.status("Đang lấy danh sách model từ " + p.displayName() + "…");
@@ -285,12 +312,14 @@ public class SettingsView extends View {
                     fetchedModels.clear();
                     fetchedModels.addAll(models);
                     filterModels();
-                    main.status("Đã lấy " + models.size() + " model từ " + p.displayName());
+                    main.status(models.isEmpty()
+                            ? "Provider không trả về model nào"
+                            : "Đã lấy " + models.size() + " model từ " + p.displayName());
                 },
-                err -> {
-                    Dialogs.error("Không lấy được danh sách model", err.getMessage()
-                            + "\n(Kilo: kiểm tra API key; Ollama: kiểm tra endpoint và đảm bảo ollama serve đang chạy)");
-                });
+                err -> Dialogs.error("Không lấy được danh sách model", err.getMessage()
+                        + (providerId.equals(com.lifedesk.ai.OpenAiCompatibleProvider.ID)
+                        ? "\n(Kilo: kiểm tra API key và Base URL)"
+                        : "\n(Ollama: kiểm tra endpoint và đảm bảo ollama serve đang chạy)")));
     }
 
     /** Live filter: the table always mirrors search text over the fetched list. */
@@ -329,7 +358,10 @@ public class SettingsView extends View {
     }
 
     private TextField ollamaModelField;
+    private TextField ollamaUrlField;
     private TextField kiloModelField;
+    private TextField kiloUrlField;
+    private TextField kiloKeyField;
 
     private void pullModel() {
         if (!ctx.ai().enabled()) {
