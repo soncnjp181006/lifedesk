@@ -69,6 +69,8 @@ public class HabitsView extends View {
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
         todayOnlyMode = new ToggleButton("Chỉ việc hôm nay");
+        // Without this the button only takes effect after some unrelated refresh.
+        todayOnlyMode.selectedProperty().addListener((o, a, b) -> refreshHabits());
         Button weekBtn = new Button("Tổng kết tuần", new IconView("chart-column", 15));
         weekBtn.setOnAction(e -> showWeeklySummary());
         Button logBtn = new Button("Nhật ký thay đổi", new IconView("scroll-text", 15));

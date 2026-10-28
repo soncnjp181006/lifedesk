@@ -256,36 +256,6 @@ public class HealthView extends View {
         for (MetricDef m : ctx.health().metrics()) {
             HBox row = new HBox(8, new Label(m.name + (m.unit.isBlank() ? "" : " (" + m.unit + ")")
                     + (m.target != null ? " — mục tiêu " + m.target.toPlainString() : "")));
-            Button edit = new Button("Sửa");
-            edit.setOnAction(e -> {
-                javafx.scene.control.Dialog<Boolean> dialog = Dialogs.newDialog();
-                dialog.setTitle("Sửa chỉ số");
-                dialog.setHeaderText(null);
-                dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
-                        javafx.scene.control.ButtonType.CANCEL);
-                TextField nameField = new TextField(m.name);
-                TextField unitField = new TextField(m.unit);
-                TextField targetField = new TextField(m.target == null ? "" : m.target.toPlainString());
-                dialog.getDialogPane().setContent(new VBox(8,
-                        new Label("Tên *"), nameField, new Label("Đơn vị"), unitField,
-                        new Label("Mục tiêu cá nhân"), targetField));
-                dialog.setResultConverter(bt -> bt.getButtonData()
-                        == javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
-                dialog.showAndWait().ifPresent(ok -> {
-                    if (!ok) {
-                        return;
-                    }
-                    try {
-                        ctx.health().updateMetric(m.id, nameField.getText(), unitField.getText(),
-                                targetField.getText().isBlank() ? null : new BigDecimal(targetField.getText().trim()));
-                        loadEntry();
-                    } catch (NumberFormatException ex) {
-                        Dialogs.error("Mục tiêu không hợp lệ", "Nhập số hoặc để trống.");
-                    } catch (RuntimeException ex) {
-                        Dialogs.error("Không sửa được chỉ số", ex.getMessage());
-                    }
-                });
-            });
             Button del = new Button("Xóa");
             del.setOnAction(e -> {
                 ctx.health().deleteMetric(m.id);

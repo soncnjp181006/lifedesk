@@ -313,7 +313,6 @@ public class AutomationView extends View {
         for (var s : run.steps) {
             sb.append("\n[").append(s.status).append("] ").append(s.tool)
                     .append(" (lần thử: ").append(s.attempts).append(")\n")
-                    .append("  params: ").append(s.paramsSanitized).append('\n')
                     .append("  → ").append(s.message).append('\n');
         }
         stepDetail.setText(sb.toString());

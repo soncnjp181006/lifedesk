@@ -107,17 +107,15 @@ public class FilesView extends View {
                 searchTask.cancel(true);
             }
         });
-        Button browseBtn = new Button("Duyệt thư mục", new IconView("folder-open", 15));
-        browseBtn.setOnAction(e -> browse());
-        Button openBtn = new Button("Mở bằng app mặc định", new IconView("external-link", 15));
-        openBtn.setOnAction(e -> openSelected());
         Button favBtn = new Button("Thêm vào yêu thích", new IconView("star", 15));
         favBtn.setOnAction(e -> addFavorite());
         Button favRemove = new Button("Bỏ yêu thích");
         favRemove.setOnAction(e -> removeFavorite());
 
         // Two rows: a single row clipped every filter's placeholder at 1080px.
-        HBox searchRow = new HBox(8, rootCombo, browseBtn, nameQuery, searchBtn, cancelSearch);
+        // Selecting a root in the combo already browses it; a separate "Duyệt" button
+        // was a second path to the same call and did nothing while no root existed.
+        HBox searchRow = new HBox(8, rootCombo, nameQuery, searchBtn, cancelSearch);
         searchRow.setAlignment(Pos.CENTER_LEFT);
         HBox filterRow = new HBox(8, extQuery, minSize, recursive);
         filterRow.setAlignment(Pos.CENTER_LEFT);
@@ -228,6 +226,10 @@ public class FilesView extends View {
         } else if (!rootCombo.getItems().isEmpty()) {
             rootCombo.getSelectionModel().selectFirst();
         }
+        // An empty root list used to leave a dropdown that silently opened nothing.
+        boolean none = rootCombo.getItems().isEmpty();
+        rootCombo.setDisable(none);
+        rootCombo.setPromptText(none ? "Chưa cấp quyền thư mục nào" : "Thư mục đã cấp quyền");
     }
 
     private void addAllowedRoot() {
