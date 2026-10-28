@@ -12,7 +12,6 @@ import javafx.animation.PauseTransition;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
-import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -40,8 +39,6 @@ import java.util.LinkedHashSet;
  * external edits are never silently overwritten.
  */
 public class NotesView extends View {
-    private final ComboBox<String> folderPick = new ComboBox<>();
-    private boolean updatingFolders;
     private final ListView<NoteMeta> noteList = new ListView<>();
     private final TextField searchField = new TextField();
     private final TextField titleField = new TextField();
@@ -56,7 +53,6 @@ public class NotesView extends View {
     private NoteMeta current;
     private String loadedHash = "";
     private boolean previewMode = true;
-    private String currentFolder = "";
 
     public NotesView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -69,25 +65,7 @@ public class NotesView extends View {
 
     @Override
     protected Node build() {
-        // ---- left: folders + list + search
-        // A full folder list wasted half the column on two rows; a compact picker
-        // leaves the vertical space to the note list.
-        folderPick.setMaxWidth(Double.MAX_VALUE);
-        folderPick.getItems().add("(tất cả)");
-        folderPick.getSelectionModel().select(0);
-        folderPick.valueProperty().addListener((o, a, b) -> {
-            if (updatingFolders) {
-                return;
-            }
-            currentFolder = "(tất cả)".equals(b) || b == null ? "" : b;
-            refreshNoteList();
-        });
-        Label folderLabel = new Label("Thư mục");
-        folderLabel.getStyleClass().add("form-label");
-        HBox folderRow = new HBox(10, folderLabel, folderPick);
-        folderRow.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(folderPick, Priority.ALWAYS);
-
+        // ---- left: list + search
         noteList.setPrefWidth(270);
         noteList.getStyleClass().add("note-list");
         noteList.setCellFactory(v -> new ListCell<>() {
@@ -131,14 +109,13 @@ public class NotesView extends View {
 
         HBox listActions = new HBox(8, newBtn, starBtn, delBtn);
         listActions.setAlignment(Pos.CENTER_LEFT);
-        VBox left = new VBox(10, searchField, folderRow, noteList, listActions);
+        VBox left = new VBox(10, searchField, noteList, listActions);
         left.getStyleClass().add("notes-sidebar");
         VBox.setVgrow(noteList, Priority.ALWAYS);
         left.setMinWidth(300);
         left.setPrefWidth(340);
         searchField.setMinWidth(0);
         searchField.getStyleClass().add("notes-search-field");
-        folderPick.getStyleClass().add("notes-folder-picker");
         SplitPane.setResizableWithParent(left, Boolean.FALSE);
 
         // ---- right: editor + preview
@@ -237,27 +214,12 @@ public class NotesView extends View {
 
     // ------------------------------------------------------------------ list
 
-    private void refreshFolders() {
-        String current = folderPick.getValue();
-        updatingFolders = true;
-        folderPick.getItems().setAll("(tất cả)");
-        // blank folder = root; shown as "(gốc)" instead of an empty row
-        ctx.notes().folders().stream()
-                .filter(f -> !f.isBlank())
-                .forEach(folderPick.getItems()::add);
-        folderPick.setValue(current != null && folderPick.getItems().contains(current)
-                ? current : "(tất cả)");
-        updatingFolders = false;
-    }
-
     private void refreshNoteList() {
         String q = searchField.getText();
         var notes = ctx.notes().search(q).stream()
-                .filter(n -> currentFolder.isEmpty() || n.folder.equals(currentFolder))
                 .sorted(Comparator.comparing((NoteMeta n) -> n.updatedAt).reversed())
                 .toList();
         noteList.getItems().setAll(notes);
-        refreshFolders();
     }
 
     private void openNote(NoteMeta meta) {
@@ -333,7 +295,6 @@ public class NotesView extends View {
     private void refreshNoteListKeepingSelection() {
         String q = searchField.getText();
         var notes = ctx.notes().search(q).stream()
-                .filter(n -> currentFolder.isEmpty() || n.folder.equals(currentFolder))
                 .sorted(Comparator.comparing((NoteMeta n) -> n.updatedAt).reversed())
                 .toList();
         NoteMeta selected = noteList.getSelectionModel().getSelectedItem();
@@ -349,7 +310,7 @@ public class NotesView extends View {
         if (title == null || title.isBlank()) {
             return;
         }
-        NoteMeta meta = ctx.notes().create(title, currentFolder, "# " + title + "\n\n", new LinkedHashSet<>());
+        NoteMeta meta = ctx.notes().create(title, "", "# " + title + "\n\n", new LinkedHashSet<>());
         refreshNoteList();
         noteList.getSelectionModel().select(meta);
     }
