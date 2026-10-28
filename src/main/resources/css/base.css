@@ -53,20 +53,25 @@
 }
 
 .title-label {
-    -fx-font-size: 20px;
+    -fx-font-size: 22px;
     -fx-font-weight: bold;
     -fx-text-fill: -ld-text;
 }
 
 .page-subtitle {
     -fx-text-fill: -ld-text-dim;
-    -fx-font-size: 12.5px;
+    -fx-font-size: 13px;
 }
 
 .section-label {
     -fx-font-size: 13px;
     -fx-font-weight: bold;
     -fx-text-fill: -ld-text;
+}
+
+.form-label {
+    -fx-font-size: 12.5px;
+    -fx-text-fill: -ld-text-dim;
 }
 
 .card-title {
@@ -147,15 +152,16 @@
 .button {
     -fx-background-color: -ld-elev;
     -fx-text-fill: -ld-text;
-    -fx-background-radius: 6;
-    -fx-border-radius: 6;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
     -fx-border-color: -ld-border;
     -fx-border-width: 1;
-    -fx-padding: 6 12 6 12;
+    -fx-padding: 7 13 7 13;
+    -fx-min-height: 34;
     -fx-cursor: hand;
-    -fx-font-size: 12.5px;
+    -fx-font-size: 13px;
     -fx-font-weight: normal;
-    -fx-graphic-text-gap: 6;
+    -fx-graphic-text-gap: 7;
 }
 
 .button:hover {
@@ -167,7 +173,7 @@
     -fx-background-color: -ld-elev;
     -fx-border-color: -ld-accent;
     -fx-border-width: 2;
-    -fx-padding: 5 11 5 11;               /* keep outer size stable while focused */
+    -fx-padding: 6 12 6 12;               /* keep outer size stable while focused */
 }
 
 .button:pressed {
@@ -227,9 +233,14 @@
 .icon-btn {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
-    -fx-background-radius: 6;
-    -fx-border-radius: 6;
-    -fx-padding: 6 8 6 8;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 0;
+    -fx-min-width: 34;
+    -fx-min-height: 34;
+    -fx-max-width: 34;
+    -fx-max-height: 34;
+    -fx-alignment: center;
     -fx-font-size: 13px;
     -fx-min-width: 30;                     /* hit area, rule: touch-target-size    */
     -fx-alignment: center;
@@ -254,11 +265,12 @@
     -fx-background-color: -ld-input;
     -fx-text-fill: -ld-text;
     -fx-prompt-text-fill: -ld-text-dim;
-    -fx-background-radius: 6;
-    -fx-border-radius: 6;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
     -fx-border-color: -ld-border;
     -fx-border-width: 1;
-    -fx-padding: 6 10 6 10;
+    -fx-padding: 7 11 7 11;
+    -fx-min-height: 34;
     -fx-highlight-fill: -ld-accent-soft;
     -fx-highlight-text-fill: -ld-text;
 }
@@ -266,7 +278,7 @@
 .text-field:focused, .text-area:focused, .password-field:focused {
     -fx-border-color: -ld-accent;
     -fx-border-width: 2;
-    -fx-padding: 5 9 5 9;
+    -fx-padding: 6 10 6 10;
 }
 
 .text-area .content {
@@ -276,12 +288,13 @@
 .search-field {
     -fx-background-radius: 999;
     -fx-border-radius: 999;
-    -fx-padding: 6 14 6 14;
-    -fx-min-width: 300;
+    -fx-padding: 7 15 7 15;
+    -fx-min-width: 320;
+    -fx-min-height: 34;
 }
 
 .search-field:focused {
-    -fx-padding: 5 13 5 13;
+    -fx-padding: 6 14 6 14;
 }
 
 /* ======================================================================
@@ -291,10 +304,11 @@
 .combo-box, .date-picker, .spinner {
     -fx-background-color: -ld-input;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 6;
-    -fx-background-radius: 6;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
     -fx-border-width: 1;
     -fx-padding: 1 2 1 2;
+    -fx-min-height: 34;
     -fx-cursor: hand;
 }
 
@@ -604,7 +618,7 @@
 
 .content-area {
     -fx-background-color: -ld-bg;
-    -fx-padding: 16 18 16 18;
+    -fx-padding: 22 24 22 24;
 }
 
 .statusbar {
@@ -624,32 +638,32 @@
 
 .card {
     -fx-background-color: -ld-card;
-    -fx-background-radius: 8;
+    -fx-background-radius: 10;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 8;
+    -fx-border-radius: 10;
     -fx-border-width: 1;
-    -fx-padding: 14;
-    -fx-spacing: 8;
+    -fx-padding: 18;
+    -fx-spacing: 12;
 }
 
 .summary-card {
     -fx-background-color: -ld-card;
-    -fx-background-radius: 8;
+    -fx-background-radius: 10;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 8;
+    -fx-border-radius: 10;
     -fx-border-width: 1;
-    -fx-padding: 12 14 12 14;
-    -fx-spacing: 4;
+    -fx-padding: 14 16 14 16;
+    -fx-spacing: 6;
 }
 
 .quick-add-bar {
     -fx-background-color: -ld-card;
-    -fx-background-radius: 8;
+    -fx-background-radius: 10;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 8;
+    -fx-border-radius: 10;
     -fx-border-width: 1;
-    -fx-padding: 10 12 10 12;
-    -fx-spacing: 8;
+    -fx-padding: 14;
+    -fx-spacing: 10;
 }
 
 /* ======================================================================

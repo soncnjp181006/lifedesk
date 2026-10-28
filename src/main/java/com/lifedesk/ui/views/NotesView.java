@@ -68,7 +68,10 @@ public class NotesView extends View {
     @Override
     protected Node build() {
         // ---- left: folders + list + search
-        folderList.setPrefWidth(170);
+        // The folder list used to take half the column and squeeze the note list.
+        folderList.setPrefHeight(150);
+        folderList.setMinHeight(110);
+        folderList.setMaxHeight(190);
         folderList.getItems().add("(tất cả)");
         folderList.getSelectionModel().select(0);
         folderList.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
@@ -118,7 +121,9 @@ public class NotesView extends View {
 
         VBox left = new VBox(8, searchField, folderList, noteList, new HBox(6, newBtn, starBtn, delBtn));
         VBox.setVgrow(noteList, Priority.ALWAYS);
-        left.setPrefWidth(460);
+        left.setMinWidth(300);
+        left.setPrefWidth(340);
+        searchField.setMinWidth(0);
         SplitPane.setResizableWithParent(left, Boolean.FALSE);
 
         // ---- right: editor + preview

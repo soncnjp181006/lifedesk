@@ -61,7 +61,8 @@ public class LearningView extends View {
         Button reviewBtn = new Button("Ôn tập (" + ctx.learning().dueCount() + " thẻ đến hạn)", new IconView("target", 15));
         reviewBtn.getStyleClass().add("primary-btn");
         reviewBtn.setOnAction(e -> startReview());
-        HBox header = new HBox(10, title, spacer, dueLabel, reviewBtn);
+        dueLabel.getStyleClass().add("dim-label");
+        HBox header = new HBox(12, title, spacer, dueLabel, reviewBtn);
         header.setAlignment(Pos.CENTER_LEFT);
 
         // ---- courses
@@ -85,7 +86,6 @@ public class LearningView extends View {
         });
 
         // ---- flashcards
-        deckList.setPrefWidth(220);
         deckList.setCellFactory(v -> new ListCell<>() {
             @Override
             protected void updateItem(Deck item, boolean empty) {
@@ -95,8 +95,7 @@ public class LearningView extends View {
             }
         });
         deckList.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> refreshCards());
-        deckList.setPrefHeight(400);
-        deckList.setPrefWidth(280);
+        deckList.setPrefHeight(200);
         VBox.setVgrow(deckList, Priority.ALWAYS);
         deckStats.getStyleClass().add("dim-label");
         buildCardTable();
@@ -148,7 +147,9 @@ public class LearningView extends View {
         openMaterial.setOnAction(e -> openSelectedMaterial());
         Button delMaterial = new Button("Bỏ tài liệu");
         delMaterial.setOnAction(e -> removeSelectedMaterial());
-        VBox materialsPane = new VBox(8, new HBox(8, addMaterial, openMaterial, delMaterial), materialTable);
+        HBox materialToolbar = new HBox(10, addMaterial, openMaterial, delMaterial);
+        materialToolbar.setAlignment(Pos.CENTER_LEFT);
+        VBox materialsPane = new VBox(10, materialToolbar, materialTable);
         VBox.setVgrow(materialTable, Priority.ALWAYS);
         // Fixed heights (260/180/220) pushed the session table below the fold; let the
         // three tables share the viewport instead.
@@ -159,24 +160,23 @@ public class LearningView extends View {
         VBox.setVgrow(courseTable, Priority.ALWAYS);
         VBox.setVgrow(materialsPane, Priority.ALWAYS);
 
-        VBox deckPane = new VBox(8, deckList, deckStats);
-        deckList.setPrefHeight(200);
-        VBox.setVgrow(deckList, Priority.ALWAYS);
-        VBox cardPane = new VBox(8, new HBox(8, addCard, editCardBtn, delCard), cardTable);
+        VBox deckPane = new VBox(10, deckList, deckStats);
+        deckPane.setMinWidth(260);
+        deckPane.setPrefWidth(260);
+        VBox cardPane = new VBox(10, new HBox(10, addCard, editCardBtn, delCard), cardTable);
         cardTable.setPrefHeight(240);
         VBox.setVgrow(cardTable, Priority.ALWAYS);
         HBox.setHgrow(cardPane, Priority.ALWAYS);
-        HBox flashcardsRow = new HBox(10, deckPane, cardPane);
+        HBox flashcardsRow = new HBox(16, deckPane, cardPane);
         VBox.setVgrow(flashcardsRow, Priority.ALWAYS);
 
+        HBox courseToolbar = new HBox(10, addCourse, editCourse, delCourse);
+        courseToolbar.setAlignment(Pos.CENTER_LEFT);
+        HBox deckToolbar = new HBox(10, addDeck, renameDeck, reviewDeckBtn);
+        deckToolbar.setAlignment(Pos.CENTER_LEFT);
         tabs.getTabs().addAll(
-                new Tab("Khóa học & tài liệu", new VBox(10,
-                        new HBox(8, addCourse, editCourse, delCourse),
-                        courseTable,
-                        materialsPane)),
-                new Tab("Flashcards", new VBox(10,
-                        new HBox(8, addDeck, renameDeck, reviewDeckBtn),
-                        flashcardsRow)));
+                new Tab("Khóa học & tài liệu", new VBox(14, courseToolbar, courseTable, materialsPane)),
+                new Tab("Flashcards", new VBox(14, deckToolbar, flashcardsRow)));
 
         ctx.learning().changes().addListener(() -> javafx.application.Platform.runLater(this::refresh));
         return new VBox(10, header, tabs);

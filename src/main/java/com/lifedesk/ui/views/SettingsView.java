@@ -104,15 +104,15 @@ public class SettingsView extends View {
         ComboBox<String> provider = new ComboBox<>();
         provider.getItems().addAll("rule-based", "ollama", "kilo");
         provider.setValue(ai.providerId);
+        provider.setMaxWidth(360);
         provider.setOnAction(e -> {
             ai.providerId = provider.getValue();
             saveConfig();
             refreshAiStatus();
         });
 
-        Label providerLabel = new Label("Provider đang dùng:");
-        HBox providerRow = new HBox(10, providerLabel, provider);
-        providerRow.setAlignment(Pos.CENTER_LEFT);
+        com.lifedesk.ui.components.FormGrid providerRow =
+                new com.lifedesk.ui.components.FormGrid().row("Provider đang dùng", provider);
 
         // Ollama settings
         ollamaUrlField = new TextField(ai.ollama.baseUrl);
@@ -136,9 +136,12 @@ public class SettingsView extends View {
                     err -> aiStatusLabel.setText("Ollama lỗi: " + err.getMessage()));
         });
 
-        VBox ollamaBox = new VBox(8, new Label("Ollama (local):"),
-                new HBox(8, new Label("Endpoint"), ollamaUrlField, testOllama),
-                new HBox(8, new Label("Model"), ollamaModelField));
+        Label ollamaHeading = new Label("Ollama (local)");
+        ollamaHeading.getStyleClass().add("section-label");
+        com.lifedesk.ui.components.FormGrid ollamaForm = new com.lifedesk.ui.components.FormGrid()
+                .row("Endpoint", ollamaUrlField, testOllama)
+                .row("Model", ollamaModelField);
+        VBox ollamaBox = new VBox(10, ollamaHeading, ollamaForm);
 
         // Kilo settings
         kiloUrlField = new TextField(ai.kilo.baseUrl);
@@ -171,11 +174,13 @@ public class SettingsView extends View {
                 + "danh sách model lấy từ {base}/models, chat từ {base}/chat/completions.");
         kiloHint.getStyleClass().add("dim-label");
         kiloHint.setWrapText(true);
-        VBox kiloBox = new VBox(8, new Label("Kilo (cloud, OpenAI-compatible):"),
-                kiloHint,
-                new HBox(8, new Label("Base URL"), kiloUrlField, testKilo),
-                new HBox(8, new Label("API key"), kiloKeyField),
-                new HBox(8, new Label("Model"), kiloModelField));
+        Label kiloHeading = new Label("Kilo (cloud, OpenAI-compatible)");
+        kiloHeading.getStyleClass().add("section-label");
+        com.lifedesk.ui.components.FormGrid kiloForm = new com.lifedesk.ui.components.FormGrid()
+                .row("Base URL", kiloUrlField, testKilo)
+                .row("API key", kiloKeyField)
+                .row("Model", kiloModelField);
+        VBox kiloBox = new VBox(10, kiloHeading, kiloHint, kiloForm);
         installAiFieldCommits();
 
         // Model browser: fetching follows this picker, not the active provider, so you can
@@ -197,7 +202,7 @@ public class SettingsView extends View {
 
         buildModelTable();
         modelTable.setPlaceholder(new Label("Bấm \"Lấy danh sách model\" để lấy từ provider đã chọn bên trái."));
-        modelTable.setPrefHeight(340);
+        modelTable.setPrefHeight(260);
         modelTable.setMaxWidth(Double.MAX_VALUE);
         VBox.setVgrow(modelTable, Priority.ALWAYS);
         modelTable.setRowFactory(v -> {
@@ -218,10 +223,15 @@ public class SettingsView extends View {
             saveConfig();
         });
 
-        VBox box = new VBox(12, enabled, providerRow, ollamaBox, kiloBox,
-                new HBox(10, new Label("Model đang dùng:"), activeModelLabel),
-                new HBox(8, new Label("Lấy từ:"), modelProviderPick, fetchModels, modelSearch,
-                        selectModel, pullModel),
+        HBox activeModelRow = new HBox(10, new Label("Model đang dùng:"), activeModelLabel);
+        activeModelRow.setAlignment(Pos.CENTER_LEFT);
+        HBox modelToolbar = new HBox(10, new Label("Lấy từ:"), modelProviderPick, fetchModels,
+                modelSearch, selectModel, pullModel);
+        modelToolbar.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(modelSearch, Priority.ALWAYS);
+
+        VBox box = new VBox(14, enabled, providerRow, ollamaBox, kiloBox,
+                new javafx.scene.control.Separator(), activeModelRow, modelToolbar,
                 modelTable, includeData, aiStatusLabel);
         refreshAiStatus();
         return wrapScroll(box);
