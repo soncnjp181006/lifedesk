@@ -6,6 +6,7 @@ import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.EmptyState;
+import com.lifedesk.ui.Fx;
 import com.lifedesk.ui.components.IconView;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -33,6 +34,11 @@ public class AiChatView extends View {
     private final Label providerStatus = new Label();
     private volatile boolean busy = false;
     private Node emptyState;
+    private Button sendBtn;
+    private Button stopBtn;
+    /** Bumps on stop/new-chat so a late provider reply cannot touch the UI. */
+    private int chatGen = 0;
+    private VBox thinking;
     /** Guards against a slow probe from an earlier refresh overwriting a newer one. */
     private int statusTicket = 0;
 
@@ -51,9 +57,11 @@ public class AiChatView extends View {
         title.getStyleClass().add("title-label");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
+        Button newChatBtn = new Button("Cuộc trò chuyện mới", new IconView("plus", 15));
+        newChatBtn.setOnAction(e -> startNewChat());
         Button settingsBtn = new Button("Cài đặt AI", new IconView("settings", 15));
         settingsBtn.setOnAction(e -> main.showView(MainWindow.ViewId.SETTINGS));
-        HBox header = new HBox(10, title, spacer, providerStatus, settingsBtn);
+        HBox header = new HBox(10, title, spacer, providerStatus, newChatBtn, settingsBtn);
         header.setAlignment(Pos.CENTER_LEFT);
 
         HBox quickRow = new HBox(8);
@@ -70,11 +78,14 @@ public class AiChatView extends View {
 
         input.setPromptText("Nhập câu hỏi hoặc lệnh… (Enter để gửi)");
         input.setOnAction(e -> send());
-        Button sendBtn = new Button("Gửi", new IconView("send", 15));
+        sendBtn = new Button("Gửi", new IconView("send", 15));
         sendBtn.getStyleClass().add("primary-btn");
         sendBtn.setOnAction(e -> send());
+        stopBtn = new Button("Dừng", new IconView("circle-x", 15));
+        stopBtn.getStyleClass().add("danger-btn");
+        stopBtn.setOnAction(e -> stopChat());
 
-        HBox inputRow = new HBox(8, input, sendBtn);
+        HBox inputRow = new HBox(8, input, sendBtn, stopBtn);
         inputRow.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(input, Priority.ALWAYS);
 
@@ -96,6 +107,7 @@ public class AiChatView extends View {
             chatBox.getChildren().add(emptyState);
         }
         refreshStatus();
+        setBusy(false);
         return root;
     }
 
@@ -155,6 +167,16 @@ public class AiChatView extends View {
         return b;
     }
 
+    private void setBusy(boolean running) {
+        busy = running;
+        if (sendBtn != null) {
+            sendBtn.setDisable(running);
+        }
+        if (stopBtn != null) {
+            stopBtn.setDisable(!running);
+        }
+    }
+
     private void send() {
         String text = input.getText();
         if (text == null || text.isBlank() || busy) {
@@ -164,31 +186,72 @@ public class AiChatView extends View {
             Dialogs.info("AI đang tắt", "Bật AI và chọn provider trong Cài đặt → AI.");
             return;
         }
-        busy = true;
-        input.clear();
-        addBubble("user", text);
-        VBox thinking = addBubble("ai", "…đang xử lý");
         var provider = ctx.ai().currentProvider();
         if (provider.isEmpty()) {
-            thinking.getChildren().setAll(new Label("AI tắt."));
-            busy = false;
+            Dialogs.info("AI tắt", "Chưa có provider nào đang bật.");
             return;
         }
-        ctx.ai().chatAsync(ctx.executors().ai(), history, text,
-                reply -> {
-                    thinking.getChildren().setAll(wrapLabel(reply, "chat-bubble-ai"));
-                    history.add(com.lifedesk.ai.ChatMessage.user(text));
+        final int gen = ++chatGen;
+        final String question = text;
+        setBusy(true);
+        input.clear();
+        addBubble("user", question);
+        final VBox bubble = addBubble("ai", "…đang xử lý");
+        thinking = bubble;
+        // chatAsync invokes its callbacks on the AI pool thread, so every UI change
+        // must be marshalled back; doing it inline left `busy` stuck forever.
+        ctx.ai().chatAsync(ctx.executors().ai(), List.copyOf(history), question,
+                reply -> Fx.runLater(() -> {
+                    if (gen != chatGen) {
+                        return;
+                    }
+                    bubble.getChildren().setAll(wrapLabel(reply, "chat-bubble-ai"));
+                    history.add(com.lifedesk.ai.ChatMessage.user(question));
                     history.add(com.lifedesk.ai.ChatMessage.assistant(reply));
                     trimHistory();
-                    busy = false;
-                },
-                err -> {
-                    thinking.getChildren().setAll(wrapLabel(
+                    thinking = null;
+                    setBusy(false);
+                }),
+                err -> Fx.runLater(() -> {
+                    if (gen != chatGen) {
+                        return;
+                    }
+                    bubble.getChildren().setAll(wrapLabel(
                             "Lỗi provider: " + err.getMessage()
                                     + "\n(Thử lại, đổi provider trong Cài đặt → AI, hoặc dùng engine quy tắc offline.)",
                             "chat-bubble-ai"));
-                    busy = false;
-                });
+                    thinking = null;
+                    setBusy(false);
+                }));
+    }
+
+    /** Abandon the in-flight request: its result is ignored and the UI is usable again. */
+    private void stopChat() {
+        if (!busy) {
+            return;
+        }
+        chatGen++;
+        setBusy(false);
+        if (thinking != null) {
+            thinking.getChildren().setAll(wrapLabel("Đã dừng yêu cầu.", "chat-bubble-ai"));
+            thinking = null;
+        }
+        main.status("Đã dừng yêu cầu AI");
+    }
+
+    private void startNewChat() {
+        if (busy) {
+            stopChat();
+        }
+        chatGen++;
+        history.clear();
+        thinking = null;
+        chatBox.getChildren().clear();
+        emptyState = new EmptyState("bot",
+                "Chưa có hội thoại. Bấm một gợi ý phía trên hoặc gõ câu hỏi bên dưới.");
+        chatBox.getChildren().add(emptyState);
+        setBusy(false);
+        main.status("Đã bắt đầu cuộc trò chuyện mới");
     }
 
     private void trimHistory() {
