@@ -21,7 +21,7 @@ import java.util.List;
  * Review schedule: box 1..6 with intervals 1,2,4,7,15,30 days.
  */
 public class LearningService {
-    /** Leitner intervals in days, indexed by box-1. Box 7 means graduated. */
+    /** Leitner intervals in days, indexed by box-1. Boxes top out at 6 (no graduation state). */
     public static final int[] BOX_INTERVALS = {1, 2, 4, 7, 15, 30};
 
     private final JsonStore store;

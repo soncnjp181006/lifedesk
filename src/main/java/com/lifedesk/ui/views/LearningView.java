@@ -5,7 +5,6 @@ import com.lifedesk.learning.Course;
 import com.lifedesk.learning.CourseStatus;
 import com.lifedesk.learning.Deck;
 import com.lifedesk.learning.Flashcard;
-import com.lifedesk.learning.LearningService;
 import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
@@ -16,7 +15,6 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
-import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -33,14 +31,14 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
-import java.time.LocalDate;
 import java.util.List;
 
 /** Learning: courses with study sessions, decks of flashcards with Leitner review. */
 public class LearningView extends View {
+    private static final java.time.format.DateTimeFormatter DF =
+            java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
     private final TableView<Course> courseTable = new TableView<>();
-    private final TableView<com.lifedesk.learning.StudySession> sessionTable =
-            new TableView<>();
     private final TableView<Flashcard> cardTable = new TableView<>();
     private final ListView<Deck> deckList = new ListView<>();
     private final Label dueLabel = new Label();
@@ -78,12 +76,6 @@ public class LearningView extends View {
                 openCourseEditor(c);
             }
         });
-        Button logSession = new Button("Ghi buổi học");
-        logSession.setOnAction(e -> logSession());
-        Button editSession = new Button("Sửa buổi");
-        editSession.setOnAction(e -> editSelectedSession());
-        Button delSession = new Button("Xóa buổi");
-        delSession.setOnAction(e -> deleteSelectedSession());
         Button delCourse = new Button("Xóa khóa");
         delCourse.setOnAction(e -> {
             Course c = courseTable.getSelectionModel().getSelectedItem();
@@ -91,7 +83,6 @@ public class LearningView extends View {
                 ctx.learning().deleteCourse(c.id);
             }
         });
-        courseTable.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> refreshSessions());
 
         // ---- flashcards
         deckList.setPrefWidth(220);
@@ -149,7 +140,6 @@ public class LearningView extends View {
 
         TabPane tabs = new TabPane();
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-        buildSessionTable();
         buildMaterialTable();
         Button addMaterial = new Button("Thêm tài liệu…");
         addMaterial.setTooltip(new javafx.scene.control.Tooltip("Chọn file tài liệu (slide, sách, bài giảng…) gắn vào khóa"));
@@ -160,23 +150,33 @@ public class LearningView extends View {
         delMaterial.setOnAction(e -> removeSelectedMaterial());
         VBox materialsPane = new VBox(8, new HBox(8, addMaterial, openMaterial, delMaterial), materialTable);
         VBox.setVgrow(materialTable, Priority.ALWAYS);
-        VBox sessionsPane = new VBox(8, new HBox(8, logSession, editSession, delSession), sessionTable);
-        VBox.setVgrow(sessionTable, Priority.ALWAYS);
-        courseTable.setPrefHeight(260);
-        materialTable.setPrefHeight(180);
-        sessionTable.setPrefHeight(220);
+        // Fixed heights (260/180/220) pushed the session table below the fold; let the
+        // three tables share the viewport instead.
+        courseTable.setPrefHeight(200);
+        courseTable.setMinHeight(120);
+        materialTable.setPrefHeight(170);
+        materialTable.setMinHeight(90);
+        VBox.setVgrow(courseTable, Priority.ALWAYS);
+        VBox.setVgrow(materialsPane, Priority.ALWAYS);
+
+        VBox deckPane = new VBox(8, deckList, deckStats);
+        deckList.setPrefHeight(200);
+        VBox.setVgrow(deckList, Priority.ALWAYS);
+        VBox cardPane = new VBox(8, new HBox(8, addCard, editCardBtn, delCard), cardTable);
+        cardTable.setPrefHeight(240);
+        VBox.setVgrow(cardTable, Priority.ALWAYS);
+        HBox.setHgrow(cardPane, Priority.ALWAYS);
+        HBox flashcardsRow = new HBox(10, deckPane, cardPane);
+        VBox.setVgrow(flashcardsRow, Priority.ALWAYS);
+
         tabs.getTabs().addAll(
                 new Tab("Khóa học & tài liệu", new VBox(10,
                         new HBox(8, addCourse, editCourse, delCourse),
                         courseTable,
-                        materialsPane,
-                        sessionsPane)),
+                        materialsPane)),
                 new Tab("Flashcards", new VBox(10,
                         new HBox(8, addDeck, renameDeck, reviewDeckBtn),
-                        new HBox(10,
-                                new VBox(8, deckList, deckStats),
-                                new VBox(8, new HBox(8, addCard, editCardBtn, delCard), cardTable)))));
-        HBox.setHgrow(deckList.getParent().getParent(), Priority.ALWAYS);
+                        flashcardsRow)));
 
         ctx.learning().changes().addListener(() -> javafx.application.Platform.runLater(this::refresh));
         return new VBox(10, header, tabs);
@@ -189,12 +189,9 @@ public class LearningView extends View {
         statusCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(courseStatus(p.getValue().status)));
         TableColumn<Course, String> progressCol = new TableColumn<>("Tiến độ");
         progressCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().progressPercent + "%"));
-        TableColumn<Course, Long> minutesCol = new TableColumn<>("Phút học");
-        minutesCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(ctx.learning().sessionsFor(p.getValue().id)
-                .stream().mapToLong(s -> s.minutes).sum()));
         TableColumn<Course, String> noteCol = new TableColumn<>("Ghi chú liên kết");
         noteCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().linkedNoteIds.size() + " ghi chú"));
-        courseTable.getColumns().setAll(List.of(titleCol, statusCol, progressCol, minutesCol, noteCol));
+        courseTable.getColumns().setAll(List.of(titleCol, statusCol, progressCol, noteCol));
         courseTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         courseTable.setOnMouseClicked(e -> {
             if (e.getClickCount() == 2 && courseTable.getSelectionModel().getSelectedItem() != null) {
@@ -290,34 +287,6 @@ public class LearningView extends View {
         });
     }
 
-    private void logSession() {
-        Course c = courseTable.getSelectionModel().getSelectedItem();
-        if (c == null) {
-            Dialogs.info("Chọn khóa học", "Hãy chọn một khóa học trước khi ghi buổi học.");
-            return;
-        }
-        javafx.scene.control.Dialog<Boolean> dialog = Dialogs.newDialog();
-        dialog.setTitle("Ghi buổi học");
-        dialog.setHeaderText(c.title);
-        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);
-        DatePicker date = new DatePicker(LocalDate.now());
-        Spinner<Integer> minutes = new Spinner<>(5, 600, 30, 5);
-        TextField topic = new TextField();
-        dialog.getDialogPane().setContent(new VBox(8,
-                labeled("Ngày", date), labeled("Số phút", minutes), labeled("Chủ đề", topic)));
-        dialog.setResultConverter(bt -> bt.getButtonData() == javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
-        boolean[] ok = {false};
-        dialog.showAndWait().ifPresent(v -> ok[0] = v);
-        if (ok[0]) {
-            try {
-                ctx.learning().addSession(c.id, date.getValue(), minutes.getValue(), topic.getText());
-                refresh();
-            } catch (RuntimeException ex) {
-                Dialogs.error("Không ghi được buổi học", ex.getMessage());
-            }
-        }
-    }
-
     private final TableView<String> materialTable = new TableView<>();
 
     private void buildMaterialTable() {
@@ -377,62 +346,6 @@ public class LearningView extends View {
         refreshMaterials();
     }
 
-    private void buildSessionTable() {
-        TableColumn<com.lifedesk.learning.StudySession, String> dateCol = new TableColumn<>("Ngày");
-        dateCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().date.toString()));
-        TableColumn<com.lifedesk.learning.StudySession, Number> minutesCol = new TableColumn<>("Phút");
-        minutesCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().minutes));
-        TableColumn<com.lifedesk.learning.StudySession, String> topicCol = new TableColumn<>("Chủ đề");
-        topicCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().topic));
-        sessionTable.getColumns().setAll(java.util.List.of(dateCol, minutesCol, topicCol));
-        sessionTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        sessionTable.setPlaceholder(new EmptyState("clock", "Chưa có buổi học nào cho khóa đang chọn."));
-    }
-
-    private void refreshSessions() {
-        Course c = courseTable.getSelectionModel().getSelectedItem();
-        sessionTable.getItems().setAll(c == null ? java.util.List.of() : ctx.learning().sessionsFor(c.id));
-    }
-
-    private void editSelectedSession() {
-        var session = sessionTable.getSelectionModel().getSelectedItem();
-        if (session == null) {
-            Dialogs.info("Chọn buổi học", "Hãy chọn một buổi học trong bảng để sửa.");
-            return;
-        }
-        javafx.scene.control.Dialog<Boolean> dialog = Dialogs.newDialog();
-        dialog.setTitle("Sửa buổi học");
-        dialog.setHeaderText(null);
-        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
-                javafx.scene.control.ButtonType.CANCEL);
-        DatePicker date = new DatePicker(session.date);
-        javafx.scene.control.Spinner<Integer> minutes =
-                new javafx.scene.control.Spinner<>(5, 600, session.minutes, 5);
-        TextField topic = new TextField(session.topic);
-        dialog.getDialogPane().setContent(new VBox(8,
-                labeled("Ngày", date), labeled("Số phút", minutes), labeled("Chủ đề", topic)));
-        dialog.setResultConverter(bt -> bt.getButtonData() == javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
-        boolean[] ok = {false};
-        dialog.showAndWait().ifPresent(v -> ok[0] = v);
-        if (ok[0]) {
-            try {
-                ctx.learning().updateSession(session.id, date.getValue(), minutes.getValue(), topic.getText());
-                refresh();
-            } catch (RuntimeException ex) {
-                Dialogs.error("Không sửa được buổi học", ex.getMessage());
-            }
-        }
-    }
-
-    private void deleteSelectedSession() {
-        var session = sessionTable.getSelectionModel().getSelectedItem();
-        if (session != null && Dialogs.confirm("Xóa buổi học",
-                "Xóa buổi học ngày " + session.date + " (" + session.minutes + " phút)?")) {
-            ctx.learning().deleteSession(session.id);
-            refresh();
-        }
-    }
-
     private void buildCardTable() {
         TableColumn<Flashcard, String> front = new TableColumn<>("Mặt trước");
         front.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().front));
@@ -441,7 +354,7 @@ public class LearningView extends View {
         TableColumn<Flashcard, String> box = new TableColumn<>("Box");
         box.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(String.valueOf(p.getValue().box)));
         TableColumn<Flashcard, String> due = new TableColumn<>("Đến hạn");
-        due.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().dueDate.toString()));
+        due.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().dueDate.format(DF)));
         TableColumn<Flashcard, String> stats = new TableColumn<>("Đúng/Sai");
         stats.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().timesCorrect + "/" + p.getValue().timesWrong));
         cardTable.getColumns().setAll(List.of(front, back, box, due, stats));
@@ -572,14 +485,29 @@ public class LearningView extends View {
     }
 
     private void refresh() {
-        courseTable.getItems().setAll(ctx.learning().courses());
-        refreshSessions();
+        Course keepCourse = courseTable.getSelectionModel().getSelectedItem();
+        var courses = ctx.learning().courses();
+        courseTable.getItems().setAll(courses);
+        // Materials/sessions are scoped to the selected course, so an empty selection
+        // made an account with data look empty. Keep the current row if it still
+        // exists, otherwise fall back to the first one.
+        Course restored = keepCourse == null ? null
+                : courses.stream().filter(c -> c.id.equals(keepCourse.id)).findFirst().orElse(null);
+        if (restored != null) {
+            courseTable.getSelectionModel().select(restored);
+        } else {
+            courseTable.getSelectionModel().selectFirst();
+        }
+
         var decks = ctx.learning().decks();
         Deck selected = deckList.getSelectionModel().getSelectedItem();
         deckList.getItems().setAll(decks);
-        if (selected != null) {
-            decks.stream().filter(d -> d.id.equals(selected.id)).findFirst()
-                    .ifPresent(deckList.getSelectionModel()::select);
+        Deck keepDeck = selected == null ? null
+                : decks.stream().filter(d -> d.id.equals(selected.id)).findFirst().orElse(null);
+        if (keepDeck != null) {
+            deckList.getSelectionModel().select(keepDeck);
+        } else {
+            deckList.getSelectionModel().selectFirst();
         }
         refreshCards();
         dueLabel.setText("Thẻ đến hạn: " + ctx.learning().dueCount());
@@ -597,8 +525,6 @@ public class LearningView extends View {
             int due = ctx.learning().dueCountForDeck(deck.id);
             deckStats.setText(deck.name + ": " + total + " thẻ, " + due + " đến hạn ôn tập hôm nay.");
         }
-        HBox.setHgrow(cardTable.getParent() == null ? cardTable : cardTable, Priority.ALWAYS);
-        cardTable.setPrefHeight(500);
     }
 
     @Override
