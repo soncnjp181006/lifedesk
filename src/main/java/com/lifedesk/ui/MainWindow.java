@@ -42,7 +42,7 @@ public class MainWindow {
         NOTES("Ghi chú", "file-text"),
         FINANCE("Tài chính", "wallet"), HABITS("Thói quen & Mục tiêu", "repeat"),
         HEALTH("Sức khỏe", "heart-pulse"),
-        LEARNING("Học tập", "book-open"), FILES("Tệp", "folder"), AUTOMATION("Automation", "workflow"),
+        LEARNING("Học tập", "book-open"), FILES("Tệp", "folder"),
         AI("Trợ lý AI", "bot"), SEARCH("Kết quả tìm kiếm", "search"), SETTINGS("Cài đặt", "settings");
 
         public final String label;
@@ -61,7 +61,7 @@ public class MainWindow {
     /** Sidebar order; position in this list is the Ctrl+n shortcut digit (10th = Ctrl+0). */
     private static final List<ViewId> NAV_ORDER = List.of(ViewId.DASHBOARD, ViewId.TASKS, ViewId.NOTES,
             ViewId.FINANCE, ViewId.HABITS, ViewId.HEALTH, ViewId.LEARNING, ViewId.FILES,
-            ViewId.AUTOMATION, ViewId.AI);
+            ViewId.AI);
     private final BorderPane root = new BorderPane();
     private final StackPane content = new StackPane();
     private final VBox sidebarBox = new VBox(4);
@@ -94,7 +94,6 @@ public class MainWindow {
         viewFactories.put(ViewId.HEALTH, () -> new com.lifedesk.ui.views.HealthView(ctx, this));
         viewFactories.put(ViewId.LEARNING, () -> new com.lifedesk.ui.views.LearningView(ctx, this));
         viewFactories.put(ViewId.FILES, () -> new com.lifedesk.ui.views.FilesView(ctx, this));
-        viewFactories.put(ViewId.AUTOMATION, () -> new com.lifedesk.ui.views.AutomationView(ctx, this));
         viewFactories.put(ViewId.AI, () -> new com.lifedesk.ui.views.AiChatView(ctx, this));
         viewFactories.put(ViewId.SEARCH, () -> new com.lifedesk.ui.views.SearchResultsView(ctx, this));
         viewFactories.put(ViewId.SETTINGS, () -> new com.lifedesk.ui.views.SettingsView(ctx, this));
@@ -382,10 +381,6 @@ public class MainWindow {
                 showView(ViewId.HEALTH);
                 views.get(ViewId.HEALTH).openRecord(refId);
             }
-            case "WORKFLOW" -> {
-                showView(ViewId.AUTOMATION);
-                views.get(ViewId.AUTOMATION).openRecord(refId);
-            }
             default -> status("Không có liên kết tới loại bản ghi: " + docType);
         }
     }
@@ -504,35 +499,11 @@ public class MainWindow {
             case "finance" -> "TRANSACTION";
             case "learning" -> "COURSE";
             case "health" -> "HEALTH";
-            case "automation" -> "WORKFLOW";
             default -> refView;
         };
     }
 
-    // ------------------------------------------------------------------ agent approvals
-
-    /** Wire the agent approval handler (destructive step confirmation). */
-    public void hookAgentApprovals() {
-        ctx.agentService().approvals().setHandler((run, step, description) -> {
-            java.util.concurrent.CompletableFuture<Boolean> answer = new java.util.concurrent.CompletableFuture<>();
-            Fx.runLater(() -> {
-                boolean approved = Dialogs.confirmWithDetails(
-                        "Phê duyệt hành động nhạy cảm",
-                        "Agent muốn thực hiện: " + description + "\nTool: " + step.tool
-                                + "\nChỉ cho phép nếu bạn hiểu và đồng ý.",
-                        step.params.toString());
-                answer.complete(approved);
-            });
-            try {
-                return answer.get(5, java.util.concurrent.TimeUnit.MINUTES);
-            } catch (Exception e) {
-                return false;
-            }
-        });
-    }
-
     public void onReady() {
-        hookAgentApprovals();
         ctx.notifications().push("Chào mừng", "LifeDesk đã sẵn sàng. Dữ liệu: " + ctx.dataDir(), "INFO", "", "");
         refreshNotifBadge();
         ctx.issueLog().addListener(() -> {

@@ -21,7 +21,7 @@ import java.util.List;
  * Modes:
  *   services  — boots the full service stack on a temp data dir, exercises
  *               every module (CRUD, persistence across reload, markdown,
- *               search, finance BigDecimal math, backup/restore, agent
+ *               search, finance BigDecimal math, backup/restore,
  *               policy, rule engine), prints PASS/FAIL per check and exits
  *               non-zero on any failure.
  *   ui        — launches the real JavaFX app on a temp data dir, waits,
@@ -153,53 +153,6 @@ public final class SmokeMain {
         check("search xuyên module tìm task", groups.stream().anyMatch(g -> g.type().equals("TASK")));
         check("search index lưu trên đĩa", Files.exists(dataDir.resolve("index/search-index.json")));
 
-        // 9. Agent: policy + destructive approval + limits
-        var plan = new com.lifedesk.automation.AgentPlan();
-        plan.name = "smoke plan";
-        var step1 = new com.lifedesk.automation.PlanStep();
-        step1.tool = "dashboard.summary";
-        var step2 = new com.lifedesk.automation.PlanStep();
-        step2.tool = "task.create";
-        step2.params.addProperty("title", "Agent tạo việc");
-        plan.steps = List.of(step1, step2);
-        boolean needsApproval = false;
-        try {
-            ctx.agentService().validatePlan(plan, false);
-        } catch (RuntimeException e) {
-            needsApproval = true;
-        }
-        check("plan WRITE cần phê duyệt", needsApproval);
-        ctx.agentService().validatePlan(plan, true); // approved passes
-
-        // Unknown tool denied
-        var badPlan = new com.lifedesk.automation.AgentPlan();
-        badPlan.steps = List.of(newStep("shell.exec", new com.google.gson.JsonObject()));
-        boolean unknownDenied = false;
-        try {
-            ctx.agentService().validatePlan(badPlan, true);
-        } catch (RuntimeException e) {
-            unknownDenied = true;
-        }
-        check("tool lạ bị từ chối (không shell)", unknownDenied);
-
-        // Destructive step requires live approval (no handler => denied)
-        var note2 = ctx.notes().create("Xóa tôi", "", "nội dung", null);
-        var delPlan = new com.lifedesk.automation.AgentPlan();
-        delPlan.steps = List.of(newStep("note.delete", params("noteId", note2.id)));
-        var run = ctx.agentService().submitRun(delPlan, true, "manual");
-        waitRun(run);
-        check("bước destructive không duyệt => run CANCELLED", run.status == com.lifedesk.automation.RunStatus.CANCELLED);
-        check("audit log ghi nhận bước bị từ chối",
-                Files.list(dataDir.resolve("automation")).anyMatch(p -> p.getFileName().toString().startsWith("audit-")));
-
-        // READ+WRITE plan with approval completes end to end
-        var okPlan = new com.lifedesk.automation.AgentPlan();
-        okPlan.steps = List.of(step1, step2);
-        var run2 = ctx.agentService().submitRun(okPlan, true, "manual");
-        waitRun(run2);
-        check("run READ+WRITE hoàn thành", run2.status == com.lifedesk.automation.RunStatus.COMPLETED);
-        check("agent thực sự tạo task", ctx.tasks().search("Agent tạo việc", null, null).size() == 1);
-
         // 10. Reload: persistence across instances (acceptance #5)
         ctx.shutdown();
         AppContext ctx2 = new AppContext(dataDir, config);
@@ -208,7 +161,6 @@ public final class SmokeMain {
         check("finance tồn tại sau reload", ctx2.finance().transactionCount() >= 2);
         check("habit tồn tại sau reload", ctx2.habits().habits(true).size() == 1);
         check("learning tồn tại sau reload", ctx2.learning().decks().size() == 1);
-        check("runs tồn tại sau reload", !ctx2.agentService().runs().isEmpty());
 
         // 11. Backup + restore roundtrip (acceptance #10)
         BackupService backup = new BackupService();
@@ -229,25 +181,7 @@ public final class SmokeMain {
         return failed == 0;
     }
 
-    private static com.lifedesk.automation.PlanStep newStep(String tool, com.google.gson.JsonObject params) {
-        var step = new com.lifedesk.automation.PlanStep();
-        step.tool = tool;
-        step.params = params;
-        return step;
-    }
 
-    private static com.google.gson.JsonObject params(String key, String value) {
-        var o = new com.google.gson.JsonObject();
-        o.addProperty(key, value);
-        return o;
-    }
-
-    private static void waitRun(com.lifedesk.automation.AgentRun run) throws Exception {
-        long deadline = System.currentTimeMillis() + 30000;
-        while (!run.isTerminal() && System.currentTimeMillis() < deadline) {
-            Thread.sleep(100);
-        }
-    }
 
     static void check(String name, boolean condition) {
         if (condition) {
@@ -364,7 +298,6 @@ public final class SmokeMain {
                     {"LEARNING", "target/ui-smoke-learning.png"},
                     {"FILES", "target/ui-smoke-files.png"},
                     {"AI", "target/ui-smoke-ai.png"},
-                    {"AUTOMATION", "target/ui-smoke-automation.png"},
                     {"SETTINGS", "target/ui-smoke-settings.png"},
             };
             for (String[] v : extraViews) {

@@ -26,7 +26,7 @@ public class OpenAiCompatibleProvider implements AiProvider {
 
     private String base() {
         String url = settings.baseUrl == null || settings.baseUrl.isBlank()
-                ? "https://api.kilo.ai/v1" : settings.baseUrl.trim();
+                ? AiConfig.Kilo.DEFAULT_BASE_URL : settings.baseUrl.trim();
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 

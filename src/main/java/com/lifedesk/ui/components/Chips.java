@@ -32,17 +32,6 @@ public final class Chips {
         };
     }
 
-    public static Label runStatus(com.lifedesk.automation.RunStatus s) {
-        return switch (s) {
-            case PENDING -> chip("Chờ chạy", "chip-medium");
-            case RUNNING -> chip("Đang chạy", "chip-info");
-            case WAITING_APPROVAL -> chip("Chờ phê duyệt", "chip-urgent");
-            case COMPLETED -> chip("Hoàn thành", "chip-done");
-            case FAILED -> chip("Thất bại", "chip-overdue");
-            case CANCELLED -> chip("Đã hủy", "chip-cancelled");
-        };
-    }
-
     public static Label overdue(String text) {
         return chip(text, "chip-overdue");
     }

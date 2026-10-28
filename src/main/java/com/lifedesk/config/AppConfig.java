@@ -19,8 +19,6 @@ public class AppConfig {
     /** File manager + agent file tools: user-granted root folders. */
     public List<String> allowedRoots = new ArrayList<>();
 
-    /** Automation agent limits (anti-infinite-loop guards). */
-    public AgentLimits agent = new AgentLimits();
 
     public AiConfig ai = new AiConfig();
 
@@ -32,10 +30,4 @@ public class AppConfig {
     public int windowHeight = 860;
     public boolean windowMaximized = true;
 
-    public static class AgentLimits {
-        public int maxSteps = 25;
-        public int maxRunSeconds = 300;
-        public int perStepSeconds = 60;
-        public int maxRetries = 2;
-    }
 }

@@ -18,8 +18,10 @@ public class AiConfig {
     }
 
     public static class Kilo {
+        /** Kilo AI Gateway; documented OpenAI-compatible endpoint. */
+        public static final String DEFAULT_BASE_URL = "https://ai-gateway.kilo.ai/api/v1";
         /** OpenAI-compatible base URL; endpoint paths may be adjusted here too. */
-        public String baseUrl = "https://api.kilo.ai/v1";
+        public String baseUrl = DEFAULT_BASE_URL;
         public String modelsPath = "/models";
         public String chatPath = "/chat/completions";
         public String apiKey = "";

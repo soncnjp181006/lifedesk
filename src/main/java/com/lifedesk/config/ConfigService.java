@@ -67,6 +67,14 @@ public class ConfigService {
         if (config.dataDir == null || config.dataDir.isBlank()) {
             config.dataDir = defaultDataDir();
         }
+        // Earlier builds defaulted Kilo to api.kilo.ai/v1, which 404s on /models.
+        // Only rewrite that exact legacy default - a URL the user typed is kept.
+        if (config.ai != null && config.ai.kilo != null) {
+            String base = config.ai.kilo.baseUrl;
+            if (base == null || base.isBlank() || "https://api.kilo.ai/v1".equals(base)) {
+                config.ai.kilo.baseUrl = AiConfig.Kilo.DEFAULT_BASE_URL;
+            }
+        }
         return config;
     }
 

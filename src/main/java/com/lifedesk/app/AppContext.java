@@ -2,12 +2,6 @@ package com.lifedesk.app;
 
 import com.lifedesk.ai.AiManager;
 import com.lifedesk.ai.RuleBasedEngine;
-import com.lifedesk.automation.AgentService;
-import com.lifedesk.automation.ToolRegistry;
-import com.lifedesk.automation.WorkflowScheduler;
-import com.lifedesk.automation.tools.InfoTools;
-import com.lifedesk.automation.tools.NoteTools;
-import com.lifedesk.automation.tools.TaskTools;
 import com.lifedesk.backup.BackupService;
 import com.lifedesk.common.AppExecutors;
 import com.lifedesk.config.AppConfig;
@@ -20,8 +14,6 @@ import com.lifedesk.markdown.MarkdownService;
 import com.lifedesk.notes.NotesService;
 import com.lifedesk.notifications.NotificationService;
 import com.lifedesk.search.SearchService;
-import com.lifedesk.security.AuditLogger;
-import com.lifedesk.security.SecurityPolicy;
 import com.lifedesk.storage.JsonStore;
 import com.lifedesk.storage.StorageIssueLog;
 import com.lifedesk.tasks.JsonTaskRepository;
@@ -60,11 +52,6 @@ public class AppContext {
     private final NotificationService notificationService;
     private final SearchService searchService;
     private final BackupService backupService = new BackupService();
-    private final SecurityPolicy securityPolicy;
-    private final AuditLogger auditLogger;
-    private final ToolRegistry toolRegistry = new ToolRegistry();
-    private final AgentService agentService;
-    private final WorkflowScheduler workflowScheduler;
     private final AiManager aiManager;
     private final ReminderScheduler reminderScheduler;
     private final java.util.concurrent.ScheduledExecutorService debounceScheduler;
@@ -93,14 +80,6 @@ public class AppContext {
         this.ruleBasedEngine = new RuleBasedEngine(taskService, notesService, financeService,
                 habitService, learningService, searchService, markdownService, healthService);
         this.aiManager = new AiManager(config.ai, ruleBasedEngine);
-
-        // Automation
-        this.securityPolicy = new SecurityPolicy(store);
-        this.auditLogger = new AuditLogger(dataDir);
-        registerTools();
-        this.agentService = new AgentService(toolRegistry, securityPolicy, auditLogger,
-                config.agent, store, executors.io());
-        this.workflowScheduler = new WorkflowScheduler(store, agentService);
 
         // Reminders
         this.reminderScheduler = new ReminderScheduler(store, taskService, habitService,
@@ -155,20 +134,6 @@ public class AppContext {
         }, 2, java.util.concurrent.TimeUnit.SECONDS);
     }
 
-    private void registerTools() {
-        toolRegistry.register(TaskTools.create(taskService));
-        toolRegistry.register(TaskTools.list(taskService));
-        toolRegistry.register(TaskTools.updateStatus(taskService));
-        toolRegistry.register(TaskTools.search(taskService));
-        toolRegistry.register(NoteTools.create(notesService));
-        toolRegistry.register(NoteTools.search(notesService));
-        toolRegistry.register(NoteTools.delete(notesService));
-        toolRegistry.register(NoteTools.saveContent(notesService));
-        toolRegistry.register(InfoTools.fileSearch(fileService));
-        toolRegistry.register(InfoTools.habitLog(habitService));
-        toolRegistry.register(InfoTools.dashboardSummary(new InfoTools.DashboardSources(
-                taskService, financeService, habitService, learningService)));
-    }
 
     /** Background warmup: search index + schedulers. Call once after UI shows. */
     public void startBackgroundServices() {
@@ -181,22 +146,16 @@ public class AppContext {
             }
         });
         reminderScheduler.start(executors.scheduler());
-        workflowScheduler.start(executors.scheduler());
         executors.addIoErrorListener(() -> LOG.error("Background IO task died unexpectedly"));
     }
 
     public void shutdown() {
         LOG.info("Shutting down services...");
-        agentService.flush();
         debounceScheduler.shutdownNow();
-        agentService.shutdown();
         executors.shutdown();
         LOG.info("Shutdown complete");
     }
 
-    public AgentService agentService() {
-        return agentService;
-    }
 
     // ---------------------------------------------------------------- accessors
 
@@ -268,17 +227,8 @@ public class AppContext {
         return backupService;
     }
 
-    public SecurityPolicy security() {
-        return securityPolicy;
-    }
 
-    public AuditLogger audit() {
-        return auditLogger;
-    }
 
-    public WorkflowScheduler workflows() {
-        return workflowScheduler;
-    }
 
     public AiManager ai() {
         return aiManager;

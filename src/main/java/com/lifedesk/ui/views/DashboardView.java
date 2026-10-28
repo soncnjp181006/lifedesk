@@ -138,7 +138,7 @@ public class DashboardView extends View {
         Map<String, Boolean> enabled = ctx.config().dashboardWidgets;
         List<String> order = ctx.config().dashboardWidgetOrder;
         List<String> all = List.of("w_today", "w_overdue", "w_upcoming", "w_finance", "w_budget",
-                "w_habits", "w_goals", "w_learning", "w_automation", "w_health");
+                "w_habits", "w_goals", "w_learning", "w_health");
         if (order.isEmpty() || !order.containsAll(all)) {
             order.clear();
             order.addAll(all);
@@ -163,7 +163,6 @@ public class DashboardView extends View {
         widgets.put("w_habits", habitsWidget());
         widgets.put("w_goals", goalsWidget());
         widgets.put("w_learning", learningWidget());
-        widgets.put("w_automation", automationWidget());
         widgets.put("w_health", healthWidget());
 
         widgetGrid.getChildren().clear();
@@ -413,25 +412,6 @@ public class DashboardView extends View {
         return card;
     }
 
-    private Card automationWidget() {
-        Card card = new Card("Automation");
-        var runs = ctx.agentService().runs();
-        if (runs.isEmpty()) {
-            card.content(Card.dim("Chưa có agent run nào"));
-            return card;
-        }
-        VBox box = new VBox(4);
-        runs.stream().limit(5).forEach(r -> {
-            HBox row = new HBox(6, Chips.runStatus(r.status),
-                    new Label(r.planName + (r.statusNote == null || r.statusNote.isBlank()
-                            ? "" : " — " + r.statusNote)));
-            row.setAlignment(Pos.CENTER_LEFT);
-            box.getChildren().add(row);
-        });
-        card.content(box);
-        return card;
-    }
-
     private Card healthWidget() {
         Card card = new Card("Sức khỏe 30 ngày");
         Double sleep = ctx.health().averageDays(com.lifedesk.health.HealthService.HealthField.SLEEP, 30);
@@ -453,12 +433,11 @@ public class DashboardView extends View {
         Map<String, Boolean> enabled = ctx.config().dashboardWidgets;
         List<String> order = ctx.config().dashboardWidgetOrder;
         List<String> labels = List.of("w_today", "w_overdue", "w_upcoming", "w_finance", "w_budget",
-                "w_habits", "w_goals", "w_learning", "w_automation", "w_health");
+                "w_habits", "w_goals", "w_learning", "w_health");
         Map<String, String> names = Map.of(
                 "w_today", "Việc hôm nay", "w_overdue", "Quá hạn", "w_upcoming", "Sắp tới",
                 "w_finance", "Biểu đồ thu chi", "w_budget", "Ngân sách", "w_habits", "Thói quen",
-                "w_goals", "Mục tiêu", "w_learning", "Học tập", "w_automation", "Automation",
-                "w_health", "Sức khỏe");
+                "w_goals", "Mục tiêu", "w_learning", "Học tập", "w_health", "Sức khỏe");
 
         List<javafx.scene.control.CheckBox> checks = new ArrayList<>();
         for (String id : order) {

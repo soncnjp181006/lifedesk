@@ -10,7 +10,6 @@ public record SearchDoc(String docId, String type, String title, String content,
     public static final String COURSE = "COURSE";
     public static final String FLASHCARD = "FLASHCARD";
     public static final String HEALTH = "HEALTH";
-    public static final String WORKFLOW = "WORKFLOW";
 
     public static String displayType(String type) {
         return switch (type) {
@@ -22,7 +21,6 @@ public record SearchDoc(String docId, String type, String title, String content,
             case COURSE -> "Khóa học";
             case FLASHCARD -> "Flashcard";
             case HEALTH -> "Sức khỏe";
-            case WORKFLOW -> "Automation";
             default -> type;
         };
     }

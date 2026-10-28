@@ -8,7 +8,9 @@ import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.Card;
+import com.lifedesk.ui.components.EmptyState;
 import com.lifedesk.ui.components.IconView;
+import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.chart.LineChart;
@@ -18,6 +20,8 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
 import javafx.scene.layout.HBox;
@@ -42,6 +46,7 @@ import java.util.Map;
  */
 public class HealthView extends View {
     private static final DateTimeFormatter DF = DateTimeFormatter.ofPattern("dd/MM");
+    private static final DateTimeFormatter DF_FULL = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private final DatePicker entryDate = new DatePicker(LocalDate.now());
     private final TextField sleepField = new TextField();
     private final TextField exerciseField = new TextField();
@@ -49,6 +54,7 @@ public class HealthView extends View {
     private final TextField noteField = new TextField();
     private final VBox metricFields = new VBox(4);
     private final Map<String, TextField> metricInputs = new HashMap<>();
+    private final TableView<HealthEntry> historyTable = new TableView<>();
     private final ComboBox<String> trendField = new ComboBox<>();
     private final VBox chartHost = new VBox();
     private com.lifedesk.ui.components.NoteLinkPicker dayNoteLinks;
@@ -74,7 +80,10 @@ public class HealthView extends View {
         header.setAlignment(Pos.CENTER_LEFT);
 
         // ---- entry form
-        entryDate.setOnAction(e -> loadEntry());
+        entryDate.setOnAction(e -> {
+            loadEntry();
+            refreshHistory();
+        });
         Button save = new Button("Lưu hôm nay", new IconView("save", 15));
         save.getStyleClass().add("primary-btn");
         save.setOnAction(e -> saveEntry());
@@ -101,6 +110,12 @@ public class HealthView extends View {
         VBox formCard = new VBox(10, formRow1, metricFields, formRow2, dayNoteLinks);
         formCard.getStyleClass().add("card");
 
+        // ---- history of past entries (the data was saved but never listed anywhere)
+        buildHistoryTable();
+        historyTable.setPrefHeight(150);
+        VBox historyCard = new VBox(8, new Label("Lịch sử đã ghi"), historyTable);
+        historyCard.getStyleClass().add("card");
+
         // ---- trends
         trendField.getItems().addAll("Giấc ngủ", "Vận động (phút)", "Cân nặng (kg)");
         trendField.setValue("Cân nặng (kg)");
@@ -114,14 +129,11 @@ public class HealthView extends View {
         disclaimer.getStyleClass().add("dim-label");
         disclaimer.setWrapText(true);
 
-        VBox root = new VBox(12, header, formCard, trendCard, disclaimer);
+        VBox root = new VBox(12, header, formCard, historyCard, trendCard, disclaimer);
         loadEntry();
+        refreshHistory();
         renderTrend();
-        javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(root);
-        scroll.setFitToWidth(true);
-        scroll.setFitToHeight(true);
-        scroll.setStyle("-fx-background-color: transparent;");
-        return scroll;
+        return root;
     }
 
     private VBox labeled(String text, Node field) {
@@ -180,6 +192,7 @@ public class HealthView extends View {
                 }
             }
             ctx.health().upsert(entryDate.getValue(), sleep, exercise, weight, custom, noteField.getText());
+            refreshHistory();
             renderTrend();
         } catch (NumberFormatException e) {
             Dialogs.error("Giá trị không hợp lệ", "Chỉ nhập số cho các trường số liệu.");
@@ -192,10 +205,47 @@ public class HealthView extends View {
         try {
             ctx.health().deleteEntry(entryDate.getValue());
             loadEntry();
+            refreshHistory();
             renderTrend();
         } catch (RuntimeException e) {
             Dialogs.error("Không xóa được", e.getMessage());
         }
+    }
+
+    private void buildHistoryTable() {
+        TableColumn<HealthEntry, String> dateCol = new TableColumn<>("Ngày");
+        dateCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().date.format(DF_FULL)));
+        TableColumn<HealthEntry, String> sleepCol = new TableColumn<>("Giờ ngủ");
+        sleepCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(
+                p.getValue().sleepHours == null ? "—" : p.getValue().sleepHours.toPlainString()));
+        TableColumn<HealthEntry, String> exerciseCol = new TableColumn<>("Vận động (phút)");
+        exerciseCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(
+                p.getValue().exerciseMinutes == null ? "—" : String.valueOf(p.getValue().exerciseMinutes)));
+        TableColumn<HealthEntry, String> weightCol = new TableColumn<>("Cân nặng (kg)");
+        weightCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(
+                p.getValue().weightKg == null ? "—" : p.getValue().weightKg.toPlainString()));
+        TableColumn<HealthEntry, String> noteCol = new TableColumn<>("Ghi chú");
+        noteCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(
+                p.getValue().note == null ? "" : p.getValue().note));
+        historyTable.getColumns().setAll(List.of(dateCol, sleepCol, exerciseCol, weightCol, noteCol));
+        historyTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        historyTable.setPlaceholder(new EmptyState("heart-pulse",
+                "Chưa ghi ngày nào. Nhập số liệu rồi bấm \"Lưu hôm nay\"."));
+        historyTable.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
+            if (b != null && !b.date.equals(entryDate.getValue())) {
+                entryDate.setValue(b.date);
+                loadEntry();
+            }
+        });
+    }
+
+    private void refreshHistory() {
+        var entries = ctx.health().entries().stream()
+                .sorted(java.util.Comparator.comparing((HealthEntry e) -> e.date).reversed())
+                .toList();
+        historyTable.getItems().setAll(entries);
+        entries.stream().filter(e -> e.date.equals(entryDate.getValue())).findFirst()
+                .ifPresent(historyTable.getSelectionModel()::select);
     }
 
     private void renderTrend() {
@@ -292,6 +342,7 @@ public class HealthView extends View {
     @Override
     public void onShow() {
         loadEntry();
+        refreshHistory();
         renderTrend();
     }
 
@@ -301,6 +352,8 @@ public class HealthView extends View {
         ctx.health().entries().stream().filter(e -> e.id.equals(recordId)).findFirst()
                 .ifPresent(e -> {
                     entryDate.setValue(e.date);
+                    loadEntry();
+                    refreshHistory();
                     renderTrend();
                 });
     }

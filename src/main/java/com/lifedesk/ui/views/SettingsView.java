@@ -32,7 +32,7 @@ import java.util.List;
 
 /**
  * Settings: appearance, AI providers (enable/disable, fetch & search models,
- * Ollama pull), data directory, allowed roots, backups, agent limits.
+ * Ollama pull), data directory, allowed roots, backups, reminders.
  */
 public class SettingsView extends View {
     private final TableView<ModelInfo> modelTable = new TableView<>();
@@ -59,7 +59,7 @@ public class SettingsView extends View {
                 new Tab("AI", buildAiTab()),
                 new Tab("Dữ liệu & Backup", buildDataTab()),
                 new Tab("Quyền truy cập tệp", buildRootsTab()),
-                new Tab("Agent & Nhắc việc", buildAgentTab()),
+                new Tab("Nhắc việc", buildRemindersTab()),
                 new Tab("Giới thiệu", buildAboutTab()));
         return tabs;
     }
@@ -188,7 +188,12 @@ public class SettingsView extends View {
                 ok -> aiStatusLabel.setText(ok ? "Kilo: API key OK" : "Kilo: KHÔNG truy cập được (kiểm tra key/URL)"),
                 err -> aiStatusLabel.setText("Kilo lỗi: " + err.getMessage())));
 
+        Label kiloHint = new Label("Chuẩn: https://ai-gateway.kilo.ai/api/v1 — "
+                + "danh sách model lấy từ {base}/models, chat từ {base}/chat/completions.");
+        kiloHint.getStyleClass().add("dim-label");
+        kiloHint.setWrapText(true);
         VBox kiloBox = new VBox(8, new Label("Kilo (cloud, OpenAI-compatible):"),
+                kiloHint,
                 new HBox(8, new Label("Base URL"), kiloUrl, testKilo),
                 new HBox(8, new Label("API key"), kiloKey),
                 new HBox(8, new Label("Model"), kiloModelField));
@@ -427,7 +432,7 @@ public class SettingsView extends View {
         add.getStyleClass().add("primary-btn");
         add.setOnAction(e -> {
             javafx.stage.DirectoryChooser chooser = new javafx.stage.DirectoryChooser();
-            chooser.setTitle("Cấp quyền đọc cho LifeDesk + agent");
+            chooser.setTitle("Cấp quyền đọc cho LifeDesk");
             java.io.File dir = chooser.showDialog(main.stage());
             if (dir != null) {
                 if (!Dialogs.confirm("Cấp quyền", "Cho phép đọc file trong:\n" + dir.getAbsolutePath())) {
@@ -439,7 +444,7 @@ public class SettingsView extends View {
                 rebuildRootsList(list);
             }
         });
-        VBox box = new VBox(10, new Label("Các thư mục được cấp quyền (file manager + agent file.search):"),
+        VBox box = new VBox(10, new Label("Các thư mục được cấp quyền (trình quản lý tệp):"),
                 add, list);
         return wrapScroll(box);
     }
@@ -460,42 +465,9 @@ public class SettingsView extends View {
         }
     }
 
-    // ------------------------------------------------------------------ agent & reminders
+    // ------------------------------------------------------------------ reminders
 
-    private Node buildAgentTab() {
-        var limits = ctx.config().agent;
-        Spinner<Integer> maxSteps = new Spinner<>(1, 100, limits.maxSteps);
-        maxSteps.valueProperty().addListener((o, a, b) -> { limits.maxSteps = maxSteps.getValue();
-            saveConfig();
-        });
-        Spinner<Integer> runSeconds = new Spinner<>(10, 3600, limits.maxRunSeconds, 10);
-        runSeconds.valueProperty().addListener((o, a, b) -> { limits.maxRunSeconds = runSeconds.getValue();
-            saveConfig();
-        });
-        Spinner<Integer> stepSeconds = new Spinner<>(1, 600, limits.perStepSeconds, 5);
-        stepSeconds.valueProperty().addListener((o, a, b) -> { limits.perStepSeconds = stepSeconds.getValue();
-            saveConfig();
-        });
-        Spinner<Integer> retries = new Spinner<>(0, 5, limits.maxRetries);
-        retries.valueProperty().addListener((o, a, b) -> { limits.maxRetries = retries.getValue();
-            saveConfig();
-        });
-
-        VBox toolList = new VBox(6);
-        for (var tool : ctx.agentService().registry().all().values()) {
-            var d = tool.descriptor();
-            CheckBox cb = new CheckBox(d.name() + "  [" + d.permission() + "]"
-                    + (d.permission() != com.lifedesk.automation.PermissionLevel.READ ? " — cần phê duyệt/xác nhận" : ""));
-            cb.setSelected(!ctx.security().isDenied(d.name()));
-            cb.setOnAction(e -> {
-                ctx.security().setDenied(d.name(), !cb.isSelected());
-                if (!cb.isSelected()) {
-                    Dialogs.info("Tool bị chặn", d.name() + " sẽ bị từ chối trong mọi kế hoạch.");
-                }
-            });
-            toolList.getChildren().add(cb);
-        }
-
+    private Node buildRemindersTab() {
         CheckBox reminders = new CheckBox("Bật nhắc việc trong app");
         reminders.setSelected(ctx.config().remindersEnabled);
         reminders.setOnAction(e -> {
@@ -509,15 +481,9 @@ public class SettingsView extends View {
         });
 
         VBox box = new VBox(12,
-                new Label("Giới hạn agent (chống vòng lặp vô hạn):"),
-                new HBox(10, new Label("Số bước tối đa"), maxSteps),
-                new HBox(10, new Label("Tổng thời gian (giây)"), runSeconds),
-                new HBox(10, new Label("Timeout mỗi bước (giây)"), stepSeconds),
-                new HBox(10, new Label("Số lần retry"), retries),
-                new Label("Công cụ của agent — bỏ tick để CHẶN tool đó hoàn toàn:"),
-                toolList,
                 new Label("Nhắc việc:"),
-                reminders, new HBox(8, new Label("Nhắc trước (phút)"), minutes));
+                reminders,
+                new HBox(8, new Label("Nhắc trước (phút)"), minutes));
         return wrapScroll(box);
     }
 
@@ -527,10 +493,10 @@ public class SettingsView extends View {
         VBox box = new VBox(10,
                 new Label("LifeDesk 1.0.0"),
                 new Label("Ứng dụng năng suất cá nhân offline-first: công việc, ghi chú markdown, tài chính, "
-                        + "thói quen, sức khỏe, học tập, tệp, tìm kiếm, AI cục bộ và automation agent."),
+                        + "thói quen, sức khỏe, học tập, tệp, tìm kiếm và AI cục bộ."),
                 new Label("Dữ liệu: JSON + Markdown thuần trong thư mục dữ liệu của bạn — không database server, không cloud."),
                 new Label("Sức khỏe: chỉ ghi nhận thủ công, không chẩn đoán y tế."),
-                new Label("Agent: chỉ hoạt động qua tool registry có phân quyền + audit log; không thực thi shell."));
+                new Label("AI: chỉ chạy theo provider bạn cấu hình; dữ liệu chỉ rời máy khi bật provider cloud."));
         return wrapScroll(box);
     }
 
