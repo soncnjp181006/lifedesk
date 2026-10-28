@@ -186,9 +186,15 @@ public class NotesView extends View {
         // Pre-render an empty themed page so the preview never flashes white.
         preview.render("", ctx.themeManager().previewPalette(ctx.config().theme));
 
-        SplitPane root = new SplitPane(left, editorPane);
-        SplitPane.setResizableWithParent(editorPane, Boolean.TRUE);
-        root.setDividerPositions(0.24);
+        // Two panes in an HBox instead of a SplitPane: the split's skin inset the
+        // children differently and its divider stopped above the bottom edge.
+        left.setMinWidth(300);
+        left.setPrefWidth(320);
+        left.setMaxWidth(320);
+        left.setMaxHeight(Double.MAX_VALUE);
+        editorPane.setMaxHeight(Double.MAX_VALUE);
+        HBox root = new HBox(16, left, editorPane);
+        HBox.setHgrow(editorPane, Priority.ALWAYS);
         showNotesEmptyState();
         return root;
     }
@@ -206,6 +212,8 @@ public class NotesView extends View {
         if (previewMode) {
             SplitPane split = new SplitPane(editor, preview);
             split.setDividerPositions(0.5);
+            split.setMaxWidth(Double.MAX_VALUE);
+            split.setMaxHeight(Double.MAX_VALUE);
             editorPane.setCenter(split);
             renderPreview();
         } else {
