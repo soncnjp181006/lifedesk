@@ -12,6 +12,7 @@ import javafx.animation.PauseTransition;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -39,7 +40,8 @@ import java.util.LinkedHashSet;
  * external edits are never silently overwritten.
  */
 public class NotesView extends View {
-    private final ListView<String> folderList = new ListView<>();
+    private final ComboBox<String> folderPick = new ComboBox<>();
+    private boolean updatingFolders;
     private final ListView<NoteMeta> noteList = new ListView<>();
     private final TextField searchField = new TextField();
     private final TextField titleField = new TextField();
@@ -68,18 +70,26 @@ public class NotesView extends View {
     @Override
     protected Node build() {
         // ---- left: folders + list + search
-        // The folder list used to take half the column and squeeze the note list.
-        folderList.setPrefHeight(150);
-        folderList.setMinHeight(110);
-        folderList.setMaxHeight(190);
-        folderList.getItems().add("(tất cả)");
-        folderList.getSelectionModel().select(0);
-        folderList.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
+        // A full folder list wasted half the column on two rows; a compact picker
+        // leaves the vertical space to the note list.
+        folderPick.setMaxWidth(Double.MAX_VALUE);
+        folderPick.getItems().add("(tất cả)");
+        folderPick.getSelectionModel().select(0);
+        folderPick.valueProperty().addListener((o, a, b) -> {
+            if (updatingFolders) {
+                return;
+            }
             currentFolder = "(tất cả)".equals(b) || b == null ? "" : b;
             refreshNoteList();
         });
+        Label folderLabel = new Label("Thư mục");
+        folderLabel.getStyleClass().add("form-label");
+        HBox folderRow = new HBox(10, folderLabel, folderPick);
+        folderRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(folderPick, Priority.ALWAYS);
 
         noteList.setPrefWidth(270);
+        noteList.getStyleClass().add("note-list");
         noteList.setCellFactory(v -> new ListCell<>() {
             @Override
             protected void updateItem(NoteMeta item, boolean empty) {
@@ -119,7 +129,9 @@ public class NotesView extends View {
         starBtn.setTooltip(new Tooltip("Đánh dấu quan trọng"));
         starBtn.setOnAction(e -> toggleStar());
 
-        VBox left = new VBox(8, searchField, folderList, noteList, new HBox(6, newBtn, starBtn, delBtn));
+        HBox listActions = new HBox(8, newBtn, starBtn, delBtn);
+        listActions.setAlignment(Pos.CENTER_LEFT);
+        VBox left = new VBox(10, searchField, folderRow, noteList, listActions);
         VBox.setVgrow(noteList, Priority.ALWAYS);
         left.setMinWidth(300);
         left.setPrefWidth(340);
@@ -176,7 +188,7 @@ public class NotesView extends View {
 
         SplitPane root = new SplitPane(left, editorPane);
         SplitPane.setResizableWithParent(editorPane, Boolean.TRUE);
-        root.setDividerPositions(0.30);
+        root.setDividerPositions(0.24);
         showNotesEmptyState();
         return root;
     }
@@ -209,14 +221,16 @@ public class NotesView extends View {
     // ------------------------------------------------------------------ list
 
     private void refreshFolders() {
-        String current = folderList.getSelectionModel().getSelectedItem();
-        folderList.getItems().setAll("(tất cả)");
+        String current = folderPick.getValue();
+        updatingFolders = true;
+        folderPick.getItems().setAll("(tất cả)");
         // blank folder = root; shown as "(gốc)" instead of an empty row
         ctx.notes().folders().stream()
                 .filter(f -> !f.isBlank())
-                .forEach(folderList.getItems()::add);
-        folderList.getSelectionModel().select(
-                current != null && folderList.getItems().contains(current) ? current : "(tất cả)");
+                .forEach(folderPick.getItems()::add);
+        folderPick.setValue(current != null && folderPick.getItems().contains(current)
+                ? current : "(tất cả)");
+        updatingFolders = false;
     }
 
     private void refreshNoteList() {
