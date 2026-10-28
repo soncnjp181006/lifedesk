@@ -82,9 +82,6 @@ public class SettingsView extends View {
             });
             box.getChildren().add(rb);
         }
-        box.getChildren().add(new Label(
-                "Thêm theme mới: đặt file .css vào <data>/config/themes/ và khởi động lại — "
-                        + "file sẽ xuất hiện trong danh sách."));
         return wrapScroll(box);
     }
 

@@ -132,17 +132,23 @@ public class NotesView extends View {
         HBox listActions = new HBox(8, newBtn, starBtn, delBtn);
         listActions.setAlignment(Pos.CENTER_LEFT);
         VBox left = new VBox(10, searchField, folderRow, noteList, listActions);
+        left.getStyleClass().add("notes-sidebar");
         VBox.setVgrow(noteList, Priority.ALWAYS);
         left.setMinWidth(300);
         left.setPrefWidth(340);
         searchField.setMinWidth(0);
+        searchField.getStyleClass().add("notes-search-field");
+        folderPick.getStyleClass().add("notes-folder-picker");
         SplitPane.setResizableWithParent(left, Boolean.FALSE);
 
         // ---- right: editor + preview
         titleField.setPromptText("Tiêu đề ghi chú");
+        titleField.getStyleClass().add("notes-title-field");
         tagsField.setPromptText("tags, phân cách bằng dấu phẩy");
+        tagsField.getStyleClass().add("notes-tag-field");
         titleField.textProperty().addListener((o, a, b) -> queueAutosave());
         tagsField.textProperty().addListener((o, a, b) -> queueAutosave());
+        editor.getStyleClass().add("notes-editor");
         editor.setPromptText("Viết markdown ở đây… heading, bảng, danh sách, checklist (- [ ]), code block, [[liên kết ghi chú]]");
         editor.textProperty().addListener((o, a, b) -> {
             queueAutosave();
@@ -163,9 +169,11 @@ public class NotesView extends View {
         statusHint.getStyleClass().add("dim-label");
 
         editorBar = new HBox(8, titleField, new Region(), tagsField, saveBtn, previewToggle);
+        editorBar.getStyleClass().add("notes-editor-bar");
         editorBar.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(titleField, Priority.ALWAYS);
 
+        editorPane.getStyleClass().add("notes-editor-pane");
         editorPane.setTop(editorBar);
         layoutEditorSplit();
 
@@ -193,7 +201,8 @@ public class NotesView extends View {
         left.setMaxWidth(320);
         left.setMaxHeight(Double.MAX_VALUE);
         editorPane.setMaxHeight(Double.MAX_VALUE);
-        HBox root = new HBox(16, left, editorPane);
+        HBox root = new HBox(10, left, editorPane);
+        root.getStyleClass().add("notes-shell");
         HBox.setHgrow(editorPane, Priority.ALWAYS);
         showNotesEmptyState();
         return root;
