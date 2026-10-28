@@ -69,6 +69,7 @@ public class TasksView extends View {
     private final ComboBox<String> groupFilter = new ComboBox<>();
     private final ComboBox<String> statusFilter = new ComboBox<>();
     private final ComboBox<String> priorityFilter = new ComboBox<>();
+    private Button deleteSelectedBtn;
     private Task selected;
 
     public TasksView(AppContext ctx, MainWindow main) {
@@ -118,9 +119,13 @@ public class TasksView extends View {
         newBtn.getStyleClass().add("primary-btn");
         newBtn.setOnAction(e -> openEditor(null));
 
+        deleteSelectedBtn = new Button("Xóa", new IconView("trash", 15));
+        deleteSelectedBtn.setOnAction(e -> deleteSelected());
+        deleteSelectedBtn.setDisable(true);
+
         HBox toolbar = new HBox(8, title, new Region(), searchField,
                 new Label("Nhóm:"), groupFilter, new Label("Trạng thái:"), statusFilter,
-                new Label("Ưu tiên:"), priorityFilter, listToggle, boardToggle, newBtn);
+                new Label("Ưu tiên:"), priorityFilter, listToggle, boardToggle, deleteSelectedBtn, newBtn);
         toolbar.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(searchField, javafx.scene.layout.Priority.ALWAYS);
         Region r = (Region) toolbar.getChildren().get(1);
@@ -275,6 +280,12 @@ public class TasksView extends View {
 
         table.getColumns().setAll(List.of(titleCol, statusCol, prioCol, dueCol, groupCol, progressCol, actionsCol));
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
+            selected = b;
+            if (deleteSelectedBtn != null) {
+                deleteSelectedBtn.setDisable(b == null);
+            }
+        });
         table.setOnMouseClicked(e -> {
             if (e.getClickCount() == 2 && table.getSelectionModel().getSelectedItem() != null) {
                 openEditor(table.getSelectionModel().getSelectedItem());
@@ -308,7 +319,13 @@ public class TasksView extends View {
                                 new Label(t.dueDate == null ? "" : t.dueDate.format(DF))));
                 cardNode.getStyleClass().add("card");
                 cardNode.setStyle("-fx-padding: 8; -fx-background-color: -ld-card;");
-                cardNode.setOnMouseClicked(e -> openEditor(t));
+                cardNode.setOnMouseClicked(e -> {
+                    selected = t;
+                    if (deleteSelectedBtn != null) {
+                        deleteSelectedBtn.setDisable(false);
+                    }
+                    openEditor(t);
+                });
                 cardNode.setCursor(javafx.scene.Cursor.HAND);
                 column.getChildren().add(cardNode);
             });
@@ -331,6 +348,21 @@ public class TasksView extends View {
             }
             return p == null || "(tất cả)".equals(p) || p.equals(t.priority.name());
         }, Comparator.comparing(Task::getDueDateOrMax).thenComparing(t -> -t.priority.ordinal()));
+    }
+
+    private void deleteSelected() {
+        if (selected == null) {
+            return;
+        }
+        if (Dialogs.confirm("Xóa công việc", "Xóa công việc \"" + selected.title + "\"?")) {
+            ctx.tasks().delete(selected.id);
+            selected = null;
+            if (deleteSelectedBtn != null) {
+                deleteSelectedBtn.setDisable(true);
+            }
+            table.getSelectionModel().clearSelection();
+            refresh();
+        }
     }
 
     private void refresh() {
