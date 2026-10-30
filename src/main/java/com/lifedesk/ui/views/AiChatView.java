@@ -67,7 +67,9 @@ public class AiChatView extends View {
         HBox quickRow = new HBox(8);
         for (String quick : List.of("việc hôm nay", "quá hạn", "gợi ý", "chi tiêu tháng này",
                 "thói quen", "ôn tập", "sức khỏe")) {
-            Button b = new Button(quick);
+            // Label is capitalised, but the prompt sent to the engine keeps its
+            // original wording (the rule engine normalises it).
+            Button b = new Button(capitalizeFirst(quick));
             b.getStyleClass().add("ghost-btn");
             b.setOnAction(e -> {
                 input.setText(quick);
@@ -252,6 +254,13 @@ public class AiChatView extends View {
         chatBox.getChildren().add(emptyState);
         setBusy(false);
         main.status("Đã bắt đầu cuộc trò chuyện mới");
+    }
+
+    private static String capitalizeFirst(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        return Character.toUpperCase(text.charAt(0)) + text.substring(1);
     }
 
     private void trimHistory() {

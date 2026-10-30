@@ -40,6 +40,8 @@ import java.util.Set;
 public class NotesService {
     public static final String NOTES_DIR = "notes";
     private static final String INDEX_FILE = "notes/index.json";
+    /** Explicit folder list so folders can exist while empty (like a vault tree). */
+    private static final String FOLDERS_FILE = "notes/folders.json";
     private static final Logger LOG = LoggerFactory.getLogger(NotesService.class);
 
     private static final SchemaMigrator MIGRATOR = new SchemaMigrator() {
@@ -61,10 +63,12 @@ public class NotesService {
     /** Hash of the content the editor currently holds, keyed by note id. */
     private final Map<String, String> loadedHash = new HashMap<>();
     private final ChangeNotifier change = new ChangeNotifier();
+    private final List<String> storedFolders = new ArrayList<>();
 
     public NotesService(JsonStore store) {
         this.store = store;
         loadIndex();
+        loadFolders();
     }
 
     public ChangeNotifier changes() {
@@ -89,6 +93,145 @@ public class NotesService {
         JsonObject data = new JsonObject();
         data.add("notes", GsonFactory.create().toJsonTree(notes));
         store.write(INDEX_FILE, 1, data);
+    }
+
+    private void loadFolders() {
+        JsonStore.StoredDoc doc = store.read(FOLDERS_FILE, SchemaMigrator.none(1));
+        storedFolders.clear();
+        if (doc != null && doc.data().has("folders") && doc.data().get("folders").isJsonArray()) {
+            Type listType = new TypeToken<List<String>>() {
+            }.getType();
+            List<String> parsed = GsonFactory.create().fromJson(doc.data().getAsJsonArray("folders"), listType);
+            if (parsed != null) {
+                parsed.stream().filter(f -> f != null && !f.isBlank()).forEach(storedFolders::add);
+            }
+        }
+    }
+
+    private void persistFolders() {
+        JsonObject data = new JsonObject();
+        data.add("folders", GsonFactory.create().toJsonTree(storedFolders));
+        store.write(FOLDERS_FILE, 1, data);
+    }
+
+    /** Every known folder path, including parents of nested paths, sorted. */
+    public synchronized List<String> listFolders() {
+        java.util.TreeSet<String> all = new java.util.TreeSet<>(storedFolders);
+        for (NoteMeta n : notes) {
+            if (n.folder != null && !n.folder.isBlank()) {
+                all.add(n.folder);
+                for (String parent : ancestors(n.folder)) {
+                    all.add(parent);
+                }
+            }
+        }
+        return new ArrayList<>(all);
+    }
+
+    private static List<String> ancestors(String path) {
+        List<String> out = new ArrayList<>();
+        int idx = path.lastIndexOf('/');
+        while (idx > 0) {
+            String parent = path.substring(0, idx);
+            out.add(parent);
+            idx = parent.lastIndexOf('/');
+        }
+        return out;
+    }
+
+    /** Normalises "a" / "/a/b/" and rejects traversal or empty segments. */
+    private static String normalizeFolder(String path) {
+        if (path == null) {
+            return "";
+        }
+        String p = path.replace('\\', '/').replaceAll("^/+|/+$", "").trim();
+        if (p.isEmpty()) {
+            return "";
+        }
+        if (p.contains("..") || p.contains("//")) {
+            throw new ValidationException("Tên thư mục không hợp lệ");
+        }
+        for (String segment : p.split("/")) {
+            if (segment.isBlank()) {
+                throw new ValidationException("Tên thư mục không hợp lệ");
+            }
+        }
+        return p;
+    }
+
+    public synchronized String createFolder(String path) {
+        String p = normalizeFolder(path);
+        if (p.isEmpty()) {
+            throw new ValidationException("Tên thư mục không được để trống");
+        }
+        if (!storedFolders.contains(p)) {
+            storedFolders.add(p);
+            storedFolders.sort(String::compareTo);
+            persistFolders();
+            change.fire();
+        }
+        return p;
+    }
+
+    /** Renames a folder and re-points every note (and subfolder) inside it. */
+    public synchronized String renameFolder(String path, String newName) {
+        String oldPath = normalizeFolder(path);
+        String name = Validators.requireNonBlank(newName, "Tên thư mục").trim();
+        if (name.contains("/") || name.contains("..")) {
+            throw new ValidationException("Tên thư mục không được chứa '/' hoặc '..'");
+        }
+        int cut = oldPath.lastIndexOf('/');
+        String parent = cut < 0 ? "" : oldPath.substring(0, cut);
+        String newPath = parent.isEmpty() ? name : parent + "/" + name;
+        if (newPath.equals(oldPath)) {
+            return oldPath;
+        }
+        for (NoteMeta meta : new ArrayList<>(notes)) {
+            String folder = meta.folder == null ? "" : meta.folder;
+            if (folder.equals(oldPath) || folder.startsWith(oldPath + "/")) {
+                String target = newPath + folder.substring(oldPath.length());
+                updateMeta(meta, null, target, null, meta.starred);
+            }
+        }
+        List<String> renames = new ArrayList<>();
+        for (String folder : new ArrayList<>(storedFolders)) {
+            if (folder.equals(oldPath) || folder.startsWith(oldPath + "/")) {
+                String target = newPath + folder.substring(oldPath.length());
+                renames.add(target);
+                storedFolders.remove(folder);
+            }
+        }
+        storedFolders.addAll(renames);
+        storedFolders.sort(String::compareTo);
+        persistFolders();
+        change.fire();
+        return newPath;
+    }
+
+    /** Deletes a folder with everything inside it and returns how many notes went away. */
+    public synchronized int deleteFolder(String path) {
+        String target = normalizeFolder(path);
+        if (target.isEmpty()) {
+            throw new ValidationException("Không thể xoá thư mục gốc");
+        }
+        List<NoteMeta> doomed = notes.stream()
+                .filter(n -> n.folder != null && (n.folder.equals(target) || n.folder.startsWith(target + "/")))
+                .toList();
+        for (NoteMeta meta : doomed) {
+            delete(meta.id);
+        }
+        storedFolders.removeIf(f -> f.equals(target) || f.startsWith(target + "/"));
+        persistFolders();
+        change.fire();
+        return doomed.size();
+    }
+
+    /** Number of notes at or below a folder path. */
+    public synchronized int countNotesInFolder(String path) {
+        String target = normalizeFolder(path);
+        return (int) notes.stream()
+                .filter(n -> n.folder != null && (n.folder.equals(target) || n.folder.startsWith(target + "/")))
+                .count();
     }
 
     public synchronized List<NoteMeta> list() {
@@ -270,7 +413,7 @@ public class NotesService {
     }
 
     public synchronized List<String> folders() {
-        return notes.stream().map(n -> n.folder).distinct().sorted().toList();
+        return listFolders();
     }
 
     /** Resolve a [[wiki link]] target to a note id (by title, normalized). */

@@ -72,6 +72,7 @@ public class MainWindow {
     private Label statusLabel;
     private Label notifBadge;
     private Label brandTitleLabel;
+    private VBox brandBox;
     private Popup notifPopup;
     private VBox notifList;
     private TextField searchField;
@@ -188,15 +189,15 @@ public class MainWindow {
     private Node buildSidebar() {
         sidebarBox.getStyleClass().add("sidebar");
         sidebarCollapsed = ctx.config().sidebarCollapsed;
-        VBox brand = new VBox(1);
+        brandBox = new VBox(1);
         brandTitleLabel = new Label("LifeDesk");
         brandTitleLabel.getStyleClass().add("brand-title");
         Label brandSub = new Label("Trợ lý cá nhân");
         brandSub.getStyleClass().add("brand-subtitle");
-        brand.getChildren().addAll(brandTitleLabel, brandSub);
+        brandBox.getChildren().addAll(brandTitleLabel, brandSub);
         Region brandSpacer = new Region();
         brandSpacer.setMinHeight(8);
-        sidebarBox.getChildren().addAll(brand, brandSpacer);
+        sidebarBox.getChildren().addAll(brandBox, brandSpacer);
         rebuildSidebarButtons();
         VBox.setVgrow(sidebarBox, Priority.ALWAYS);
         return sidebarBox;
@@ -207,7 +208,10 @@ public class MainWindow {
         if (sidebarBox.getChildren().size() > 2) {
             sidebarBox.getChildren().remove(2, sidebarBox.getChildren().size());
         }
-        brandTitleLabel.setText(sidebarCollapsed ? "L" : "LifeDesk");
+        // Collapsed rail shows icons only; the brand block disappears instead of
+        // shrinking to a lone "L" that reads like a stray character.
+        brandBox.setVisible(!sidebarCollapsed);
+        brandBox.setManaged(!sidebarCollapsed);
         if (sidebarCollapsed) {
             sidebarBox.setStyle("-fx-min-width: 58;");
         } else {

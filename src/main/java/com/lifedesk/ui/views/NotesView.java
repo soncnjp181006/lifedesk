@@ -49,8 +49,13 @@ public class NotesView extends View {
     private final BorderPane editorPane = new BorderPane();
     private final PauseTransition autosave = new PauseTransition(Duration.seconds(1.5));
     private HBox editorBar;
+    private final javafx.scene.control.TreeView<String> folderTree = new javafx.scene.control.TreeView<>();
+    private final HBox mdToolbar = new HBox(2);
 
     private NoteMeta current;
+    /** Folder shown in the note list ("" = every note). */
+    private String currentFolder = "";
+    private boolean updatingTree;
     private String loadedHash = "";
     private boolean previewMode = true;
 
@@ -107,9 +112,58 @@ public class NotesView extends View {
         starBtn.setTooltip(new Tooltip("Đánh dấu quan trọng"));
         starBtn.setOnAction(e -> toggleStar());
 
-        HBox listActions = new HBox(8, newBtn, starBtn, delBtn);
+        Button moveBtn = new Button("", new IconView("folder", 15));
+        moveBtn.getStyleClass().add("icon-btn");
+        moveBtn.setTooltip(new Tooltip("Chuyển ghi chú sang thư mục khác"));
+        moveBtn.setOnAction(e -> moveCurrentToFolder());
+        HBox listActions = new HBox(8, newBtn, starBtn, moveBtn, delBtn);
         listActions.setAlignment(Pos.CENTER_LEFT);
-        VBox left = new VBox(10, searchField, noteList, listActions);
+
+        // Folder tree (nested paths) with create / rename / delete, vault-style.
+        folderTree.setCellFactory(tv -> new javafx.scene.control.TreeCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setTooltip(null);
+                } else {
+                    setText(item.isEmpty() ? "(tất cả)" : item.substring(item.lastIndexOf('/') + 1));
+                    setTooltip(item.isEmpty() ? null : new Tooltip(item));
+                }
+            }
+        });
+        folderTree.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
+            if (updatingTree) {
+                return;
+            }
+            currentFolder = b == null ? "" : b.getValue();
+            refreshNoteList();
+        });
+        folderTree.setMinHeight(90);
+        folderTree.setMaxHeight(260);
+
+        Button newFolderBtn = new Button("", new IconView("plus", 15));
+        newFolderBtn.getStyleClass().add("icon-btn");
+        newFolderBtn.setTooltip(new Tooltip("Tạo thư mục con trong thư mục đang chọn"));
+        newFolderBtn.setOnAction(e -> createFolder());
+        Button renameFolderBtn = new Button("", new IconView("pencil", 15));
+        renameFolderBtn.getStyleClass().add("icon-btn");
+        renameFolderBtn.setTooltip(new Tooltip("Đổi tên thư mục đang chọn"));
+        renameFolderBtn.setOnAction(e -> renameFolder());
+        Button deleteFolderBtn = new Button("", new IconView("trash", 15));
+        deleteFolderBtn.getStyleClass().add("icon-btn");
+        deleteFolderBtn.setTooltip(new Tooltip("Xoá thư mục và toàn bộ ghi chú bên trong"));
+        deleteFolderBtn.setOnAction(e -> deleteFolder());
+        Label folderHeading = new Label("Thư mục");
+        folderHeading.getStyleClass().add("form-label");
+        Region folderSpacer = new Region();
+        HBox.setHgrow(folderSpacer, Priority.ALWAYS);
+        HBox folderToolbar = new HBox(6, folderHeading, folderSpacer,
+                newFolderBtn, renameFolderBtn, deleteFolderBtn);
+        folderToolbar.setAlignment(Pos.CENTER_LEFT);
+
+        VBox left = new VBox(10, searchField, folderToolbar, folderTree, noteList, listActions);
         left.getStyleClass().add("notes-sidebar");
         VBox.setVgrow(noteList, Priority.ALWAYS);
         left.setMinWidth(300);
@@ -150,6 +204,7 @@ public class NotesView extends View {
         editorBar.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(titleField, Priority.ALWAYS);
 
+        buildMarkdownToolbar();
         editorPane.getStyleClass().add("notes-editor-pane");
         editorPane.setTop(editorBar);
         layoutEditorSplit();
@@ -195,15 +250,17 @@ public class NotesView extends View {
     }
 
     private void layoutEditorSplit() {
+        VBox editorStack = new VBox(8, mdToolbar, editor);
+        VBox.setVgrow(editor, Priority.ALWAYS);
         if (previewMode) {
-            SplitPane split = new SplitPane(editor, preview);
+            SplitPane split = new SplitPane(editorStack, preview);
             split.setDividerPositions(0.5);
             split.setMaxWidth(Double.MAX_VALUE);
             split.setMaxHeight(Double.MAX_VALUE);
             editorPane.setCenter(split);
             renderPreview();
         } else {
-            editorPane.setCenter(editor);
+            editorPane.setCenter(editorStack);
         }
     }
 
@@ -217,9 +274,173 @@ public class NotesView extends View {
     private void refreshNoteList() {
         String q = searchField.getText();
         var notes = ctx.notes().search(q).stream()
+                .filter(n -> currentFolder.isEmpty() || currentFolder.equals(n.folder))
                 .sorted(Comparator.comparing((NoteMeta n) -> n.updatedAt).reversed())
                 .toList();
         noteList.getItems().setAll(notes);
+        refreshFolders();
+    }
+
+    private void refreshFolders() {
+        updatingTree = true;
+        String target = currentFolder;
+        javafx.scene.control.TreeItem<String> root = new javafx.scene.control.TreeItem<>("");
+        root.setExpanded(true);
+        java.util.LinkedHashMap<String, javafx.scene.control.TreeItem<String>> byPath =
+                new java.util.LinkedHashMap<>();
+        for (String path : ctx.notes().listFolders()) {
+            int cut = path.lastIndexOf('/');
+            String parentPath = cut < 0 ? "" : path.substring(0, cut);
+            javafx.scene.control.TreeItem<String> parent = parentPath.isEmpty()
+                    ? root : byPath.get(parentPath);
+            javafx.scene.control.TreeItem<String> node = new javafx.scene.control.TreeItem<>(path);
+            node.setExpanded(true);
+            (parent == null ? root : parent).getChildren().add(node);
+            byPath.put(path, node);
+        }
+        folderTree.setRoot(root);
+        // Fit the tree to its rows; a fixed height left a large empty block above the notes.
+        folderTree.setPrefHeight(Math.min(260, 40 + (byPath.size() + 1) * 27));
+        javafx.scene.control.TreeItem<String> match = byPath.get(target);
+        folderTree.getSelectionModel().select(match == null ? root : match);
+        updatingTree = false;
+    }
+
+    private void createFolder() {
+        String name = Dialogs.prompt("Thư mục mới", "Tên thư mục:", "").orElse(null);
+        if (name == null || name.isBlank()) {
+            return;
+        }
+        try {
+            String path = currentFolder.isEmpty() ? name.trim() : currentFolder + "/" + name.trim();
+            currentFolder = ctx.notes().createFolder(path);
+            refreshFolders();
+            refreshNoteList();
+            main.status("Đã tạo thư mục " + currentFolder);
+        } catch (RuntimeException e) {
+            Dialogs.error("Không tạo được thư mục", e.getMessage());
+        }
+    }
+
+    private void renameFolder() {
+        if (currentFolder.isEmpty()) {
+            Dialogs.info("Chọn thư mục", "Chọn một thư mục (không phải \"(tất cả)\") để đổi tên.");
+            return;
+        }
+        String leaf = currentFolder.substring(currentFolder.lastIndexOf('/') + 1);
+        String name = Dialogs.prompt("Đổi tên thư mục", "Tên mới cho \"" + leaf + "\":", leaf).orElse(null);
+        if (name == null || name.isBlank() || name.trim().equals(leaf)) {
+            return;
+        }
+        try {
+            currentFolder = ctx.notes().renameFolder(currentFolder, name.trim());
+            refreshFolders();
+            refreshNoteList();
+            main.status("Đã đổi tên thành " + currentFolder);
+        } catch (RuntimeException e) {
+            Dialogs.error("Không đổi tên được", e.getMessage());
+        }
+    }
+
+    private void deleteFolder() {
+        if (currentFolder.isEmpty()) {
+            Dialogs.info("Chọn thư mục", "Chọn một thư mục để xoá.");
+            return;
+        }
+        String target = currentFolder;
+        int count = ctx.notes().countNotesInFolder(target);
+        if (!Dialogs.confirm("Xoá thư mục", "Xoá \"" + target + "\""
+                + (count > 0 ? " và toàn bộ " + count + " ghi chú bên trong?" : "?"))) {
+            return;
+        }
+        if (count > 0 && !Dialogs.confirm("Xoá vĩnh viễn?",
+                count + " ghi chú trong thư mục này sẽ bị xoá và không thể khôi phục.")) {
+            return;
+        }
+        try {
+            ctx.notes().deleteFolder(target);
+            currentFolder = target.contains("/")
+                    ? target.substring(0, target.lastIndexOf('/')) : "";
+            refreshFolders();
+            refreshNoteList();
+            main.status("Đã xoá thư mục " + target);
+        } catch (RuntimeException e) {
+            Dialogs.error("Không xoá được thư mục", e.getMessage());
+        }
+    }
+
+    // ------------------------------------------------------------------ markdown toolbar
+
+    private void buildMarkdownToolbar() {
+        mdToolbar.getStyleClass().add("md-toolbar");
+        mdToolbar.setAlignment(Pos.CENTER_LEFT);
+        mdToolbar.getChildren().addAll(
+                mdButton("B", "Đậm", "-fx-font-weight: bold;", () -> wrapSelection("**", "**", "đậm")),
+                mdButton("I", "Nghiêng", "-fx-font-style: italic;", () -> wrapSelection("*", "*", "nghiêng")),
+                mdButton("S", "Gạch ngang", "-fx-strikethrough: true;", () -> wrapSelection("~~", "~~", "gạch")),
+                mdButton("H1", "Tiêu đề 1", "", () -> prefixSelectedLines("# ")),
+                mdButton("H2", "Tiêu đề 2", "", () -> prefixSelectedLines("## ")),
+                mdButton("H3", "Tiêu đề 3", "", () -> prefixSelectedLines("### ")),
+                mdButton("•", "Danh sách chấm", "", () -> prefixSelectedLines("- ")),
+                mdButton("1.", "Danh sách số", "", () -> prefixSelectedLines("1. ")),
+                mdButton("☐", "Checklist", "", () -> prefixSelectedLines("- [ ] ")),
+                mdButton("\"", "Trích dẫn", "", () -> prefixSelectedLines("> ")),
+                mdButton("`x`", "Code inline", "", () -> wrapSelection("`", "`", "code")),
+                mdButton("{ }", "Khối code", "", () -> insertBlock("\n```\ncode\n```\n")),
+                mdButton("[…]", "Liên kết", "", () -> wrapSelection("[", "](https://)", "mô tả")),
+                mdButton("▦", "Bảng 2 cột", "",
+                        () -> insertBlock("\n| Cột 1 | Cột 2 |\n| --- | --- |\n|  |  |\n")));
+    }
+
+    private Button mdButton(String label, String tip, String inlineStyle, Runnable action) {
+        Button b = new Button(label);
+        b.getStyleClass().add("ghost-btn");
+        b.getStyleClass().add("md-toolbar-btn");
+        if (!inlineStyle.isEmpty()) {
+            b.setStyle(inlineStyle);
+        }
+        b.setTooltip(new Tooltip(tip));
+        b.setOnAction(e -> action.run());
+        return b;
+    }
+
+    private void wrapSelection(String prefix, String suffix, String placeholder) {
+        javafx.scene.control.IndexRange sel = editor.getSelection();
+        String selected = sel.getLength() > 0
+                ? editor.getText().substring(sel.getStart(), sel.getEnd()) : placeholder;
+        editor.replaceText(sel.getStart(), sel.getEnd(), prefix + selected + suffix);
+        editor.selectRange(sel.getStart() + prefix.length(),
+                sel.getStart() + prefix.length() + selected.length());
+        editor.requestFocus();
+    }
+
+    private void prefixSelectedLines(String prefix) {
+        javafx.scene.control.IndexRange sel = editor.getSelection();
+        String text = editor.getText();
+        int from = sel.getLength() > 0 ? sel.getStart()
+                : text.lastIndexOf('\n', Math.max(0, editor.getCaretPosition() - 1)) + 1;
+        int to = sel.getLength() > 0 ? sel.getEnd() : text.indexOf('\n', editor.getCaretPosition());
+        if (to < 0) {
+            to = text.length();
+        }
+        String[] lines = text.substring(from, to).split("\n", -1);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < lines.length; i++) {
+            if (i > 0) {
+                sb.append('\n');
+            }
+            sb.append(prefix).append(lines[i]);
+        }
+        editor.replaceText(from, to, sb.toString());
+        editor.selectRange(from, from + sb.length());
+        editor.requestFocus();
+    }
+
+    private void insertBlock(String block) {
+        int pos = editor.getCaretPosition();
+        editor.insertText(pos, block);
+        editor.positionCaret(pos + block.length());
+        editor.requestFocus();
     }
 
     private void openNote(NoteMeta meta) {
@@ -295,6 +516,7 @@ public class NotesView extends View {
     private void refreshNoteListKeepingSelection() {
         String q = searchField.getText();
         var notes = ctx.notes().search(q).stream()
+                .filter(n -> currentFolder.isEmpty() || currentFolder.equals(n.folder))
                 .sorted(Comparator.comparing((NoteMeta n) -> n.updatedAt).reversed())
                 .toList();
         NoteMeta selected = noteList.getSelectionModel().getSelectedItem();
@@ -310,7 +532,7 @@ public class NotesView extends View {
         if (title == null || title.isBlank()) {
             return;
         }
-        NoteMeta meta = ctx.notes().create(title, "", "# " + title + "\n\n", new LinkedHashSet<>());
+        NoteMeta meta = ctx.notes().create(title, currentFolder, "# " + title + "\n\n", new LinkedHashSet<>());
         refreshNoteList();
         noteList.getSelectionModel().select(meta);
     }
@@ -328,6 +550,36 @@ public class NotesView extends View {
         }
     }
 
+    private void moveCurrentToFolder() {
+        if (current == null) {
+            Dialogs.info("Chưa chọn ghi chú", "Chọn một ghi chú trước khi chuyển thư mục.");
+            return;
+        }
+        java.util.List<String> options = new java.util.ArrayList<>();
+        options.add("(gốc)");
+        options.addAll(ctx.notes().listFolders());
+        String currentLabel = current.folder.isEmpty() ? "(gốc)" : current.folder;
+        javafx.scene.control.ChoiceDialog<String> dialog =
+                new javafx.scene.control.ChoiceDialog<>(currentLabel, options);
+        dialog.initOwner(main.stage());
+        dialog.setTitle("Chuyển ghi chú");
+        dialog.setHeaderText("Thư mục đích cho \"" + current.title + "\":");
+        dialog.setContentText("Thư mục");
+        dialog.showAndWait().ifPresent(choice -> {
+            String target = "(gốc)".equals(choice) ? "" : choice;
+            if (target.equals(current.folder)) {
+                return;
+            }
+            try {
+                ctx.notes().updateMeta(current, null, target, null, current.starred);
+                refreshNoteList();
+                main.status("Đã chuyển \"" + current.title + "\" sang " + choice);
+            } catch (RuntimeException e) {
+                Dialogs.error("Không chuyển được", e.getMessage());
+            }
+        });
+    }
+
     private void toggleStar() {
         if (current != null) {
             ctx.notes().updateMeta(current, null, null, null, !current.starred);
@@ -338,6 +590,7 @@ public class NotesView extends View {
     @Override
     public void onShow() {
         refreshNoteList();
+        refreshFolders();
     }
 
     @Override
