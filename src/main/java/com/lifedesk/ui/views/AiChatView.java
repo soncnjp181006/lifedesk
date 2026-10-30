@@ -159,6 +159,7 @@ public class AiChatView extends View {
 
         // ---- message column
         messages.setFillWidth(true);
+        messages.setAlignment(Pos.TOP_CENTER); // exchanges center as a column
         messages.getStyleClass().add("chat-messages");
         chatScroll.setFitToWidth(true);
         chatScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
@@ -192,21 +193,22 @@ public class AiChatView extends View {
                 javafx.css.PseudoClass.getPseudoClass("focused"), is));
 
         sendBtn.setGraphic(new IconView("send", 15));
-        sendBtn.setText("Gửi");
+        sendBtn.setText("");
         sendBtn.getStyleClass().add("primary-btn");
-        sendBtn.setMaxWidth(Double.MAX_VALUE);
+        sendBtn.setTooltip(new Tooltip("Gửi (Enter)"));
         sendBtn.setOnAction(e -> send());
         stopBtn.setGraphic(new IconView("circle-x", 15));
-        stopBtn.setText("Dừng");
+        stopBtn.setText("");
         stopBtn.getStyleClass().add("danger-btn");
-        stopBtn.setMaxWidth(Double.MAX_VALUE);
+        stopBtn.setTooltip(new Tooltip("Dừng tạo"));
+        stopBtn.setVisible(false);
+        stopBtn.setManaged(false);
         stopBtn.setOnAction(e -> stopChat());
-        VBox sendColumn = new VBox(6, sendBtn, stopBtn);
-        sendColumn.setAlignment(Pos.BOTTOM_RIGHT);
         HBox.setHgrow(input, Priority.ALWAYS);
-        HBox inputRow = new HBox(8, input, sendColumn);
-        inputRow.setAlignment(Pos.BOTTOM_LEFT);
+        HBox inputRow = new HBox(8, input);
 
+        // Every mainstream AI app: a centered, compact composer card — not a
+        // full-window strip with buttons stacked in a side column.
         Label hint = new Label("Enter gửi · Shift+Enter xuống dòng · @ dữ liệu · / mẫu lệnh");
         hint.getStyleClass().add("chat-hint");
         Region hintSpacer = new Region();
@@ -214,11 +216,15 @@ public class AiChatView extends View {
         Label privacy = new Label("Chỉ gửi dữ liệu khi bạn bật \"đọc dữ liệu\" trong Cài đặt → AI");
         privacy.getStyleClass().add("chat-hint");
         privacy.setWrapText(false);
-        HBox hintRow = new HBox(10, hint, hintSpacer, privacy);
-        hintRow.setAlignment(Pos.CENTER_LEFT);
+        HBox composerBottom = new HBox(10, hint, hintSpacer, stopBtn, sendBtn);
+        composerBottom.setAlignment(Pos.CENTER_LEFT);
 
         composer.getStyleClass().add("chat-composer");
-        composer.getChildren().addAll(contextBar, inputRow, hintRow);
+        composer.setMaxWidth(880);
+        composer.getChildren().addAll(contextBar, inputRow, composerBottom);
+        HBox composerWrap = new HBox(composer);
+        composerWrap.setAlignment(Pos.CENTER);
+        composerWrap.setPadding(new javafx.geometry.Insets(8, 14, 12, 14));
 
         streamTick.setOnFinished(e -> {
             if (active != null && busy) {
@@ -227,7 +233,7 @@ public class AiChatView extends View {
             }
         });
 
-        VBox frame = new VBox(0, frameHead, chatScroll, composer);
+        VBox frame = new VBox(0, frameHead, chatScroll, composerWrap);
         frame.getStyleClass().add("chat-surface");
         VBox.setVgrow(frame, Priority.ALWAYS);
 
@@ -644,6 +650,7 @@ public class AiChatView extends View {
         bubble.setMaxWidth(640);
         HBox row = new HBox(bubble);
         row.setAlignment(Pos.CENTER_RIGHT);
+        row.setMaxWidth(920);
         row.getStyleClass().add("chat-row");
         messages.getChildren().add(row);
         updateCount();
@@ -673,6 +680,7 @@ public class AiChatView extends View {
         avatarBox.setMinWidth(34);
         HBox row = new HBox(10, avatarBox, column);
         row.setAlignment(Pos.TOP_LEFT);
+        row.setMaxWidth(920);
         row.getStyleClass().add("chat-row");
         messages.getChildren().add(row);
         scrollToEnd();

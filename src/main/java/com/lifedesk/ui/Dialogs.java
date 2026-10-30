@@ -85,7 +85,10 @@ public final class Dialogs {
     }
 
     private static javafx.stage.Stage activeStage() {
-        for (javafx.stage.Window w : javafx.stage.Window.getWindows()) {
+        // Window.getWindows() returns the LIVE list — a window closing during the
+        // loop breaks the iterator (NoSuchElementException wrapping an
+        // IndexOutOfBoundsException). Always iterate a snapshot.
+        for (javafx.stage.Window w : java.util.List.copyOf(javafx.stage.Window.getWindows())) {
             if (w instanceof javafx.stage.Stage s && s.isFocused()) {
                 return s;
             }

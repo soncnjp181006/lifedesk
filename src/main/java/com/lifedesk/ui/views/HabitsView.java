@@ -242,7 +242,8 @@ public class HabitsView extends View {
 
         TextField name = new TextField(existing == null ? "" : existing.name);
         TextArea description = new TextArea(existing == null ? "" : existing.description);
-        description.setPrefRowCount(2);
+        description.setPrefRowCount(3);
+        description.setWrapText(true);
         List<CheckBox> dayChecks = new java.util.ArrayList<>();
         HBox daysBox = WeekdayChecks.row(
                 existing == null ? java.util.Set.of(DayOfWeek.values()) : existing.scheduleDays, dayChecks);
@@ -366,7 +367,8 @@ public class HabitsView extends View {
 
         TextField title = new TextField(existing == null ? "" : existing.title());
         TextArea description = new TextArea(existing == null ? "" : existing.description());
-        description.setPrefRowCount(2);
+        description.setPrefRowCount(3);
+        description.setWrapText(true);
         DatePicker target = new DatePicker(existing == null ? LocalDate.now().plusMonths(1) : existing.targetDate());
         ComboBox<GoalStatus> status = new ComboBox<>();
         status.getItems().addAll(GoalStatus.values());

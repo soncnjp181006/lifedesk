@@ -244,6 +244,17 @@ public class LearningView extends View {
         ComboBox<CourseStatus> status = new ComboBox<>();
         status.getItems().addAll(CourseStatus.values());
         status.setValue(existing == null ? CourseStatus.PLANNED : existing.status);
+        // Vietnamese names in the list and the button — raw "PLANNED" read as a bug.
+        javafx.util.Callback<javafx.scene.control.ListView<CourseStatus>, ListCell<CourseStatus>> statusCell =
+                v -> new ListCell<>() {
+                    @Override
+                    protected void updateItem(CourseStatus item, boolean empty) {
+                        super.updateItem(item, empty);
+                        setText(empty || item == null ? null : courseStatus(item));
+                    }
+                };
+        status.setCellFactory(statusCell);
+        status.setButtonCell(statusCell.call(null));
         Spinner<Integer> progress = new Spinner<>(0, 100, existing == null ? 0 : existing.progressPercent);
         ComboBox<com.lifedesk.notes.NoteMeta> notePick = new ComboBox<>();
         notePick.getItems().addAll(ctx.notes().list());
@@ -392,13 +403,21 @@ public class LearningView extends View {
         dialog.setTitle("Thẻ mới");
         dialog.setHeaderText(deck.name);
         dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);
-        TextArea front = new TextArea();
+        // A card can be a whole page of notes: wide dialog, tall wrapping areas —
+        // the old 2-row boxes forced vertical AND horizontal scrolling.
+        javafx.scene.control.TextArea front = new TextArea();
         front.setPromptText("Câu hỏi / mặt trước");
-        front.setPrefRowCount(2);
-        TextArea back = new TextArea();
+        front.setPrefRowCount(8);
+        front.setWrapText(true);
+        javafx.scene.control.TextArea back = new TextArea();
         back.setPromptText("Đáp án / mặt sau");
-        back.setPrefRowCount(2);
-        dialog.getDialogPane().setContent(new VBox(8, new Label("Mặt trước *"), front, new Label("Mặt sau *"), back));
+        back.setPrefRowCount(8);
+        back.setWrapText(true);
+        VBox fields = new VBox(8,
+                new VBox(2, new Label("Mặt trước *"), front),
+                new VBox(2, new Label("Mặt sau *"), back));
+        fields.setPrefWidth(620);
+        dialog.getDialogPane().setContent(fields);
         dialog.setResultConverter(bt -> bt.getButtonData() == javafx.scene.control.ButtonBar.ButtonData.OK_DONE
                 ? new Flashcard() : null);
         dialog.showAndWait().ifPresent(card -> {
@@ -423,10 +442,16 @@ public class LearningView extends View {
         dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
                 javafx.scene.control.ButtonType.CANCEL);
         javafx.scene.control.TextArea front = new javafx.scene.control.TextArea(card.front);
-        front.setPrefRowCount(2);
+        front.setPrefRowCount(8);
+        front.setWrapText(true);
         javafx.scene.control.TextArea back = new javafx.scene.control.TextArea(card.back);
-        back.setPrefRowCount(2);
-        dialog.getDialogPane().setContent(new VBox(8, new Label("Mặt trước *"), front, new Label("Mặt sau *"), back));
+        back.setPrefRowCount(8);
+        back.setWrapText(true);
+        VBox editFields = new VBox(8,
+                new VBox(2, new Label("Mặt trước *"), front),
+                new VBox(2, new Label("Mặt sau *"), back));
+        editFields.setPrefWidth(620);
+        dialog.getDialogPane().setContent(editFields);
         dialog.setResultConverter(bt -> bt.getButtonData() == javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
         boolean[] ok = {false};
         dialog.showAndWait().ifPresent(v -> ok[0] = v);

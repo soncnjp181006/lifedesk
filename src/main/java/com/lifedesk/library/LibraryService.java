@@ -36,6 +36,8 @@ public class LibraryService {
         public int progressCurrent;
         public int progressTotal;
         public String coverUrl = "";
+        /** Local file path or http(s) link to the actual item (ebook, video, save file…). */
+        public String link = "";
         public String note = "";
         public Instant addedAt = Instant.now();
         /** Auto-logged when progress reaches total or status becomes DONE. */

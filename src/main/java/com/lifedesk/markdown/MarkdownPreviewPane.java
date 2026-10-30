@@ -134,17 +134,30 @@ public class MarkdownPreviewPane extends VBox {
 
     /** Render markdown into the preview with the given theme palette. */
     public void render(String markdownText, ThemeManager.PreviewPalette palette) {
-        load(markdownText, palette, target -> null);
+        load(markdownText, palette, target -> null, false);
     }
 
     /** Render with [[wiki links]] resolved to note ids by the resolver. */
     public void render(String markdownText, ThemeManager.PreviewPalette palette,
                        java.util.function.UnaryOperator<String> linkResolver) {
-        load(markdownText, palette, linkResolver);
+        load(markdownText, palette, linkResolver, false);
+    }
+
+    /**
+     * Presentation mode: large, centered content (flashcard board) instead of
+     * a document flowing from the top-left of a big empty card.
+     */
+    public void renderPresentation(String markdownText, ThemeManager.PreviewPalette palette) {
+        load(markdownText, palette, target -> null, true);
     }
 
     private void load(String markdownText, ThemeManager.PreviewPalette palette,
                       java.util.function.UnaryOperator<String> linkResolver) {
+        load(markdownText, palette, linkResolver, false);
+    }
+
+    private void load(String markdownText, ThemeManager.PreviewPalette palette,
+                      java.util.function.UnaryOperator<String> linkResolver, boolean presentation) {
         if (webView == null) {
             String text = markdownText == null ? "" : markdownText;
             if (text.equals(lastFallback)) {
@@ -155,7 +168,9 @@ public class MarkdownPreviewPane extends VBox {
             return;
         }
         String body = markdown.toHtml(markdownText, linkResolver);
-        String page = markdown.wrapPage(body, palette);
+        String page = presentation
+                ? markdown.wrapPresentationPage(body, palette)
+                : markdown.wrapPage(body, palette);
         if (page.equals(lastPage)) {
             return;
         }

@@ -203,7 +203,9 @@ public class ReviewSessionPane extends VBox {
 
     private void renderCard(String markdown) {
         cardMarkdown = markdown;
-        cardPane.render(markdown, palette());
+        // Presentation mode: the card text is large and centered on the board —
+        // it used to render as a tiny document in the top-left corner.
+        cardPane.renderPresentation(markdown, palette());
     }
 
     private void flip() {

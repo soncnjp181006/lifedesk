@@ -49,7 +49,14 @@ public class LifeDeskApp extends Application {
     }
 
     private static void reportCrash(Throwable error) {
-        if (!CRASH_REPORTED.compareAndSet(false, true)) {
+        // Still logged below — but the smoke harness must never pop a dialog on
+        // the user's screen (a mid-test crash once surfaced as "app crashed!"
+        // while it was only the test window).
+        boolean smoke = Boolean.getBoolean("lifedesk.smoke");
+        if (!smoke && !CRASH_REPORTED.compareAndSet(false, true)) {
+            return;
+        }
+        if (smoke) {
             return;
         }
         Runnable show = () -> {
@@ -58,7 +65,10 @@ public class LifeDeskApp extends Application {
                         new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.ERROR);
                 alert.setTitle("LifeDesk gặp lỗi");
                 alert.setHeaderText("Một thao tác vừa gây lỗi — ứng dụng vẫn tiếp tục chạy");
-                String detail = error.getMessage() == null ? error.toString() : error.getMessage();
+                String origin = firstAppFrame(error);
+                String detail = error.getClass().getSimpleName() + ": "
+                        + (error.getMessage() == null ? "(không có thông điệp)" : error.getMessage())
+                        + (origin.isEmpty() ? "" : "\nTại: " + origin);
                 alert.setContentText(detail
                         + "\n\nDữ liệu của bạn vẫn được lưu. Chi tiết kỹ thuật nằm trong thư mục logs.");
                 com.lifedesk.ui.Dialogs.style(alert);
@@ -76,6 +86,18 @@ public class LifeDeskApp extends Application {
         } catch (IllegalStateException toolkitNotStarted) {
             LOG.warn("Crash before the JavaFX toolkit started: {}", error.toString());
         }
+    }
+
+    /** The deepest LifeDesk frame ("class.method:line") — a message like
+     *  "Index 2 out of bounds for length 1" is useless without its origin. */
+    private static String firstAppFrame(Throwable error) {
+        for (StackTraceElement e : error.getStackTrace()) {
+            if (e.getClassName().startsWith("com.lifedesk")) {
+                String cls = e.getClassName().substring("com.lifedesk.".length());
+                return cls + "." + e.getMethodName() + ":" + e.getLineNumber();
+            }
+        }
+        return "";
     }
 
     /** Startup failure dialog: must not depend on the JavaFX toolkit being alive. */

@@ -172,7 +172,8 @@ public final class FinanceDialogs {
         DatePicker due = new DatePicker(existing == null || existing.dueDate == null
                 ? LocalDate.now().plusDays(7) : existing.dueDate);
         TextArea note = new TextArea(existing == null ? "" : existing.note);
-        note.setPrefRowCount(2);
+        note.setPrefRowCount(3);
+        note.setWrapText(true);
         VBox content = new VBox(10,
                 new HBox(10, FormGrid.labeled("Loại", dir), FormGrid.labeled("Đối tượng", party)),
                 new HBox(10, FormGrid.labeled("Số tiền (VND)", amount), FormGrid.labeled("Hạn", due)),

@@ -125,6 +125,30 @@ public class MarkdownService {
 
     /** Wrap rendered HTML in a themed page for the preview WebView. No scripts are included. */
     public String wrapPage(String bodyHtml, ThemeManager.PreviewPalette palette) {
+        return wrap(bodyHtml, palette, "");
+    }
+
+    /**
+     * Presentation variant for the flashcard board: the content is large and
+     * centered in the viewport (Quizlet-style), instead of a document flowing
+     * from the top-left of a huge empty card.
+     */
+    public String wrapPresentationPage(String bodyHtml, ThemeManager.PreviewPalette palette) {
+        return wrap(bodyHtml, palette, """
+                  html, body { height: 100%%; }
+                  body { display: flex; flex-direction: column; align-items: center;
+                         justify-content: center; font-size: 30px; line-height: 1.5;
+                         text-align: center; margin: 0 40px; }
+                  h1, h2, h3, h4 { border-bottom: none; margin: 10px 0; }
+                  p { margin: 8px 0; }
+                  img.math-display { margin: 18px auto; }
+                  pre { text-align: left; }
+                  table { text-align: left; margin: 14px auto; }
+                  blockquote { border-left: none; color: %s; font-style: italic; }
+                """.formatted(palette.accent()));
+    }
+
+    private String wrap(String bodyHtml, ThemeManager.PreviewPalette palette, String extraCss) {
         return """
                 <!DOCTYPE html>
                 <html>
@@ -149,6 +173,7 @@ public class MarkdownService {
                   img.math-inline { vertical-align: middle; margin: 0 1px; }
                   img.math-display { display: block; margin: 8px auto; }
                   img { max-width: 100%%; }
+                  %s
                 </style>
                 </head>
                 <body>
@@ -159,6 +184,6 @@ public class MarkdownService {
                 palette.background(), palette.text(), palette.accent(), palette.border(),
                 palette.accent(), palette.codeBg(), palette.codeBg(), palette.border(),
                 palette.border(), palette.codeBg(), palette.accent(), palette.textDim(),
-                palette.border(), bodyHtml);
+                palette.border(), extraCss, bodyHtml);
     }
 }

@@ -32,6 +32,9 @@ public final class SmokeMain {
     private static int failed = 0;
 
     public static void main(String[] args) throws Exception {
+        // Flag BEFORE any UI starts: the crash handler must not pop error dialogs
+        // on the user's screen while the automated run exercises failure paths.
+        System.setProperty("lifedesk.smoke", "true");
         uiArgs = args;
         String mode = args.length > 0 ? args[0] : "services";
         if ("ui".equalsIgnoreCase(mode)) {
@@ -645,22 +648,16 @@ public final class SmokeMain {
                 Path dlgShot = screenshot.toAbsolutePath().getParent().resolve("ui-smoke-task-dialog.png");
                 javax.imageio.ImageIO.write(shot, "png", dlgShot.toFile());
                 System.out.println("Task dialog snapshot: " + dlgShot);
-                // Close the dialog via its Cancel button (locale-independent ButtonBar
-                // role). A stuck-open dialog crashed the JVM in glass.dll during the
-                // final Platform.exit (JDK 25 window-close race).
+                // Close every open dialog stage with hide(): firing the Cancel
+                // button used to close the dialog DURING the Window.getWindows()
+                // iteration, corrupting the iterator (NoSuchElementException
+                // wrapping "Index 2 out of bounds for length 1" — the same error
+                // the user saw in the app). hide() completes showAndWait cleanly.
                 javafx.application.Platform.runLater(() -> {
-                    for (javafx.stage.Window win : javafx.stage.Window.getWindows()) {
+                    for (javafx.stage.Window win : new java.util.ArrayList<>(javafx.stage.Window.getWindows())) {
                         if (win instanceof javafx.stage.Stage st && st.isShowing()
-                                && st != LifeDeskApp.primaryStageRef
-                                && st.getScene() != null
-                                && st.getScene().getRoot() instanceof javafx.scene.Parent root
-                                && root.lookup(".button-bar") instanceof javafx.scene.control.ButtonBar bar) {
-                            bar.getButtons().stream()
-                                    .filter(n -> n instanceof javafx.scene.control.Button b
-                                            && javafx.scene.control.ButtonBar.getButtonData(b)
-                                                    == javafx.scene.control.ButtonBar.ButtonData.CANCEL_CLOSE)
-                                    .findFirst()
-                                    .ifPresent(n -> ((javafx.scene.control.Button) n).fire());
+                                && st != LifeDeskApp.primaryStageRef) {
+                            st.hide();
                         }
                     }
                 });
@@ -725,6 +722,82 @@ public final class SmokeMain {
             } catch (Exception e) {
                 check("mở được tab Flashcards", false);
                 System.out.println("Flashcards snapshot FAILED: " + e);
+            }
+        }
+        // ---- Course-dialog control-height regression (user: "cái cao cái thấp" —
+        // the spinner rendered ~8px taller than the combo in the same row).
+        if (captured && LifeDeskApp.mainWindowRef != null) {
+            java.util.concurrent.CompletableFuture<Boolean> cd = new java.util.concurrent.CompletableFuture<>();
+            javafx.application.Platform.runLater(() -> {
+                try {
+                    LifeDeskApp.mainWindowRef.showView(com.lifedesk.ui.MainWindow.ViewId.LEARNING);
+                    for (javafx.scene.Node n : LifeDeskApp.primaryStageRef.getScene().getRoot().lookupAll(".tab-pane")) {
+                        if (n instanceof javafx.scene.control.TabPane tp) {
+                            for (int i = 0; i < tp.getTabs().size(); i++) {
+                                if ("Khóa học & tài liệu".equals(tp.getTabs().get(i).getText())) {
+                                    tp.getSelectionModel().select(i);
+                                }
+                            }
+                        }
+                    }
+                    javafx.scene.Node found = findButton(
+                            LifeDeskApp.primaryStageRef.getScene().getRoot(), "Khóa học");
+                    if (!(found instanceof javafx.scene.control.Button b)) {
+                        throw new IllegalStateException("Không tìm thấy nút Khóa học");
+                    }
+                    cd.complete(true);
+                    b.fire(); // showAndWait blocks — must be after complete()
+                } catch (Throwable t) {
+                    cd.completeExceptionally(t);
+                }
+            });
+            try {
+                cd.get(10, java.util.concurrent.TimeUnit.SECONDS);
+                Thread.sleep(1500);
+                java.util.concurrent.CompletableFuture<java.awt.image.BufferedImage> capC =
+                        new java.util.concurrent.CompletableFuture<>();
+                javafx.application.Platform.runLater(() -> {
+                    try {
+                        for (javafx.stage.Window win : javafx.stage.Window.getWindows()) {
+                            if (win instanceof javafx.stage.Stage st && st.isShowing()
+                                    && st != LifeDeskApp.primaryStageRef
+                                    && st.getScene() != null) {
+                                javafx.scene.image.WritableImage img = st.getScene().snapshot(null);
+                                java.awt.image.BufferedImage buffered = new java.awt.image.BufferedImage(
+                                        (int) img.getWidth(), (int) img.getHeight(),
+                                        java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                                for (int y = 0; y < (int) img.getHeight(); y++) {
+                                    for (int x = 0; x < (int) img.getWidth(); x++) {
+                                        buffered.setRGB(x, y, img.getPixelReader().getArgb(x, y));
+                                    }
+                                }
+                                capC.complete(buffered);
+                                return;
+                            }
+                        }
+                        capC.completeExceptionally(new IllegalStateException("Course dialog not found"));
+                    } catch (Throwable t) {
+                        capC.completeExceptionally(t);
+                    }
+                });
+                java.awt.image.BufferedImage shot = capC.get(60, java.util.concurrent.TimeUnit.SECONDS);
+                Path cdShot = screenshot.toAbsolutePath().getParent().resolve("ui-smoke-course-dialog.png");
+                javax.imageio.ImageIO.write(shot, "png", cdShot.toFile());
+                System.out.println("Course dialog snapshot: " + cdShot);
+                // hide() on a snapshot copy — firing Cancel inside the live
+                // Window.getWindows() loop corrupted its iterator.
+                javafx.application.Platform.runLater(() -> {
+                    for (javafx.stage.Window win : new java.util.ArrayList<>(javafx.stage.Window.getWindows())) {
+                        if (win instanceof javafx.stage.Stage st && st.isShowing()
+                                && st != LifeDeskApp.primaryStageRef) {
+                            st.hide();
+                        }
+                    }
+                });
+                Thread.sleep(800);
+            } catch (Exception e) {
+                check("mở được dialog khóa học", false);
+                System.out.println("Course dialog snapshot FAILED: " + e);
             }
         }
         // ---- View-switch latency: navigation is a UI-thread operation, so time the

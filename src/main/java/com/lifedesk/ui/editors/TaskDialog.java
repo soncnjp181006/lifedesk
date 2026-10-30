@@ -60,7 +60,8 @@ public final class TaskDialog {
 
         TextField title = new TextField(existing == null ? "" : existing.title);
         TextArea notes = new TextArea(existing == null ? "" : existing.notes);
-        notes.setPrefRowCount(3);
+        notes.setPrefRowCount(4);
+        notes.setWrapText(true);
         ComboBox<Priority> priority = new ComboBox<>();
         priority.getItems().addAll(Priority.values());
         priority.setValue(existing == null ? Priority.MEDIUM : existing.priority);

@@ -265,6 +265,7 @@ public class NotesView extends View {
         titleField.textProperty().addListener((o, a, b) -> queueAutosave());
         tagsField.textProperty().addListener((o, a, b) -> queueAutosave());
         editor.getStyleClass().add("notes-editor");
+        editor.setWrapText(true); // long markdown lines flow — never scroll sideways
         editor.setPromptText("");
         editor.textProperty().addListener((o, a, b) -> {
             queueAutosave();
@@ -695,18 +696,25 @@ public class NotesView extends View {
             }
             int caret = editor.getCaretPosition();
             String text = editor.getText();
-            // Tab expansion first (latex-suite style), then exit-math.
-            var exp = com.lifedesk.markdown.LatexEngine.matchShorthand(text, caret, shorthandCache);
-            if (exp != null) {
-                editor.replaceText(exp.from(), caret, exp.replacement());
-                editor.positionCaret(exp.from() + exp.caretInReplacement());
-                e.consume();
-                return;
-            }
-            int exit = com.lifedesk.markdown.LatexEngine.mathExitPosition(text, caret);
-            if (exit >= 0) {
-                editor.positionCaret(exit);
-                e.consume();
+            try {
+                // Tab expansion first (latex-suite style), then exit-math.
+                var exp = com.lifedesk.markdown.LatexEngine.matchShorthand(text, caret, shorthandCache);
+                if (exp != null) {
+                    editor.replaceText(exp.from(), caret, exp.replacement());
+                    editor.positionCaret(exp.from() + exp.caretInReplacement());
+                    e.consume();
+                    return;
+                }
+                int exit = com.lifedesk.markdown.LatexEngine.mathExitPosition(text, caret);
+                if (exit >= 0) {
+                    editor.positionCaret(exit);
+                    e.consume();
+                }
+            } catch (RuntimeException ex) {
+                // An assist bug must never break typing; log the input context so
+                // the culprit line can be reproduced.
+                org.slf4j.LoggerFactory.getLogger(NotesView.class).warn(
+                        "LaTeX Tab-assist failed (caret={}, len={}, text='{}')", caret, text.length(), text, ex);
             }
         });
     }

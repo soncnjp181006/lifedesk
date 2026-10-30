@@ -167,7 +167,7 @@
     -fx-border-color: derive(-ld-border, -8%);
     -fx-border-width: 1;
     -fx-padding: 6 12 6 12;
-    -fx-min-height: 32;
+    -fx-min-height: 34;                    /* matches .text-field / .combo-box rows */
     -fx-cursor: hand;
     -fx-font-size: 13px;
     -fx-font-weight: normal;
@@ -271,10 +271,10 @@
     -fx-background-radius: 9;
     -fx-border-radius: 9;
     -fx-padding: 0;
-    -fx-min-width: 32;                     /* hit area, rule: touch-target-size */
-    -fx-min-height: 32;
-    -fx-max-width: 32;
-    -fx-max-height: 32;
+    -fx-min-width: 34;                     /* hit area, rule: touch-target-size */
+    -fx-min-height: 34;                    /* matches .button rows it sits in */
+    -fx-max-width: 34;
+    -fx-max-height: 34;
     -fx-alignment: center;
     -fx-font-size: 13px;
 }
@@ -388,6 +388,10 @@
     -fx-border-width: 0;
     -fx-background-color: transparent;
     -fx-padding: 4 6 4 6;
+    /* The inner field otherwise keeps the 34px .text-field box ON TOP of the
+       spinner's own border/padding — every spinner rendered ~8px taller than
+       the combo beside it. Flatten to 30 so the outer control lands on 34. */
+    -fx-min-height: 30;
 }
 
 /* The DatePicker's inner text-field carries the full .text-field box (34px +
@@ -1119,8 +1123,8 @@
 }
 
 .md-toolbar-btn {
-    -fx-min-height: 28;
-    -fx-min-width: 30;
+    -fx-min-height: 34;
+    -fx-min-width: 34;
     -fx-padding: 3 7 3 7;
     -fx-font-size: 12px;
     -fx-background-radius: 6;
@@ -1484,11 +1488,13 @@
     -fx-border-width: 1 0 0 0;
 }
 
+/* Composer = centered floating card (ChatGPT-style), not a full-width strip. */
 .chat-composer {
     -fx-background-color: -ld-surface;
-    -fx-background-radius: 0 0 13 13;
-    -fx-border-color: -ld-border transparent transparent transparent;
-    -fx-border-width: 1 0 0 0;
+    -fx-background-radius: 14;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 14;
+    -fx-border-width: 1;
     -fx-padding: 10 12 8 12;
 }
 

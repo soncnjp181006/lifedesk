@@ -55,7 +55,7 @@ public class LibraryView extends View {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         statsLabel.getStyleClass().add("dim-label");
-        kindFilter.getItems().addAll("Tất cả", "Book", "Movie", "Series", "Game", "Music", "Course");
+        kindFilter.getItems().addAll("Tất cả", "Sách", "Phim", "Series", "Game", "Nhạc", "Khóa học");
         kindFilter.setValue("Tất cả");
         kindFilter.setOnAction(e -> rebuild());
         Button add = new Button("Thêm mục", new IconView("plus", 15));
@@ -80,7 +80,7 @@ public class LibraryView extends View {
         shelves.getChildren().clear();
         String kind = kindFilter.getValue();
         List<LibraryService.Item> items = ctx.library().all().stream()
-                .filter(i -> "Tất cả".equals(kind) || i.kind.name().equalsIgnoreCase(kind))
+                .filter(i -> "Tất cả".equals(kind) || kindLabel(i.kind).equalsIgnoreCase(kind))
                 .toList();
         var stats = ctx.library().stats();
         statsLabel.setText(stats.total() + " mục — đang dùng " + stats.inProgress()
@@ -150,6 +150,14 @@ public class LibraryView extends View {
         tick.getStyleClass().add("icon-btn");
         tick.setTooltip(new Tooltip("+1 tiến độ (tự hoàn thành khi đủ)"));
         tick.setOnAction(e -> ctx.library().tickProgress(item.id));
+        HBox actions = new HBox(4, tick);
+        if (item.link != null && !item.link.isBlank()) {
+            Button open = new Button("", new IconView("file-text", 14));
+            open.getStyleClass().add("icon-btn");
+            open.setTooltip(new Tooltip("Mở tệp / liên kết"));
+            open.setOnAction(e -> openItemLink(item));
+            actions.getChildren().add(open);
+        }
         Button edit = new Button("", new IconView("pencil", 14));
         edit.getStyleClass().add("icon-btn");
         edit.setTooltip(new Tooltip("Sửa"));
@@ -162,10 +170,29 @@ public class LibraryView extends View {
                 ctx.library().delete(item.id);
             }
         });
-        HBox actions = new HBox(4, tick, edit, del);
+        actions.getChildren().addAll(edit, del);
 
         card.content(cover, titleLabel, meta, actions);
         return card;
+    }
+
+    /** Open the item's file (local path) or link (http) with the OS handler. */
+    private void openItemLink(LibraryService.Item item) {
+        String link = item.link == null ? "" : item.link.trim();
+        try {
+            if (link.toLowerCase().startsWith("http://") || link.toLowerCase().startsWith("https://")) {
+                java.awt.Desktop.getDesktop().browse(new java.net.URI(link));
+            } else {
+                java.io.File f = new java.io.File(link);
+                if (!f.exists()) {
+                    main.status("Tệp không tồn tại: " + link);
+                    return;
+                }
+                java.awt.Desktop.getDesktop().open(f);
+            }
+        } catch (Exception ex) {
+            Dialogs.error("Không mở được", ex.getMessage());
+        }
     }
 
     private String iconFor(LibraryService.Kind kind) {
@@ -201,18 +228,56 @@ public class LibraryView extends View {
         ComboBox<LibraryService.Kind> kind = new ComboBox<>();
         kind.getItems().addAll(LibraryService.Kind.values());
         kind.setValue(existing == null ? LibraryService.Kind.BOOK : existing.kind);
+        display(kind, this::kindLabel);
         ComboBox<LibraryService.Status> status = new ComboBox<>();
         status.getItems().addAll(LibraryService.Status.values());
         status.setValue(existing == null ? LibraryService.Status.PLANNED : existing.status);
+        display(status, this::statusLabel);
         TextField creator = new TextField(existing == null ? "" : existing.creator);
         Spinner<Integer> year = new Spinner<>(0, 2100, existing == null ? java.time.YearMonth.now().getYear() : existing.year);
         Spinner<Integer> rating = new Spinner<>(0, 10, existing == null ? 0 : existing.rating);
         TextField cover = new TextField(existing == null ? "" : existing.coverUrl);
         cover.setPromptText("URL ảnh bìa (tùy chọn)");
+        // Where the item actually lives: a local file (ebook, video, save…) or a URL.
+        TextField link = new TextField(existing == null ? "" : existing.link);
+        link.setPromptText("Đường dẫn tệp hoặc liên kết (D:\\sách\\a.pdf, https://…)");
+        Button pickFile = new Button("Chọn tệp…");
+        pickFile.setOnAction(e -> {
+            javafx.stage.FileChooser fc = new javafx.stage.FileChooser();
+            fc.setTitle("Chọn tệp cho \"" + (title.getText().isBlank() ? "mục này" : title.getText()) + "\"");
+            java.io.File f = fc.showOpenDialog(dialog.getDialogPane().getScene() == null
+                    ? null : dialog.getDialogPane().getScene().getWindow());
+            if (f != null) {
+                link.setText(f.getAbsolutePath());
+            }
+        });
+        HBox linkRow = new HBox(8, link, pickFile);
+        HBox.setHgrow(link, Priority.ALWAYS);
+        // Progress only makes sense for countable kinds; a movie/game has no "0/10".
         Spinner<Integer> progressCurrent = new Spinner<>(0, 100000, existing == null ? 0 : existing.progressCurrent);
         Spinner<Integer> progressTotal = new Spinner<>(0, 100000, existing == null ? 0 : existing.progressTotal);
+        Label progressCurrentLabel = new Label();
+        Label progressTotalLabel = new Label();
+        VBox progressCurrentBox = new VBox(2, progressCurrentLabel, progressCurrent);
+        VBox progressTotalBox = new VBox(2, progressTotalLabel, progressTotal);
+        HBox progressRow = new HBox(10, progressCurrentBox, progressTotalBox);
+        Runnable refreshProgressLabels = () -> {
+            String[] unit = progressUnit(kind.getValue());
+            if (unit == null) {
+                progressRow.setManaged(false);
+                progressRow.setVisible(false);
+                return;
+            }
+            progressRow.setManaged(true);
+            progressRow.setVisible(true);
+            progressCurrentLabel.setText(unit[0]);
+            progressTotalLabel.setText(unit[1]);
+        };
+        kind.valueProperty().addListener((o, a, b) -> refreshProgressLabels.run());
+        refreshProgressLabels.run();
         javafx.scene.control.TextArea note = new javafx.scene.control.TextArea(existing == null ? "" : existing.note);
-        note.setPrefRowCount(2);
+        note.setPrefRowCount(3);
+        note.setWrapText(true);
 
         VBox content = new VBox(10,
                 FormGrid.labeled("Tiêu đề *", title),
@@ -220,7 +285,8 @@ public class LibraryView extends View {
                 new HBox(10, FormGrid.labeled("Tác giả/nhà sản xuất", creator),
                         FormGrid.labeled("Năm", year), FormGrid.labeled("Đánh giá (0-10)", rating)),
                 FormGrid.labeled("Ảnh bìa (URL)", cover),
-                new HBox(10, FormGrid.labeled("Tiến độ", progressCurrent), FormGrid.labeled("Tổng", progressTotal)),
+                FormGrid.labeled("Tệp / liên kết", linkRow),
+                progressRow,
                 FormGrid.labeled("Ghi chú", note));
         content.setPadding(new javafx.geometry.Insets(10));
         dialog.getDialogPane().setContent(content);
@@ -236,6 +302,7 @@ public class LibraryView extends View {
             item.year = year.getValue();
             item.rating = rating.getValue();
             item.coverUrl = cover.getText();
+            item.link = link.getText().trim();
             item.progressCurrent = progressCurrent.getValue();
             item.progressTotal = progressTotal.getValue();
             item.note = note.getText();
@@ -252,6 +319,7 @@ public class LibraryView extends View {
                     created.rating = item.rating;
                     created.progressCurrent = item.progressCurrent;
                     created.progressTotal = item.progressTotal;
+                    created.link = item.link;
                     created.note = item.note;
                     ctx.library().update(created);
                 } else {
@@ -261,6 +329,39 @@ public class LibraryView extends View {
                 Dialogs.error("Không lưu được", e.getMessage());
             }
         });
+    }
+
+    /** Combo cells in Vietnamese (list + button), shared by the two combos. */
+    private <T> void display(ComboBox<T> combo, java.util.function.Function<T, String> name) {
+        javafx.util.Callback<javafx.scene.control.ListView<T>, javafx.scene.control.ListCell<T>> cell =
+                v -> new javafx.scene.control.ListCell<>() {
+                    @Override
+                    protected void updateItem(T item, boolean empty) {
+                        super.updateItem(item, empty);
+                        setText(empty || item == null ? null : name.apply(item));
+                    }
+                };
+        combo.setCellFactory(cell);
+        combo.setButtonCell(cell.call(null));
+    }
+
+    private String statusLabel(LibraryService.Status s) {
+        return switch (s) {
+            case PLANNED -> "Kế hoạch";
+            case IN_PROGRESS -> "Đang dùng";
+            case DONE -> "Hoàn thành";
+            case DROPPED -> "Tạm bỏ";
+        };
+    }
+
+    /** "Đã đọc (chương)"-style pair per kind; null = progress fields are meaningless. */
+    private String[] progressUnit(LibraryService.Kind kind) {
+        return switch (kind) {
+            case BOOK -> new String[]{"Đã đọc (chương)", "Tổng (chương)"};
+            case SERIES -> new String[]{"Tập đã xem", "Tổng tập"};
+            case COURSE -> new String[]{"Buổi đã học", "Tổng buổi"};
+            default -> null; // a movie/game/album has no 0/N counter
+        };
     }
 
     @Override
