@@ -177,10 +177,6 @@ public class TaskService {
         return repo.findAll().stream().map(t -> t.group).filter(g -> !g.isBlank()).distinct().sorted().toList();
     }
 
-    public List<String> allTags() {
-        return repo.findAll().stream().flatMap(t -> t.tags.stream()).distinct().sorted().toList();
-    }
-
     public long openCount() {
         return repo.findAll().stream().filter(t -> t.status == TaskStatus.TODO || t.status == TaskStatus.IN_PROGRESS).count();
     }

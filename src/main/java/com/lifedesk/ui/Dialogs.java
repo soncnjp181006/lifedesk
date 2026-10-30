@@ -4,9 +4,6 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
-import javafx.scene.control.TextArea;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.Priority;
 
 import java.util.List;
 import java.util.Optional;
@@ -75,24 +72,6 @@ public final class Dialogs {
         style(a);
         Optional<ButtonType> result = a.showAndWait();
         return result.isPresent() && result.get().getButtonData() == ButtonBar.ButtonData.OK_DONE;
-    }
-
-    /** Confirm dialog with an expandable detail area (used for destructive agent approvals). */
-    public static boolean confirmWithDetails(String title, String message, String details) {
-        Alert a = new Alert(Alert.AlertType.CONFIRMATION);
-        a.setTitle(title);
-        a.setHeaderText(null);
-        a.setContentText(message);
-        TextArea area = new TextArea(details);
-        area.setEditable(false);
-        area.setWrapText(true);
-        area.setMaxWidth(Double.MAX_VALUE);
-        area.setMaxHeight(Double.MAX_VALUE);
-        GridPane.setVgrow(area, Priority.ALWAYS);
-        GridPane.setHgrow(area, Priority.ALWAYS);
-        a.getDialogPane().setContent(area);
-        style(a);
-        return a.showAndWait().map(bt -> bt.getButtonData() == ButtonBar.ButtonData.OK_DONE).orElse(false);
     }
 
     /** Text input dialog; empty Optional when cancelled. */

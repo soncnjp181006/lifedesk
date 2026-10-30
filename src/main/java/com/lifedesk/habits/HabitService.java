@@ -1,12 +1,11 @@
 package com.lifedesk.habits;
 
+import com.google.gson.reflect.TypeToken;
 import com.lifedesk.common.ChangeNotifier;
 import com.lifedesk.common.NotFoundException;
 import com.lifedesk.common.ValidationException;
 import com.lifedesk.common.Validators;
-import com.lifedesk.storage.GsonFactory;
 import com.lifedesk.storage.JsonStore;
-import com.lifedesk.storage.SchemaMigrator;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
@@ -38,9 +37,15 @@ public class HabitService {
 
     public HabitService(JsonStore store) {
         this.store = store;
-        loadHabits();
-        loadGoals();
-        loadChangeLog();
+        habits.addAll(store.readList("habits/habits.json", "habits",
+                new TypeToken<List<Habit>>() {
+                }.getType()));
+        goals.addAll(store.readList("habits/goals.json", "goals",
+                new TypeToken<List<Goal>>() {
+                }.getType()));
+        changeLog.addAll(store.readList("habits/changelog.json", "entries",
+                new TypeToken<List<ChangeLogEntry>>() {
+                }.getType()));
         loadLogsForYear(LocalDate.now().getYear());
         habits.forEach(this::snapshotHabit);
         goals.forEach(this::snapshotGoal);
@@ -52,61 +57,31 @@ public class HabitService {
 
     // ------------------------------------------------------------------ habits
 
-    private void loadHabits() {
-        TypeTokenHolder h = new TypeTokenHolder<>();
-        List<Habit> parsed = readList("habits/habits.json", "habits", h.listOf(Habit.class));
-        habits.addAll(parsed);
-    }
-
-    private void loadGoals() {
-        TypeTokenHolder h = new TypeTokenHolder<>();
-        goals.addAll(readList("habits/goals.json", "goals", h.listOf(Goal.class)));
-    }
-
-    private void loadChangeLog() {
-        TypeTokenHolder h = new TypeTokenHolder<>();
-        changeLog.addAll(readList("habits/changelog.json", "entries", h.listOf(ChangeLogEntry.class)));
-    }
-
     private void loadLogsForYear(int year) {
         if (!loadedLogYears.add(year)) {
             return;
         }
-        TypeTokenHolder h = new TypeTokenHolder<>();
-        List<HabitLog> parsed = readList("habits/logs-" + year + ".json", "logs", h.listOf(HabitLog.class));
+        List<HabitLog> parsed = store.readList("habits/logs-" + year + ".json", "logs",
+                new TypeToken<List<HabitLog>>() {
+                }.getType());
         for (HabitLog log : parsed) {
             logs.computeIfAbsent(log.habitId, k -> new HashMap<>()).put(log.date, log);
         }
     }
 
-    private <T> List<T> readList(String file, String key, java.lang.reflect.Type listType) {
-        JsonStore.StoredDoc doc = store.read(file, SchemaMigrator.none(1));
-        if (doc == null || !doc.data().has(key) || !doc.data().get(key).isJsonArray()) {
-            return new ArrayList<>();
-        }
-        List<T> parsed = GsonFactory.create().fromJson(doc.data().getAsJsonArray(key), listType);
-        return parsed == null ? new ArrayList<>() : parsed;
-    }
-
-    private void writeList(String file, String key, Object list) {
-        com.google.gson.JsonObject data = new com.google.gson.JsonObject();
-        data.add(key, GsonFactory.create().toJsonTree(list));
-        store.write(file, 1, data);
-    }
-
     private void persistHabits() {
-        writeList("habits/habits.json", "habits", habits);
+        store.writeList("habits/habits.json", "habits", 1, habits);
     }
 
     private void persistGoals() {
-        writeList("habits/goals.json", "goals", goals);
+        store.writeList("habits/goals.json", "goals", 1, goals);
     }
 
     private void persistChangeLog() {
         List<ChangeLogEntry> capped = changeLog.size() > 1000
                 ? changeLog.subList(changeLog.size() - 1000, changeLog.size())
                 : changeLog;
-        writeList("habits/changelog.json", "entries", new ArrayList<>(capped));
+        store.writeList("habits/changelog.json", "entries", 1, new ArrayList<>(capped));
     }
 
     private void persistLogs(int year) {
@@ -118,7 +93,7 @@ public class HabitService {
                 }
             }
         }
-        writeList("habits/logs-" + year + ".json", "logs", forYear);
+        store.writeList("habits/logs-" + year + ".json", "logs", 1, forYear);
     }
 
     public List<Habit> habits(boolean includeArchived) {
@@ -382,12 +357,5 @@ public class HabitService {
 
     private void snapshotGoal(Goal g) {
         goalSnapshots.put(g.id, new String[]{g.title, g.progressMode.name(), String.valueOf(g.manualProgress)});
-    }
-
-    /** Helper to build parameterized list types without repeating boilerplate. */
-    private static final class TypeTokenHolder<T> {
-        java.lang.reflect.Type listOf(Class<T> clazz) {
-            return com.google.gson.reflect.TypeToken.getParameterized(List.class, clazz).getType();
-        }
     }
 }

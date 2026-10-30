@@ -6,6 +6,8 @@ import com.lifedesk.notes.SaveResult;
 import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
+import com.lifedesk.common.Tags;
+import com.lifedesk.markdown.MarkdownEditor;
 import com.lifedesk.ui.components.EmptyState;
 import com.lifedesk.ui.components.IconView;
 import javafx.animation.PauseTransition;
@@ -48,6 +50,11 @@ public class NotesView extends View {
     private final Label statusHint = new Label("");
     private final BorderPane editorPane = new BorderPane();
     private final PauseTransition autosave = new PauseTransition(Duration.seconds(1.5));
+    /**
+     * Debounce for the note-search box: search reads every matching note's full
+     * content, so firing per keystroke made typing feel heavy on large vaults.
+     */
+    private final PauseTransition searchDebounce = new PauseTransition(Duration.millis(250));
     private HBox editorBar;
     private final javafx.scene.control.TreeView<String> folderTree = new javafx.scene.control.TreeView<>();
     private final HBox mdToolbar = new HBox(2);
@@ -97,7 +104,7 @@ public class NotesView extends View {
         noteList.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> openNote(b));
 
         searchField.setPromptText("Tìm ghi chú…");
-        searchField.textProperty().addListener((o, a, b) -> refreshNoteList());
+        searchField.textProperty().addListener((o, a, b) -> queueSearchRefresh());
 
         Button newBtn = new Button("Ghi chú mới", new IconView("plus", 15));
         addAccelerator(new KeyCodeCombination(KeyCode.N, KeyCombination.CONTROL_DOWN), newBtn::fire);
@@ -271,6 +278,13 @@ public class NotesView extends View {
 
     // ------------------------------------------------------------------ list
 
+    /** Debounced search: wait for a typing pause before scanning note contents. */
+    private void queueSearchRefresh() {
+        searchDebounce.stop();
+        searchDebounce.setOnFinished(e -> refreshNoteList());
+        searchDebounce.playFromStart();
+    }
+
     private void refreshNoteList() {
         String q = searchField.getText();
         var notes = ctx.notes().search(q).stream()
@@ -375,21 +389,22 @@ public class NotesView extends View {
         mdToolbar.getStyleClass().add("md-toolbar");
         mdToolbar.setAlignment(Pos.CENTER_LEFT);
         mdToolbar.getChildren().addAll(
-                mdButton("B", "Đậm", "-fx-font-weight: bold;", () -> wrapSelection("**", "**", "đậm")),
-                mdButton("I", "Nghiêng", "-fx-font-style: italic;", () -> wrapSelection("*", "*", "nghiêng")),
-                mdButton("S", "Gạch ngang", "-fx-strikethrough: true;", () -> wrapSelection("~~", "~~", "gạch")),
-                mdButton("H1", "Tiêu đề 1", "", () -> prefixSelectedLines("# ")),
-                mdButton("H2", "Tiêu đề 2", "", () -> prefixSelectedLines("## ")),
-                mdButton("H3", "Tiêu đề 3", "", () -> prefixSelectedLines("### ")),
-                mdButton("•", "Danh sách chấm", "", () -> prefixSelectedLines("- ")),
-                mdButton("1.", "Danh sách số", "", () -> prefixSelectedLines("1. ")),
-                mdButton("☐", "Checklist", "", () -> prefixSelectedLines("- [ ] ")),
-                mdButton("\"", "Trích dẫn", "", () -> prefixSelectedLines("> ")),
-                mdButton("`x`", "Code inline", "", () -> wrapSelection("`", "`", "code")),
-                mdButton("{ }", "Khối code", "", () -> insertBlock("\n```\ncode\n```\n")),
-                mdButton("[…]", "Liên kết", "", () -> wrapSelection("[", "](https://)", "mô tả")),
+                mdButton("B", "Đậm", "-fx-font-weight: bold;", () -> MarkdownEditor.wrapSelection(editor, "**", "**", "đậm")),
+                mdButton("I", "Nghiêng", "-fx-font-style: italic;", () -> MarkdownEditor.wrapSelection(editor, "*", "*", "nghiêng")),
+                mdButton("S", "Gạch ngang", "-fx-strikethrough: true;", () -> MarkdownEditor.wrapSelection(editor, "~~", "~~", "gạch")),
+                mdButton("H1", "Tiêu đề 1", "", () -> MarkdownEditor.prefixSelectedLines(editor, "# ")),
+                mdButton("H2", "Tiêu đề 2", "", () -> MarkdownEditor.prefixSelectedLines(editor, "## ")),
+                mdButton("H3", "Tiêu đề 3", "", () -> MarkdownEditor.prefixSelectedLines(editor, "### ")),
+                mdButton("•", "Danh sách chấm", "", () -> MarkdownEditor.prefixSelectedLines(editor, "- ")),
+                mdButton("1.", "Danh sách số", "", () -> MarkdownEditor.prefixSelectedLines(editor, "1. ")),
+                mdButton("☐", "Checklist", "", () -> MarkdownEditor.prefixSelectedLines(editor, "- [ ] ")),
+                mdButton("\"", "Trích dẫn", "", () -> MarkdownEditor.prefixSelectedLines(editor, "> ")),
+                mdButton("`x`", "Code inline", "", () -> MarkdownEditor.wrapSelection(editor, "`", "`", "code")),
+                mdButton("{ }", "Khối code", "", () -> MarkdownEditor.insertBlock(editor, "\n```\ncode\n```\n")),
+                mdButton("[…]", "Liên kết", "", () -> MarkdownEditor.wrapSelection(editor, "[", "](https://)", "mô tả")),
                 mdButton("▦", "Bảng 2 cột", "",
-                        () -> insertBlock("\n| Cột 1 | Cột 2 |\n| --- | --- |\n|  |  |\n")));
+                        () -> MarkdownEditor.insertBlock(editor,
+                                "\n| Cột 1 | Cột 2 |\n| --- | --- |\n|  |  |\n")));
     }
 
     private Button mdButton(String label, String tip, String inlineStyle, Runnable action) {
@@ -402,45 +417,6 @@ public class NotesView extends View {
         b.setTooltip(new Tooltip(tip));
         b.setOnAction(e -> action.run());
         return b;
-    }
-
-    private void wrapSelection(String prefix, String suffix, String placeholder) {
-        javafx.scene.control.IndexRange sel = editor.getSelection();
-        String selected = sel.getLength() > 0
-                ? editor.getText().substring(sel.getStart(), sel.getEnd()) : placeholder;
-        editor.replaceText(sel.getStart(), sel.getEnd(), prefix + selected + suffix);
-        editor.selectRange(sel.getStart() + prefix.length(),
-                sel.getStart() + prefix.length() + selected.length());
-        editor.requestFocus();
-    }
-
-    private void prefixSelectedLines(String prefix) {
-        javafx.scene.control.IndexRange sel = editor.getSelection();
-        String text = editor.getText();
-        int from = sel.getLength() > 0 ? sel.getStart()
-                : text.lastIndexOf('\n', Math.max(0, editor.getCaretPosition() - 1)) + 1;
-        int to = sel.getLength() > 0 ? sel.getEnd() : text.indexOf('\n', editor.getCaretPosition());
-        if (to < 0) {
-            to = text.length();
-        }
-        String[] lines = text.substring(from, to).split("\n", -1);
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < lines.length; i++) {
-            if (i > 0) {
-                sb.append('\n');
-            }
-            sb.append(prefix).append(lines[i]);
-        }
-        editor.replaceText(from, to, sb.toString());
-        editor.selectRange(from, from + sb.length());
-        editor.requestFocus();
-    }
-
-    private void insertBlock(String block) {
-        int pos = editor.getCaretPosition();
-        editor.insertText(pos, block);
-        editor.positionCaret(pos + block.length());
-        editor.requestFocus();
     }
 
     private void openNote(NoteMeta meta) {
@@ -484,12 +460,7 @@ public class NotesView extends View {
         try {
             SaveResult result = ctx.notes().saveContent(current.id, editor.getText(), loadedHash);
             String titleNew = titleField.getText();
-            var tags = new LinkedHashSet<String>();
-            for (String t : tagsField.getText().split(",")) {
-                if (!t.isBlank()) {
-                    tags.add(t.trim());
-                }
-            }
+            var tags = Tags.parse(tagsField.getText());
             boolean metaChanged = (!titleNew.isBlank() && !titleNew.equals(current.title))
                     || !tags.equals(current.tags);
             if (metaChanged) {
@@ -561,7 +532,7 @@ public class NotesView extends View {
         String currentLabel = current.folder.isEmpty() ? "(gốc)" : current.folder;
         javafx.scene.control.ChoiceDialog<String> dialog =
                 new javafx.scene.control.ChoiceDialog<>(currentLabel, options);
-        dialog.initOwner(main.stage());
+        com.lifedesk.ui.Dialogs.style(dialog); // theme + owner (manual initOwner skipped both before)
         dialog.setTitle("Chuyển ghi chú");
         dialog.setHeaderText("Thư mục đích cho \"" + current.title + "\":");
         dialog.setContentText("Thư mục");

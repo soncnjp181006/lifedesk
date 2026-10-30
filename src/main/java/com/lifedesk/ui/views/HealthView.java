@@ -9,6 +9,7 @@ import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.Card;
 import com.lifedesk.ui.components.EmptyState;
+import com.lifedesk.ui.components.FormGrid;
 import com.lifedesk.ui.components.IconView;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Pos;
@@ -45,7 +46,6 @@ import java.util.Map;
  * disclaimer states the app never gives medical advice.
  */
 public class HealthView extends View {
-    private static final DateTimeFormatter DF = DateTimeFormatter.ofPattern("dd/MM");
     private static final DateTimeFormatter DF_FULL = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private final DatePicker entryDate = new DatePicker(LocalDate.now());
     private final TextField sleepField = new TextField();
@@ -136,14 +136,13 @@ public class HealthView extends View {
         return root;
     }
 
+    /** Compact metric fields; structure shared via FormGrid. */
     private VBox labeled(String text, Node field) {
-        Label l = new Label(text);
-        l.getStyleClass().add("dim-label");
         if (field instanceof TextField tf) {
             tf.setPrefWidth(140);
             tf.setPromptText("—");
         }
-        return new VBox(2, l, field);
+        return FormGrid.labeled(text, field);
     }
 
     private void loadEntry() {
@@ -262,24 +261,7 @@ public class HealthView extends View {
             chartHost.getChildren().add(Card.dim("Chưa có dữ liệu cho chỉ số này trong 30 ngày qua."));
             return;
         }
-        NumberAxis x = new NumberAxis();
-        x.setLabel("Ngày");
-        x.setMinorTickVisible(false);
-        x.setLowerBound(0);
-        x.setUpperBound(from.until(to, java.time.temporal.ChronoUnit.DAYS));
-        x.setAutoRanging(false);
-        x.setTickUnit(5);
-        x.setTickLabelFormatter(new javafx.util.StringConverter<>() {
-            @Override
-            public String toString(Number n) {
-                return from.plusDays(Math.round(n.doubleValue())).format(DF);
-            }
-
-            @Override
-            public Number fromString(String s) {
-                return 0;
-            }
-        });
+        NumberAxis x = com.lifedesk.ui.components.DateAxes.epochDay("Ngày", from, to, 5);
         NumberAxis y = new NumberAxis();
         LineChart<Number, Number> chart = new LineChart<>(x, y);
         chart.setTitle(field + " — 30 ngày");

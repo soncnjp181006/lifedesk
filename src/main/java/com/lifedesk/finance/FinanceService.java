@@ -1,6 +1,5 @@
 package com.lifedesk.finance;
 
-import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import com.lifedesk.common.ChangeNotifier;
 import com.lifedesk.common.CsvUtil;
@@ -8,9 +7,7 @@ import com.lifedesk.common.Fingerprint;
 import com.lifedesk.common.NotFoundException;
 import com.lifedesk.common.ValidationException;
 import com.lifedesk.common.Validators;
-import com.lifedesk.storage.GsonFactory;
 import com.lifedesk.storage.JsonStore;
-import com.lifedesk.storage.SchemaMigrator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,12 +24,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Personal finance business logic.
@@ -40,12 +37,15 @@ import java.util.stream.Collectors;
  * Money is {@link BigDecimal} end to end — never double. Transactions are
  * partitioned into one JSON file per year (finance/transactions-YYYY.json)
  * so the store stays small and fast. CSV import de-duplicates re-imported
- * rows using a stable fingerprint (date|type|amount|description|externalId).
- * Nothing ever leaves the machine.
+ * rows using a stable fingerprint (date|type|amount|description|externalId)
+ * derived from the stored transactions themselves — no separate fingerprint
+ * file to keep in sync. Nothing ever leaves the machine.
  */
 public class FinanceService {
     private static final Logger LOG = LoggerFactory.getLogger(FinanceService.class);
     private static final DateTimeFormatter CSV_DATE = DateTimeFormatter.ISO_LOCAL_DATE;
+    private static final Type TX_LIST = new TypeToken<List<Transaction>>() {
+    }.getType();
 
     private final JsonStore store;
     private final ChangeNotifier change = new ChangeNotifier();
@@ -54,14 +54,21 @@ public class FinanceService {
     private final List<Category> categories = new ArrayList<>();
     private final List<Budget> budgets = new ArrayList<>();
     private final List<Debt> debts = new ArrayList<>();
-    private final Set<String> fingerprints = new HashSet<>();
+    /** Import fingerprints of currently stored transactions; derived lazily from rows. */
+    private final Set<String> knownFingerprints = new HashSet<>();
+    private boolean fingerprintsLoaded = false;
 
     public FinanceService(JsonStore store) {
         this.store = store;
-        loadCategories();
-        loadBudgets();
-        loadDebts();
-        loadFingerprints();
+        categories.addAll(store.readList("finance/categories.json", "categories",
+                new TypeToken<List<Category>>() {
+                }.getType()));
+        budgets.addAll(store.readList("finance/budgets.json", "budgets",
+                new TypeToken<List<Budget>>() {
+                }.getType()));
+        debts.addAll(store.readList("finance/debts.json", "debts",
+                new TypeToken<List<Debt>>() {
+                }.getType()));
         if (categories.isEmpty()) {
             seedDefaultCategories();
         }
@@ -73,61 +80,16 @@ public class FinanceService {
 
     // ------------------------------------------------------------------ categories
 
-    private void loadCategories() {
-        Type listType = new TypeToken<List<Category>>() {
-        }.getType();
-        List<Category> parsed = readList("finance/categories.json", "categories", listType);
-        categories.addAll(parsed);
-    }
-
-    private void loadBudgets() {
-        Type listType = new TypeToken<List<Budget>>() {
-        }.getType();
-        budgets.addAll(readList("finance/budgets.json", "budgets", listType));
-    }
-
-    private void loadDebts() {
-        Type listType = new TypeToken<List<Debt>>() {
-        }.getType();
-        debts.addAll(readList("finance/debts.json", "debts", listType));
-    }
-
-    private void loadFingerprints() {
-        Type listType = new TypeToken<List<String>>() {
-        }.getType();
-        List<String> parsed = readList("finance/fingerprints.json", "fingerprints", listType);
-        fingerprints.addAll(parsed);
-    }
-
-    private <T> List<T> readList(String file, String key, Type listType) {
-        JsonStore.StoredDoc doc = store.read(file, SchemaMigrator.none(1));
-        if (doc == null || !doc.data().has(key) || !doc.data().get(key).isJsonArray()) {
-            return new ArrayList<>();
-        }
-        List<T> parsed = GsonFactory.create().fromJson(doc.data().getAsJsonArray(key), listType);
-        return parsed == null ? new ArrayList<>() : parsed;
-    }
-
-    private void writeList(String file, String key, Object list) {
-        JsonObject data = new JsonObject();
-        data.add(key, GsonFactory.create().toJsonTree(list));
-        store.write(file, 1, data);
-    }
-
     private void persistCategories() {
-        writeList("finance/categories.json", "categories", categories);
+        store.writeList("finance/categories.json", "categories", 1, categories);
     }
 
     private void persistBudgets() {
-        writeList("finance/budgets.json", "budgets", budgets);
+        store.writeList("finance/budgets.json", "budgets", 1, budgets);
     }
 
     private void persistDebts() {
-        writeList("finance/debts.json", "debts", debts);
-    }
-
-    private void persistFingerprints() {
-        writeList("finance/fingerprints.json", "fingerprints", fingerprints.stream().sorted().toList());
+        store.writeList("finance/debts.json", "debts", 1, debts);
     }
 
     private void seedDefaultCategories() {
@@ -200,15 +162,31 @@ public class FinanceService {
     // ------------------------------------------------------------------ transactions
 
     private List<Transaction> year(int year) {
-        return txByYear.computeIfAbsent(year, y -> {
-            Type listType = new TypeToken<List<Transaction>>() {
-            }.getType();
-            return new ArrayList<>(readList("finance/transactions-" + y + ".json", "transactions", listType));
-        });
+        return txByYear.computeIfAbsent(year,
+                y -> new ArrayList<>(store.readList("finance/transactions-" + y + ".json", "transactions", TX_LIST)));
     }
 
     private void persistYear(int year) {
-        writeList("finance/transactions-" + year + ".json", "transactions", year(year));
+        store.writeList("finance/transactions-" + year + ".json", "transactions", 1, year(year));
+    }
+
+    /**
+     * Import fingerprints of the transactions currently in the store, derived
+     * from the rows themselves on first use — a deleted transaction releases
+     * its fingerprint automatically (re-import becomes possible again).
+     */
+    private Set<String> fingerprints() {
+        if (!fingerprintsLoaded) {
+            for (Integer y : discoverYears()) {
+                for (Transaction t : year(y)) {
+                    if (t.importFingerprint != null && !t.importFingerprint.isBlank()) {
+                        knownFingerprints.add(t.importFingerprint);
+                    }
+                }
+            }
+            fingerprintsLoaded = true;
+        }
+        return knownFingerprints;
     }
 
     /** All transactions in [from, to]. */
@@ -280,7 +258,7 @@ public class FinanceService {
             throw new ValidationException("Danh mục '" + category.name + "' không khớp loại giao dịch " + type);
         }
         String fp = txFingerprint(date, type, amount, description, externalId);
-        if (!allowDuplicate && fingerprints.contains(fp)) {
+        if (!allowDuplicate && fingerprints().contains(fp)) {
             // Real-world rule: identical entries on DIFFERENT days are legitimate
             // (daily coffee, monthly rent) - only block a same-day double-entry.
             // CSV import still deduplicates against the full fingerprint set.
@@ -304,9 +282,8 @@ public class FinanceService {
         t.externalId = externalId == null ? "" : externalId;
         t.importFingerprint = fp;
         year(date.getYear()).add(t);
-        fingerprints.add(fp);
+        fingerprints().add(fp);
         persistYear(date.getYear());
-        persistFingerprints();
         change.fire();
         return t;
     }
@@ -330,10 +307,19 @@ public class FinanceService {
 
     public void deleteTransaction(String id) {
         for (Map.Entry<Integer, List<Transaction>> e : txByYear.entrySet()) {
-            if (e.getValue().removeIf(t -> t.id.equals(id))) {
-                persistYear(e.getKey());
-                change.fire();
-                return;
+            Iterator<Transaction> it = e.getValue().iterator();
+            while (it.hasNext()) {
+                Transaction t = it.next();
+                if (t.id.equals(id)) {
+                    it.remove();
+                    if (fingerprintsLoaded && t.importFingerprint != null) {
+                        // Row gone → its fingerprint is releasable for re-import.
+                        knownFingerprints.remove(t.importFingerprint);
+                    }
+                    persistYear(e.getKey());
+                    change.fire();
+                    return;
+                }
             }
         }
         throw new NotFoundException("Không tìm thấy giao dịch: " + id);
@@ -613,7 +599,7 @@ public class FinanceService {
                 }
 
                 String fp = txFingerprint(date, type, amount, desc, extId);
-                if (fingerprints.contains(fp) || !seenInFile.add(fp)) {
+                if (fingerprints().contains(fp) || !seenInFile.add(fp)) {
                     report.skippedDuplicates++;
                     continue;
                 }

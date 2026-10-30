@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.lang.reflect.Type;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -18,6 +19,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
@@ -199,6 +202,28 @@ public class JsonStore {
         } finally {
             lock.unlock();
         }
+    }
+
+    /**
+     * Read a JSON array stored under {@code key} inside the document at
+     * {@code relativePath} (schema v1, the common case). Returns a new
+     * mutable list when the file or key is missing. {@code listType} comes
+     * from {@code new TypeToken<List<T>>() {}.getType()}.
+     */
+    public <T> List<T> readList(String relativePath, String key, Type listType) {
+        StoredDoc doc = read(relativePath, SchemaMigrator.none(1));
+        if (doc == null || !doc.data().has(key) || !doc.data().get(key).isJsonArray()) {
+            return new ArrayList<>();
+        }
+        List<T> parsed = GsonFactory.create().fromJson(doc.data().getAsJsonArray(key), listType);
+        return parsed == null ? new ArrayList<>() : parsed;
+    }
+
+    /** Atomically write {@code value} (typically a List) under {@code key}. */
+    public void writeList(String relativePath, String key, int schemaVersion, Object value) {
+        JsonObject data = new JsonObject();
+        data.add(key, GsonFactory.create().toJsonTree(value));
+        write(relativePath, schemaVersion, data);
     }
 
     /** Read a small file as raw UTF-8 text (e.g. Markdown notes). Null when absent. */

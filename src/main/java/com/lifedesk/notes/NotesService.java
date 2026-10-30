@@ -1,6 +1,5 @@
 package com.lifedesk.notes;
 
-import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import com.lifedesk.common.ChangeNotifier;
 import com.lifedesk.common.Fingerprint;
@@ -9,9 +8,7 @@ import com.lifedesk.common.StorageException;
 import com.lifedesk.common.TextSearch;
 import com.lifedesk.common.ValidationException;
 import com.lifedesk.common.Validators;
-import com.lifedesk.storage.GsonFactory;
 import com.lifedesk.storage.JsonStore;
-import com.lifedesk.storage.SchemaMigrator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,18 +41,6 @@ public class NotesService {
     private static final String FOLDERS_FILE = "notes/folders.json";
     private static final Logger LOG = LoggerFactory.getLogger(NotesService.class);
 
-    private static final SchemaMigrator MIGRATOR = new SchemaMigrator() {
-        @Override
-        public int currentVersion() {
-            return 1;
-        }
-
-        @Override
-        public JsonObject migrate(JsonObject data, int fromVersion) {
-            return data;
-        }
-    };
-
     private final JsonStore store;
     private final List<NoteMeta> notes = new ArrayList<>();
     /** In-memory content cache keyed by note id (write-through on save). */
@@ -76,42 +61,27 @@ public class NotesService {
     }
 
     private void loadIndex() {
-        JsonStore.StoredDoc doc = store.read(INDEX_FILE, MIGRATOR);
         notes.clear();
-        if (doc != null && doc.data().has("notes")) {
-            Type listType = new TypeToken<List<NoteMeta>>() {
-            }.getType();
-            List<NoteMeta> parsed = GsonFactory.create().fromJson(doc.data().getAsJsonArray("notes"), listType);
-            if (parsed != null) {
-                notes.addAll(parsed);
-            }
-        }
+        notes.addAll(store.readList(INDEX_FILE, "notes",
+                new TypeToken<List<NoteMeta>>() {
+                }.getType()));
         // Content cache is populated lazily on first read.
     }
 
     private void persistIndex() {
-        JsonObject data = new JsonObject();
-        data.add("notes", GsonFactory.create().toJsonTree(notes));
-        store.write(INDEX_FILE, 1, data);
+        store.writeList(INDEX_FILE, "notes", 1, notes);
     }
 
     private void loadFolders() {
-        JsonStore.StoredDoc doc = store.read(FOLDERS_FILE, SchemaMigrator.none(1));
         storedFolders.clear();
-        if (doc != null && doc.data().has("folders") && doc.data().get("folders").isJsonArray()) {
-            Type listType = new TypeToken<List<String>>() {
-            }.getType();
-            List<String> parsed = GsonFactory.create().fromJson(doc.data().getAsJsonArray("folders"), listType);
-            if (parsed != null) {
-                parsed.stream().filter(f -> f != null && !f.isBlank()).forEach(storedFolders::add);
-            }
-        }
+        List<String> parsed = store.readList(FOLDERS_FILE, "folders",
+                new TypeToken<List<String>>() {
+                }.getType());
+        parsed.stream().filter(f -> f != null && !f.isBlank()).forEach(storedFolders::add);
     }
 
     private void persistFolders() {
-        JsonObject data = new JsonObject();
-        data.add("folders", GsonFactory.create().toJsonTree(storedFolders));
-        store.write(FOLDERS_FILE, 1, data);
+        store.writeList(FOLDERS_FILE, "folders", 1, storedFolders);
     }
 
     /** Every known folder path, including parents of nested paths, sorted. */
@@ -410,10 +380,6 @@ public class NotesService {
             }
         }
         return out;
-    }
-
-    public synchronized List<String> folders() {
-        return listFolders();
     }
 
     /** Resolve a [[wiki link]] target to a note id (by title, normalized). */

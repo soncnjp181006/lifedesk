@@ -9,6 +9,7 @@ import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.EmptyState;
+import com.lifedesk.ui.components.FormGrid;
 import com.lifedesk.ui.components.IconView;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Pos;
@@ -178,7 +179,7 @@ public class LearningView extends View {
                 new Tab("Khóa học & tài liệu", new VBox(14, courseToolbar, courseTable, materialsPane)),
                 new Tab("Flashcards", new VBox(14, deckToolbar, flashcardsRow)));
 
-        ctx.learning().changes().addListener(() -> javafx.application.Platform.runLater(this::refresh));
+        ctx.learning().changes().addListener(this::scheduleRefresh);
         return new VBox(10, header, tabs);
     }
 
@@ -270,13 +271,12 @@ public class LearningView extends View {
         dialog.showAndWait().ifPresent(c -> {
             try {
                 if (existing == null) {
-                    ctx.learning().addCourse(c.title, c.source, c.link, null);
-                    ctx.learning().courses().stream().filter(x -> x.title.equals(c.title)).findFirst()
-                            .ifPresent(created -> {
-                                created.status = c.status;
-                                created.progressPercent = c.progressPercent;
-                                ctx.learning().updateCourse(created);
-                            });
+                    // addCourse returns the new course; set status/progress on it
+                    // instead of re-scanning the list by title.
+                    Course created = ctx.learning().addCourse(c.title, c.source, c.link, null);
+                    created.status = c.status;
+                    created.progressPercent = c.progressPercent;
+                    ctx.learning().updateCourse(created);
                 } else {
                     ctx.learning().updateCourse(c);
                 }
@@ -484,7 +484,8 @@ public class LearningView extends View {
         refresh();
     }
 
-    private void refresh() {
+    @Override
+    protected void refresh() {
         Course keepCourse = courseTable.getSelectionModel().getSelectedItem();
         var courses = ctx.learning().courses();
         courseTable.getItems().setAll(courses);
@@ -538,12 +539,11 @@ public class LearningView extends View {
                 .ifPresent(courseTable.getSelectionModel()::select);
     }
 
+    /** Dialog fields read better at a fixed width; structure shared via FormGrid. */
     private VBox labeled(String text, Node field) {
-        Label l = new Label(text);
-        l.getStyleClass().add("dim-label");
         if (field instanceof TextField tf) {
             tf.setPrefWidth(280);
         }
-        return new VBox(2, l, field);
+        return FormGrid.labeled(text, field);
     }
 }

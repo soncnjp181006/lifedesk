@@ -233,31 +233,16 @@ public class FilesView extends View {
     }
 
     private void addAllowedRoot() {
-        javafx.stage.DirectoryChooser chooser = new javafx.stage.DirectoryChooser();
-        chooser.setTitle("Cấp quyền truy cập thư mục cho LifeDesk");
-        java.io.File dir = chooser.showDialog(main.stage());
-        if (dir == null) {
+        java.nio.file.Path granted = com.lifedesk.ui.RootGrants.grantViaDialog(ctx, main,
+                "Cấp quyền truy cập thư mục cho LifeDesk",
+                "Cho phép LifeDesk đọc file trong:\n" + "%s"
+                        + "\n(Đồng nghĩa với cho phép agent tìm kiếm file trong thư mục này)");
+        if (granted == null) {
             return;
         }
-        if (!Dialogs.confirm("Cấp quyền đọc thư mục",
-                "Cho phép LifeDesk đọc file trong:\n" + dir.getAbsolutePath()
-                        + "\n(Đồng nghĩa với cho phép agent tìm kiếm file trong thư mục này)")) {
-            return;
-        }
-        ctx.config().allowedRoots.add(dir.getAbsolutePath());
-        ctx.files().setAllowedRoots(ctx.config().allowedRoots);
         saveConfig();
         refreshRoots();
         browse();
-    }
-
-    private void saveConfig() {
-        com.lifedesk.ui.Fx.async(ctx.executors().io(), () -> {
-            new com.lifedesk.config.ConfigService(com.lifedesk.config.ConfigService.defaultConfigDir())
-                    .save(ctx.config());
-            return true;
-        }, ok -> {
-        }, err -> main.status("Lưu cấu hình thất bại: " + err.getMessage()));
     }
 
     private void browse() {

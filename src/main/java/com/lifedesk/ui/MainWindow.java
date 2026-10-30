@@ -38,20 +38,58 @@ import java.util.function.Supplier;
  */
 public class MainWindow {
     public enum ViewId {
-        DASHBOARD("Dashboard", "layout-dashboard"), TASKS("Công việc", "list-checks"),
-        NOTES("Ghi chú", "file-text"),
-        FINANCE("Tài chính", "wallet"), HABITS("Thói quen & Mục tiêu", "repeat"),
-        HEALTH("Sức khỏe", "heart-pulse"),
-        LEARNING("Học tập", "book-open"), FILES("Tệp", "folder"),
-        AI("Trợ lý AI", "bot"), SEARCH("Kết quả tìm kiếm", "search"), SETTINGS("Cài đặt", "settings");
+        DASHBOARD("Dashboard", "layout-dashboard", null, null),
+        TASKS("Công việc", "list-checks", "tasks", "TASK"),
+        NOTES("Ghi chú", "file-text", "notes", "NOTE"),
+        FINANCE("Tài chính", "wallet", "finance", "TRANSACTION"),
+        HABITS("Thói quen & Mục tiêu", "repeat", "habits", "HABIT", "GOAL"),
+        HEALTH("Sức khỏe", "heart-pulse", "health", "HEALTH"),
+        LEARNING("Học tập", "book-open", "learning", "COURSE", "FLASHCARD"),
+        FILES("Tệp", "folder", null, null),
+        AI("Trợ lý AI", "bot", null, null),
+        SEARCH("Kết quả tìm kiếm", "search", null, null),
+        SETTINGS("Cài đặt", "settings", null, null);
 
         public final String label;
         /** File name under /icons, without extension. */
         public final String icon;
+        /**
+         * Module key used by ReminderScheduler / notification producers, or null
+         * for views that are not a data module.
+         */
+        public final String moduleKey;
+        /** SearchDoc types this view can open (one entry per supported doc type). */
+        public final List<String> docTypes;
 
-        ViewId(String label, String icon) {
+        ViewId(String label, String icon, String moduleKey, String... docTypes) {
             this.label = label;
             this.icon = icon;
+            this.moduleKey = moduleKey;
+            this.docTypes = docTypes == null ? List.of() : List.of(docTypes);
+        }
+
+        private static final Map<String, ViewId> BY_DOC_TYPE = new HashMap<>();
+        private static final Map<String, ViewId> BY_MODULE_KEY = new HashMap<>();
+
+        static {
+            for (ViewId v : values()) {
+                for (String t : v.docTypes) {
+                    BY_DOC_TYPE.put(t, v);
+                }
+                if (v.moduleKey != null) {
+                    BY_MODULE_KEY.put(v.moduleKey, v);
+                }
+            }
+        }
+
+        /** View owning a search/notification doc type, or null when unmapped. */
+        public static ViewId byDocType(String docType) {
+            return BY_DOC_TYPE.get(docType);
+        }
+
+        /** View owning a module key ("tasks", "notes", ...), or null when unmapped. */
+        public static ViewId byModuleKey(String moduleKey) {
+            return BY_MODULE_KEY.get(moduleKey);
         }
     }
 
@@ -360,33 +398,13 @@ public class MainWindow {
 
     /** Open the record from search results / notifications. */
     public void openRecord(String docType, String refId) {
-        switch (docType) {
-            case "TASK" -> {
-                showView(ViewId.TASKS);
-                views.get(ViewId.TASKS).openRecord(refId);
-            }
-            case "NOTE" -> {
-                showView(ViewId.NOTES);
-                views.get(ViewId.NOTES).openRecord(refId);
-            }
-            case "TRANSACTION" -> {
-                showView(ViewId.FINANCE);
-                views.get(ViewId.FINANCE).openRecord(refId);
-            }
-            case "HABIT", "GOAL" -> {
-                showView(ViewId.HABITS);
-                views.get(ViewId.HABITS).openRecord(refId);
-            }
-            case "COURSE", "FLASHCARD" -> {
-                showView(ViewId.LEARNING);
-                views.get(ViewId.LEARNING).openRecord(refId);
-            }
-            case "HEALTH" -> {
-                showView(ViewId.HEALTH);
-                views.get(ViewId.HEALTH).openRecord(refId);
-            }
-            default -> status("Không có liên kết tới loại bản ghi: " + docType);
+        ViewId target = ViewId.byDocType(docType);
+        if (target == null) {
+            status("Không có liên kết tới loại bản ghi: " + docType);
+            return;
         }
+        showView(target);
+        views.get(target).openRecord(refId);
     }
 
     public void applyTheme() {
@@ -478,7 +496,13 @@ public class MainWindow {
                     ctx.notifications().markAllRead();
                     refreshNotifBadge();
                     try {
-                        openRecord(viewFromRef(item.refView), item.refId);
+                        ViewId target = ViewId.byModuleKey(item.refView);
+                        if (target == null) {
+                            status("Không có liên kết tới loại bản ghi: " + item.refView);
+                        } else {
+                            showView(target);
+                            views.get(target).openRecord(item.refId);
+                        }
                     } catch (RuntimeException ex) {
                         status("Không mở được đích thông báo");
                     }
@@ -487,24 +511,6 @@ public class MainWindow {
             }
             notifList.getChildren().add(row);
         }
-    }
-
-    /**
-     * Module key used by ReminderScheduler / search hits → the document type that
-     * {@link #openRecord} understands. Total on purpose: a wrong-but-quiet jump to
-     * Tasks is worse than staying put, so an unmapped key keeps its own name and
-     * openRecord's default branch reports it.
-     */
-    private String viewFromRef(String refView) {
-        return switch (refView) {
-            case "tasks" -> "TASK";
-            case "notes" -> "NOTE";
-            case "habits" -> "HABIT";
-            case "finance" -> "TRANSACTION";
-            case "learning" -> "COURSE";
-            case "health" -> "HEALTH";
-            default -> refView;
-        };
     }
 
     public void onReady() {

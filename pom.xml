@@ -159,13 +159,15 @@
         </executions>
       </plugin>
 
-      <!-- exec:java helper for the smoke-test entry points -->
+      <!-- exec:java helper for the smoke-test entry point (lives in test
+           sources so the shipped jar carries no verification harness) -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
         <version>3.5.0</version>
         <configuration>
           <mainClass>com.lifedesk.app.SmokeMain</mainClass>
+          <classpathScope>test</classpathScope>
         </configuration>
       </plugin>
     </plugins>

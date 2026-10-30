@@ -19,22 +19,29 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 /**
  * Cross-module search index. Fully offline; the index is derived from the
  * original module data and can be rebuilt at any time (also persisted to
  * data/index/search-index.json as a cache). Search runs on a background
  * executor so the UI never blocks.
+ *
+ * <p>Each module contributes documents via one small {@code indexX} method;
+ * {@link #add} normalizes the searchable text once at index time so queries
+ * only score against cached strings instead of re-normalizing every document
+ * on every query.
  */
 public class SearchService {
     private static final Logger LOG = LoggerFactory.getLogger(SearchService.class);
     private static final String INDEX_FILE = "index/search-index.json";
+
+    /** A document plus its normalized searchable text (computed once per rebuild). */
+    private record IndexedDoc(SearchDoc doc, String title, String tags, String content) {
+    }
 
     private final JsonStore store;
     private final TaskService taskService;
@@ -45,7 +52,7 @@ public class SearchService {
     private final LearningService learningService;
 
     private final Map<String, SearchDoc> docs = new HashMap<>();
-    private final Map<String, Set<String>> termIndex = new HashMap<>();
+    private final Map<String, IndexedDoc> indexed = new HashMap<>();
 
     public SearchService(JsonStore store, TaskService taskService, NotesService notesService,
                          FinanceService financeService, HabitService habitService,
@@ -71,32 +78,31 @@ public class SearchService {
         indexLearning(fresh);
         docs.clear();
         docs.putAll(fresh);
-        rebuildTermIndex();
+        reindexNormalized();
         persist();
         LOG.info("Search index rebuilt: {} docs in {} ms", docs.size(), System.currentTimeMillis() - start);
     }
 
-    private void rebuildTermIndex() {
-        termIndex.clear();
+    private void reindexNormalized() {
+        indexed.clear();
         for (SearchDoc doc : docs.values()) {
-            for (String term : indexTerms(doc)) {
-                termIndex.computeIfAbsent(term, k -> new HashSet<>()).add(doc.docId());
-            }
+            indexed.put(doc.docId(), new IndexedDoc(doc,
+                    TextSearch.normalize(doc.title()),
+                    TextSearch.normalize(doc.tags()),
+                    TextSearch.normalize(doc.content())));
         }
     }
 
-    private List<String> indexTerms(SearchDoc doc) {
-        Set<String> terms = new HashSet<>(TextSearch.terms(doc.title()));
-        terms.addAll(TextSearch.terms(doc.tags()));
-        terms.addAll(TextSearch.terms(doc.content()));
-        return new ArrayList<>(terms);
+    /** Put a document into {@code out}, computing the docId once. */
+    private void add(Map<String, SearchDoc> out, String type, String id,
+                     String title, String content, String tags) {
+        out.put(docId(type, id), new SearchDoc(docId(type, id), type, title, content, tags, id));
     }
 
     private void indexTasks(Map<String, SearchDoc> out) {
         for (var t : taskService.all()) {
             String content = t.notes + " " + t.checklist.stream().map(c -> c.text).reduce("", (a, b) -> a + " " + b);
-            out.put(docId(SearchDoc.TASK, t.id), new SearchDoc(docId(SearchDoc.TASK, t.id), SearchDoc.TASK,
-                    t.title, content, String.join(" ", t.tags), t.id));
+            add(out, SearchDoc.TASK, t.id, t.title, content, String.join(" ", t.tags));
         }
     }
 
@@ -107,48 +113,43 @@ public class SearchService {
             if (content.length() > 20000) {
                 content = content.substring(0, 20000);
             }
-            out.put(docId(SearchDoc.NOTE, n.id), new SearchDoc(docId(SearchDoc.NOTE, n.id), SearchDoc.NOTE,
-                    n.title, content, String.join(" ", n.tags), n.id));
+            add(out, SearchDoc.NOTE, n.id, n.title, content, String.join(" ", n.tags));
         }
     }
 
     private void indexFinance(Map<String, SearchDoc> out) {
         for (var t : financeService.all()) {
             String categoryName = safeCall(() -> financeService.categoryById(t.categoryId).name);
-            out.put(docId(SearchDoc.TRANSACTION, t.id), new SearchDoc(docId(SearchDoc.TRANSACTION, t.id),
-                    SearchDoc.TRANSACTION, t.date + " " + t.type + " " + categoryName,
-                    t.description + " " + t.amount.toPlainString(), String.join(" ", t.tags), t.id));
+            add(out, SearchDoc.TRANSACTION, t.id,
+                    t.date + " " + t.type + " " + categoryName,
+                    t.description + " " + t.amount.toPlainString(),
+                    String.join(" ", t.tags));
         }
     }
 
     private void indexHabits(Map<String, SearchDoc> out) {
         for (var h : habitService.habits(true)) {
-            out.put(docId(SearchDoc.HABIT, h.id), new SearchDoc(docId(SearchDoc.HABIT, h.id), SearchDoc.HABIT,
-                    h.name, h.description, "", h.id));
+            add(out, SearchDoc.HABIT, h.id, h.name, h.description, "");
         }
         for (var g : habitService.goals()) {
-            out.put(docId(SearchDoc.GOAL, g.id), new SearchDoc(docId(SearchDoc.GOAL, g.id), SearchDoc.GOAL,
-                    g.title, g.description, "", g.id));
+            add(out, SearchDoc.GOAL, g.id, g.title, g.description, "");
         }
     }
 
     private void indexHealth(Map<String, SearchDoc> out) {
         for (var e : healthService.entries()) {
             String content = "ngủ " + e.sleepHours + " tập " + e.exerciseMinutes + " cân " + e.weightKg + " " + e.note;
-            out.put(docId(SearchDoc.HEALTH, e.id), new SearchDoc(docId(SearchDoc.HEALTH, e.id), SearchDoc.HEALTH,
-                    "Sức khỏe " + e.date, content, "", e.id));
+            add(out, SearchDoc.HEALTH, e.id, "Sức khỏe " + e.date, content, "");
         }
     }
 
     private void indexLearning(Map<String, SearchDoc> out) {
         for (var c : learningService.courses()) {
-            out.put(docId(SearchDoc.COURSE, c.id), new SearchDoc(docId(SearchDoc.COURSE, c.id), SearchDoc.COURSE,
-                    c.title, c.source + " " + c.link, String.join(" ", c.tags), c.id));
+            add(out, SearchDoc.COURSE, c.id, c.title, c.source + " " + c.link, String.join(" ", c.tags));
         }
         for (var deck : learningService.decks()) {
             for (var card : learningService.cardsInDeck(deck.id)) {
-                out.put(docId(SearchDoc.FLASHCARD, card.id), new SearchDoc(docId(SearchDoc.FLASHCARD, card.id),
-                        SearchDoc.FLASHCARD, card.front, card.back, "", card.id));
+                add(out, SearchDoc.FLASHCARD, card.id, card.front, card.back, "");
             }
         }
     }
@@ -169,24 +170,21 @@ public class SearchService {
     public synchronized List<SearchGroup> query(String query, Set<String> typeFilter, int maxPerGroup) {
         List<String> terms = TextSearch.terms(query);
         Map<String, Integer> scores = new HashMap<>();
-        for (SearchDoc doc : docs.values()) {
-            if (typeFilter != null && !typeFilter.isEmpty() && !typeFilter.contains(doc.type())) {
+        for (IndexedDoc d : indexed.values()) {
+            if (typeFilter != null && !typeFilter.isEmpty() && !typeFilter.contains(d.doc().type())) {
                 continue;
             }
-            String title = TextSearch.normalize(doc.title());
-            String tags = TextSearch.normalize(doc.tags());
-            String content = TextSearch.normalize(doc.content());
             int score = 0;
             boolean all = !terms.isEmpty();
             for (String term : terms) {
                 int s = 0;
-                if (title.contains(term)) {
+                if (d.title().contains(term)) {
                     s += 3;
                 }
-                if (tags.contains(term)) {
+                if (d.tags().contains(term)) {
                     s += 2;
                 }
-                if (content.contains(term)) {
+                if (d.content().contains(term)) {
                     s += 1;
                 }
                 if (s == 0) {
@@ -196,7 +194,7 @@ public class SearchService {
                 score += s;
             }
             if (all) {
-                scores.put(doc.docId(), score);
+                scores.put(d.doc().docId(), score);
             }
         }
         Map<String, List<SearchResult>> byType = new LinkedHashMap<>();
@@ -221,10 +219,6 @@ public class SearchService {
         }
         groups.sort(Comparator.comparingInt(g -> -g.results().size()));
         return groups;
-    }
-
-    public synchronized int docCount() {
-        return docs.size();
     }
 
     // ------------------------------------------------------------------ persistence (cache)
@@ -255,21 +249,7 @@ public class SearchService {
         for (SearchDoc d : parsed) {
             docs.put(d.docId(), d);
         }
-        rebuildTermIndex();
+        reindexNormalized();
         LOG.info("Loaded persisted search index: {} docs", docs.size());
-    }
-
-    /** All distinct doc types currently in the index. */
-    public synchronized Set<String> types() {
-        return new HashSet<>(docs.values().stream().map(SearchDoc::type).toList());
-    }
-
-    /** Simple stats for the dashboard. */
-    public synchronized Map<String, Integer> countByType() {
-        Map<String, Integer> out = new TreeMap<>();
-        for (SearchDoc d : docs.values()) {
-            out.merge(d.type(), 1, Integer::sum);
-        }
-        return out;
     }
 }

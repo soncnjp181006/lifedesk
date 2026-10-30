@@ -1,16 +1,12 @@
 package com.lifedesk.learning;
 
-import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import com.lifedesk.common.ChangeNotifier;
 import com.lifedesk.common.NotFoundException;
 import com.lifedesk.common.ValidationException;
 import com.lifedesk.common.Validators;
-import com.lifedesk.storage.GsonFactory;
 import com.lifedesk.storage.JsonStore;
-import com.lifedesk.storage.SchemaMigrator;
 
-import java.lang.reflect.Type;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -33,37 +29,22 @@ public class LearningService {
 
     public LearningService(JsonStore store) {
         this.store = store;
-        Type courseType = new TypeToken<List<Course>>() {
-        }.getType();
-        Type sessionType = new TypeToken<List<StudySession>>() {
-        }.getType();
-        Type deckType = new TypeToken<List<Deck>>() {
-        }.getType();
-        Type cardType = new TypeToken<List<Flashcard>>() {
-        }.getType();
-        courses.addAll(readList("learning/courses.json", "courses", courseType));
-        sessions.addAll(readList("learning/sessions.json", "sessions", sessionType));
-        decks.addAll(readList("learning/decks.json", "decks", deckType));
-        cards.addAll(readList("learning/flashcards.json", "cards", cardType));
+        courses.addAll(store.readList("learning/courses.json", "courses",
+                new TypeToken<List<Course>>() {
+                }.getType()));
+        sessions.addAll(store.readList("learning/sessions.json", "sessions",
+                new TypeToken<List<StudySession>>() {
+                }.getType()));
+        decks.addAll(store.readList("learning/decks.json", "decks",
+                new TypeToken<List<Deck>>() {
+                }.getType()));
+        cards.addAll(store.readList("learning/flashcards.json", "cards",
+                new TypeToken<List<Flashcard>>() {
+                }.getType()));
     }
 
     public ChangeNotifier changes() {
         return change;
-    }
-
-    private <T> List<T> readList(String file, String key, Type listType) {
-        JsonStore.StoredDoc doc = store.read(file, SchemaMigrator.none(1));
-        if (doc == null || !doc.data().has(key) || !doc.data().get(key).isJsonArray()) {
-            return new ArrayList<>();
-        }
-        List<T> parsed = GsonFactory.create().fromJson(doc.data().getAsJsonArray(key), listType);
-        return parsed == null ? new ArrayList<>() : parsed;
-    }
-
-    private void write(String file, String key, Object list) {
-        JsonObject data = new JsonObject();
-        data.add(key, GsonFactory.create().toJsonTree(list));
-        store.write(file, 1, data);
     }
 
     // ------------------------------------------------------------------ courses
@@ -192,11 +173,11 @@ public class LearningService {
     }
 
     private void persistCourses() {
-        write("learning/courses.json", "courses", courses);
+        store.writeList("learning/courses.json", "courses", 1, courses);
     }
 
     private void persistSessions() {
-        write("learning/sessions.json", "sessions", sessions);
+        store.writeList("learning/sessions.json", "sessions", 1, sessions);
     }
 
     // ------------------------------------------------------------------ decks & flashcards
@@ -338,10 +319,10 @@ public class LearningService {
     }
 
     private void persistDecks() {
-        write("learning/decks.json", "decks", decks);
+        store.writeList("learning/decks.json", "decks", 1, decks);
     }
 
     private void persistCards() {
-        write("learning/flashcards.json", "cards", cards);
+        store.writeList("learning/flashcards.json", "cards", 1, cards);
     }
 }

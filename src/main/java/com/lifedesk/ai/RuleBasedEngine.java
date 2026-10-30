@@ -104,81 +104,128 @@ public class RuleBasedEngine implements AiProvider {
         return handle(lastUser);
     }
 
+    /**
+     * One assistant capability. Adding an intent = appending one entry here:
+     * a match predicate on the raw input, a handler for it, and (optionally)
+     * the help bullet it contributes to {@link #help()} — nothing else to edit.
+     */
+    private record Intent(String helpLine,
+                          java.util.function.Predicate<String> matches,
+                          java.util.function.UnaryOperator<String> handle) {
+    }
+
+    /** First capture group of a pattern already known to match {@code q}. */
+    private static String group(String q, Pattern pattern) {
+        Matcher m = pattern.matcher(q);
+        m.find();
+        return m.group(1);
+    }
+
+    /** Dispatch order matters: explicit regex commands win over keyword matches. */
+    private final List<Intent> intents = List.of(
+            new Intent("• \"tạo task: <tiêu đề>\" — tạo công việc mới (hỗ trợ \"hạn mai\", \"hạn 2026-01-31\", \"hạn 31/12\")",
+                    q -> CREATE_TASK.matcher(q).find(),
+                    q -> createTask(group(q, CREATE_TASK))),
+            new Intent("• \"tóm tắt ghi chú: <tên>\" — tóm tắt rút trích từ nội dung ghi chú",
+                    q -> SUMMARIZE_NOTE.matcher(q).find(),
+                    q -> summarizeNote(group(q, SUMMARIZE_NOTE))),
+            new Intent("• \"tìm: <từ khóa>\" — tìm kiếm xuyên module",
+                    q -> SEARCH_CMD.matcher(q).find() && !q.toLowerCase(Locale.ROOT).contains("tìm kiếm model"),
+                    q -> doSearch(group(q, SEARCH_CMD))),
+            new Intent(null,
+                    q -> {
+                        String lower = com.lifedesk.common.TextSearch.normalize(q);
+                        return lower.contains("tro giup") || lower.contains("help") || lower.contains("lam duoc gi")
+                                || lower.equals("?") || lower.contains("huong dan");
+                    },
+                    q -> help()),
+            new Intent("• \"việc hôm nay\" / \"today\" — danh sách công việc đến hạn hôm nay",
+                    q -> {
+                        String lower = com.lifedesk.common.TextSearch.normalize(q);
+                        return lower.contains("hom nay") || lower.contains("today") || lower.contains("viec hom nay");
+                    },
+                    q -> tasksDueToday()),
+            new Intent("• \"quá hạn\" / \"overdue\" — công việc trễ hạn",
+                    q -> {
+                        String lower = com.lifedesk.common.TextSearch.normalize(q);
+                        return lower.contains("qua han") || lower.contains("overdue");
+                    },
+                    q -> tasksOverdue()),
+            new Intent("• \"sắp tới\" — lịch 7 ngày tới",
+                    q -> {
+                        String lower = com.lifedesk.common.TextSearch.normalize(q);
+                        return lower.contains("sap toi") || lower.contains("upcoming") || lower.contains("lich sap toi");
+                    },
+                    q -> upcoming()),
+            new Intent("• \"chi tiêu tháng này\" — tổng hợp thu chi",
+                    q -> {
+                        String lower = com.lifedesk.common.TextSearch.normalize(q);
+                        return lower.contains("chi tieu") || lower.contains("thu chi") || lower.contains("tai chinh")
+                                || lower.contains("finance") || lower.contains("expense");
+                    },
+                    q -> financeSummary()),
+            new Intent("• \"thói quen\" — chuỗi ngày và tỷ lệ hoàn thành",
+                    q -> {
+                        String lower = com.lifedesk.common.TextSearch.normalize(q);
+                        return lower.contains("thoi quen") || lower.contains("habit") || lower.contains("streak");
+                    },
+                    q -> habitStatus()),
+            new Intent("• \"mục tiêu\" — tiến độ mục tiêu",
+                    q -> {
+                        String lower = com.lifedesk.common.TextSearch.normalize(q);
+                        return lower.contains("muc tieu") || lower.contains("goal");
+                    },
+                    q -> goalStatus()),
+            new Intent("• \"ôn tập\" — số flashcard đến hạn",
+                    q -> {
+                        String lower = com.lifedesk.common.TextSearch.normalize(q);
+                        return lower.contains("on tap") || lower.contains("flashcard") || lower.contains("hoc tap")
+                                || lower.contains("review") || lower.contains("learning");
+                    },
+                    q -> learningStatus()),
+            new Intent("• \"gợi ý\" — đề xuất việc cần làm",
+                    q -> {
+                        String lower = com.lifedesk.common.TextSearch.normalize(q);
+                        return lower.contains("goi y") || lower.contains("suggest") || lower.contains("nen lam gi");
+                    },
+                    q -> suggestions()),
+            new Intent("• \"sức khỏe\" — trung bình giấc ngủ/vận động/cân nặng",
+                    q -> {
+                        String lower = com.lifedesk.common.TextSearch.normalize(q);
+                        return lower.contains("suc khoe") || lower.contains("health") || lower.contains("can nang");
+                    },
+                    q -> healthStatus()),
+            new Intent(null,
+                    q -> {
+                        String lower = com.lifedesk.common.TextSearch.normalize(q);
+                        return lower.contains("tom tat") || lower.contains("summary");
+                    },
+                    q -> "Để tóm tắt, hãy dùng lệnh: \"tóm tắt ghi chú <tên ghi chú>\"."));
+
     /** Dispatch one user utterance. Public so the smoke test can exercise it. */
     public String handle(String input) {
         if (input == null || input.isBlank()) {
             return help();
         }
         String q = input.trim();
-
-        Matcher m = CREATE_TASK.matcher(q);
-        if (m.find()) {
-            return createTask(m.group(1));
-        }
-        m = SUMMARIZE_NOTE.matcher(q);
-        if (m.find()) {
-            return summarizeNote(m.group(1));
-        }
-        m = SEARCH_CMD.matcher(q);
-        if (m.find() && !q.toLowerCase(Locale.ROOT).contains("tìm kiếm model")) {
-            return doSearch(m.group(1));
-        }
-        String lower = com.lifedesk.common.TextSearch.normalize(q);
-        if (lower.contains("tro giup") || lower.contains("help") || lower.contains("lam duoc gi")
-                || lower.equals("?") || lower.contains("huong dan")) {
-            return help();
-        }
-        if (lower.contains("hom nay") || lower.contains("today") || lower.contains("viec hom nay")) {
-            return tasksDueToday();
-        }
-        if (lower.contains("qua han") || lower.contains("overdue")) {
-            return tasksOverdue();
-        }
-        if (lower.contains("sap toi") || lower.contains("upcoming") || lower.contains("lich sap toi")) {
-            return upcoming();
-        }
-        if (lower.contains("chi tieu") || lower.contains("thu chi") || lower.contains("tai chinh")
-                || lower.contains("finance") || lower.contains("expense")) {
-            return financeSummary();
-        }
-        if (lower.contains("thoi quen") || lower.contains("habit") || lower.contains("streak")) {
-            return habitStatus();
-        }
-        if (lower.contains("muc tieu") || lower.contains("goal")) {
-            return goalStatus();
-        }
-        if (lower.contains("on tap") || lower.contains("flashcard") || lower.contains("hoc tap")
-                || lower.contains("review") || lower.contains("learning")) {
-            return learningStatus();
-        }
-        if (lower.contains("goi y") || lower.contains("suggest") || lower.contains("nen lam gi")) {
-            return suggestions();
-        }
-        if (lower.contains("suc khoe") || lower.contains("health") || lower.contains("can nang")) {
-            return healthStatus();
-        }
-        if (lower.contains("tom tat") || lower.contains("summary")) {
-            return "Để tóm tắt, hãy dùng lệnh: \"tóm tắt ghi chú <tên ghi chú>\".";
+        for (Intent intent : intents) {
+            if (intent.matches().test(q)) {
+                return intent.handle().apply(q);
+            }
         }
         return unknown(q);
     }
 
     private String help() {
-        return """
-                Tôi là engine quy tắc chạy hoàn toàn offline (không phải LLM). Các lệnh tôi hiểu:
-                • "việc hôm nay" / "today" — danh sách công việc đến hạn hôm nay
-                • "quá hạn" / "overdue" — công việc trễ hạn
-                • "sắp tới" — lịch 7 ngày tới
-                • "tạo task: <tiêu đề>" — tạo công việc mới (hỗ trợ "hạn mai", "hạn 2026-01-31", "hạn 31/12")
-                • "tóm tắt ghi chú: <tên>" — tóm tắt rút trích từ nội dung ghi chú
-                • "tìm: <từ khóa>" — tìm kiếm xuyên module
-                • "chi tiêu tháng này" — tổng hợp thu chi
-                • "thói quen" — chuỗi ngày và tỷ lệ hoàn thành
-                • "mục tiêu" — tiến độ mục tiêu
-                • "ôn tập" — số flashcard đến hạn
-                • "sức khỏe" — trung bình giấc ngủ/vận động/cân nặng
-                • "gợi ý" — đề xuất việc cần làm
-                Muốn hỏi đáp ngôn ngữ tự nhiên? Bật provider Ollama hoặc Kilo trong Cài đặt → AI.""";
+        StringBuilder sb = new StringBuilder(
+                "Tôi là engine quy tắc chạy hoàn toàn offline (không phải LLM). Các lệnh tôi hiểu:\n");
+        for (Intent intent : intents) {
+            if (intent.helpLine() != null) {
+                sb.append(intent.helpLine()).append('\n');
+            }
+        }
+        sb.append("Muốn hỏi đáp ngôn ngữ tự nhiên? Bật provider Ollama hoặc Kilo trong Cài đặt → AI.");
+        return sb.toString();
     }
 
     private String unknown(String q) {

@@ -11,7 +11,9 @@ import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.EmptyState;
+import com.lifedesk.ui.components.FormGrid;
 import com.lifedesk.ui.components.IconView;
+import com.lifedesk.ui.components.WeekdayChecks;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -121,9 +123,7 @@ public class HabitsView extends View {
         VBox.setVgrow(tabs, Priority.ALWAYS);
         buildLogTable();
 
-        ctx.habits().changes().addListener(() -> {
-            javafx.application.Platform.runLater(this::refresh);
-        });
+        ctx.habits().changes().addListener(this::scheduleRefresh);
 
         return new VBox(10, header, tabs);
     }
@@ -157,14 +157,20 @@ public class HabitsView extends View {
     }
 
     private VBox habitCard(Habit h) {
+        // Stats computed once per card build — completionRate alone used to run
+        // twice per card, and these are O(window) loops over the log map.
+        int streak = ctx.habits().currentStreak(h);
+        int best = ctx.habits().bestStreak(h, 365);
+        double rate30 = ctx.habits().completionRate(h, 30);
+
         VBox card = new VBox(6);
         card.getStyleClass().add("card");
 
         HBox header = new HBox(8, new Label(h.name),
-                com.lifedesk.ui.components.Chips.chip("chuỗi " + ctx.habits().currentStreak(h) + " ngày", "chip-done"),
-                com.lifedesk.ui.components.Chips.chip("kỷ lục " + ctx.habits().bestStreak(h, 365) + " ngày", "chip-info"),
+                com.lifedesk.ui.components.Chips.chip("chuỗi " + streak + " ngày", "chip-done"),
+                com.lifedesk.ui.components.Chips.chip("kỷ lục " + best + " ngày", "chip-info"),
                 com.lifedesk.ui.components.Chips.chip(
-                        Math.round(ctx.habits().completionRate(h, 30) * 100) + "% / 30 ngày", "chip-medium"));
+                        Math.round(rate30 * 100) + "% / 30 ngày", "chip-medium"));
         header.setAlignment(Pos.CENTER_LEFT);
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -219,7 +225,6 @@ public class HabitsView extends View {
             });
             days.getChildren().add(dayBtn);
         }
-        double rate30 = ctx.habits().completionRate(h, 30);
         ProgressBar rate = new ProgressBar(rate30);
         rate.setMaxWidth(Double.MAX_VALUE);
         rate.getStyleClass().add(rate30 > 0.7 ? "ok" : rate30 > 0.4 ? "warn" : "danger");
@@ -237,17 +242,9 @@ public class HabitsView extends View {
         TextField name = new TextField(existing == null ? "" : existing.name);
         TextArea description = new TextArea(existing == null ? "" : existing.description);
         description.setPrefRowCount(2);
-        HBox daysBox = new HBox(6);
-        String[] dayNames = {"T2", "T3", "T4", "T5", "T6", "T7", "CN"};
         List<CheckBox> dayChecks = new java.util.ArrayList<>();
-        for (int d = 1; d <= 7; d++) {
-            DayOfWeek dow = DayOfWeek.of(d);
-            CheckBox cb = new CheckBox(dayNames[d - 1]);
-            cb.setUserData(dow);
-            cb.setSelected(existing == null || existing.scheduleDays.contains(dow));
-            dayChecks.add(cb);
-            daysBox.getChildren().add(cb);
-        }
+        HBox daysBox = WeekdayChecks.row(
+                existing == null ? java.util.Set.of(DayOfWeek.values()) : existing.scheduleDays, dayChecks);
         Label hint = new Label("Bỏ trống tất cả = hằng ngày");
         hint.getStyleClass().add("dim-label");
         Spinner<Integer> reminderH = new Spinner<>(0, 23, existing != null && existing.reminderTime != null
@@ -257,7 +254,7 @@ public class HabitsView extends View {
         CheckBox hasReminder = new CheckBox("Nhắc trong app");
         hasReminder.setSelected(existing != null && existing.reminderTime != null);
 
-        VBox content = new VBox(10, labeled("Tên *", name), labeled("Mô tả", description),
+        VBox content = new VBox(10, FormGrid.labeled("Tên *", name), FormGrid.labeled("Mô tả", description),
                 new VBox(4, new Label("Lịch thực hiện"), daysBox, hint),
                 new HBox(8, hasReminder, new Label("giờ"), reminderH, reminderM));
         content.setPadding(new javafx.geometry.Insets(10));
@@ -271,8 +268,7 @@ public class HabitsView extends View {
             if (bt.getButtonData() != javafx.scene.control.ButtonBar.ButtonData.OK_DONE) {
                 return null;
             }
-            Set<DayOfWeek> days = dayChecks.stream().filter(CheckBox::isSelected)
-                    .map(cb -> (DayOfWeek) cb.getUserData()).collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+            Set<DayOfWeek> days = WeekdayChecks.selected(dayChecks);
             Habit h = existing == null ? new Habit() : existing;
             h.name = name.getText();
             h.description = description.getText();
@@ -283,13 +279,12 @@ public class HabitsView extends View {
         dialog.showAndWait().ifPresent(h -> {
             try {
                 if (existing == null) {
-                    ctx.habits().addHabit(h.name, h.description, h.scheduleDays, "accent");
+                    // addHabit returns the new habit; set the reminder on it
+                    // instead of re-scanning the list by name.
+                    Habit created = ctx.habits().addHabit(h.name, h.description, h.scheduleDays, "accent");
+                    created.reminderTime = h.reminderTime;
                     if (h.reminderTime != null) {
-                        ctx.habits().habits(false).stream().filter(x -> x.name.equals(h.name)).findFirst()
-                                .ifPresent(created -> {
-                                    created.reminderTime = h.reminderTime;
-                                    ctx.habits().updateHabit(created, "Tạo mới", "user");
-                                });
+                        ctx.habits().updateHabit(created, "Tạo mới", "user");
                     }
                 } else {
                     ctx.habits().updateHabit(h, "Chỉnh sửa từ UI", "user");
@@ -358,17 +353,7 @@ public class HabitsView extends View {
     }
 
     private int computeProgress(Goal g) {
-        if (g.progressMode() == ProgressMode.MANUAL) {
-            return g.manualProgress();
-        }
-        long total = g.linkedTaskIds().size();
-        if (total == 0) {
-            return 0;
-        }
-        long done = ctx.tasks().all().stream()
-                .filter(t -> g.linkedTaskIds().contains(t.id) && t.status == com.lifedesk.tasks.TaskStatus.DONE)
-                .count();
-        return (int) Math.round(100.0 * done / total);
+        return com.lifedesk.habits.GoalProgress.percent(g, ctx.tasks().all());
     }
 
     void openGoalEditor(Goal existing) {
@@ -412,9 +397,9 @@ public class HabitsView extends View {
             }
         });
 
-        VBox content = new VBox(10, labeled("Tên mục tiêu *", title), labeled("Mô tả", description),
-                new HBox(10, labeled("Hạn", target), labeled("Trạng thái", status)),
-                new HBox(10, labeled("Tiến độ theo", mode), labeled("Tự đặt (%)", progress)),
+        VBox content = new VBox(10, FormGrid.labeled("Tên mục tiêu *", title), FormGrid.labeled("Mô tả", description),
+                new HBox(10, FormGrid.labeled("Hạn", target), FormGrid.labeled("Trạng thái", status)),
+                new HBox(10, FormGrid.labeled("Tiến độ theo", mode), FormGrid.labeled("Tự đặt (%)", progress)),
                 new VBox(4, new HBox(8, taskPick, toggleLink), linkedLabel));
         content.setPadding(new javafx.geometry.Insets(10));
         if (existing != null) {
@@ -439,18 +424,14 @@ public class HabitsView extends View {
         dialog.showAndWait().ifPresent(g -> {
             try {
                 if (existing == null) {
-                    ctx.habits().addGoal(g.title, g.description, g.targetDate);
-                    // pull back the created goal and apply the rest of the fields
-                    var created = ctx.habits().goals().stream()
-                            .filter(x -> x.title().equals(g.title))
-                            .findFirst().orElse(null);
-                    if (created != null) {
-                        created.status = g.status;
-                        created.progressMode = g.progressMode;
-                        created.manualProgress = g.manualProgress;
-                        created.linkedTaskIds = g.linkedTaskIds;
-                        ctx.habits().updateGoal(created, "Tạo mới", "user");
-                    }
+                    // addGoal returns the new goal; set the rest of the fields
+                    // on it instead of re-scanning the list by title.
+                    Goal created = ctx.habits().addGoal(g.title, g.description, g.targetDate);
+                    created.status = g.status;
+                    created.progressMode = g.progressMode;
+                    created.manualProgress = g.manualProgress;
+                    created.linkedTaskIds = g.linkedTaskIds;
+                    ctx.habits().updateGoal(created, "Tạo mới", "user");
                 } else {
                     ctx.habits().updateGoal(g, "Chỉnh sửa từ UI", "user");
                 }
@@ -486,7 +467,8 @@ public class HabitsView extends View {
         refresh();
     }
 
-    private void refresh() {
+    @Override
+    protected void refresh() {
         refreshHabits();
         goalTable.getItems().setAll(ctx.habits().goals());
         logTable.getItems().setAll(ctx.habits().changeLog().stream()
@@ -498,11 +480,5 @@ public class HabitsView extends View {
     public void openRecord(String recordId) {
         ctx.habits().goals().stream().filter(g -> g.id().equals(recordId)).findFirst()
                 .ifPresent(goalTable.getSelectionModel()::select);
-    }
-
-    private VBox labeled(String labelText, Node field) {
-        Label l = new Label(labelText);
-        l.getStyleClass().add("dim-label");
-        return new VBox(2, l, field);
     }
 }

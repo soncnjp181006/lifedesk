@@ -153,7 +153,8 @@ public class DashboardView extends View {
         refresh();
     }
 
-    private void refresh() {
+    @Override
+    protected void refresh() {
         widgets.clear();
         widgets.put("w_today", todayWidget());
         widgets.put("w_overdue", overdueWidget());
@@ -267,27 +268,10 @@ public class DashboardView extends View {
             chartTitle = "tháng " + rangeFrom.format(java.time.format.DateTimeFormatter.ofPattern("MM/yyyy"));
         }
         Card card = new Card("Thu chi (" + chartTitle + ")");
-        final java.time.LocalDate axisFrom = chartFrom;
+        // Ticks render as real dates, not raw epoch offsets (see DateAxes).
         long span = chartTo.toEpochDay() - chartFrom.toEpochDay();
-        NumberAxis x = new NumberAxis();
-        x.setLabel("Ngày");
-        x.setMinorTickVisible(false);
-        x.setLowerBound(0);
-        x.setUpperBound(span);
-        x.setAutoRanging(false);
-        x.setTickUnit(Math.max(1, Math.round(span / 5.0)));
-        // Raw epoch offsets render as "0.0, 2.5, 5.0"; people read dates.
-        x.setTickLabelFormatter(new javafx.util.StringConverter<>() {
-            @Override
-            public String toString(Number n) {
-                return axisFrom.plusDays(Math.round(n.doubleValue())).format(DF);
-            }
-
-            @Override
-            public Number fromString(String s) {
-                return 0;
-            }
-        });
+        NumberAxis x = com.lifedesk.ui.components.DateAxes.epochDay("Ngày", chartFrom, chartTo,
+                Math.max(1, Math.round(span / 5.0)));
         NumberAxis y = new NumberAxis();
         y.setLabel("VND");
         LineChart<Number, Number> chart = new LineChart<>(x, y);
@@ -382,17 +366,7 @@ public class DashboardView extends View {
     }
 
     private int computeGoalProgress(com.lifedesk.habits.Goal g) {
-        if (g.progressMode() == com.lifedesk.habits.ProgressMode.MANUAL) {
-            return g.manualProgress();
-        }
-        long total = g.linkedTaskIds().size();
-        if (total == 0) {
-            return 0;
-        }
-        long done = ctx.tasks().all().stream()
-                .filter(t -> g.linkedTaskIds().contains(t.id) && t.status == com.lifedesk.tasks.TaskStatus.DONE)
-                .count();
-        return (int) Math.round(100.0 * done / total);
+        return com.lifedesk.habits.GoalProgress.percent(g, ctx.tasks().all());
     }
 
     private Card learningWidget() {

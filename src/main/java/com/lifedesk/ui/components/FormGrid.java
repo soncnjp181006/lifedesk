@@ -7,6 +7,7 @@ import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.VBox;
 
 /**
  * Two-column form: a fixed label column so every field starts on the same x,
@@ -56,5 +57,15 @@ public class FormGrid extends GridPane {
     public FormGrid full(Node node) {
         add(node, 1, getRowCount(), 2, 1);
         return this;
+    }
+
+    /**
+     * A dim-labeled field in its own VBox — the standard layout for compact
+     * dialog forms that do not use the aligned two-column grid.
+     */
+    public static VBox labeled(String labelText, Node field) {
+        Label l = new Label(labelText);
+        l.getStyleClass().add("dim-label");
+        return new VBox(2, l, field);
     }
 }

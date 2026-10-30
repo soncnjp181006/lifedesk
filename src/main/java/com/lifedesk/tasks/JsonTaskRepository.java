@@ -1,14 +1,9 @@
 package com.lifedesk.tasks;
 
-import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
-import com.lifedesk.storage.GsonFactory;
 import com.lifedesk.storage.JsonStore;
-import com.lifedesk.storage.SchemaMigrator;
 
-import java.lang.reflect.Type;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -16,20 +11,8 @@ import java.util.Optional;
 public class JsonTaskRepository implements TaskRepository {
     public static final String FILE = "tasks/tasks.json";
     private static final int SCHEMA_VERSION = 1;
-    private static final Type TASK_LIST = new TypeToken<List<Task>>() {
+    private static final java.lang.reflect.Type TASK_LIST = new TypeToken<List<Task>>() {
     }.getType();
-
-    private static final SchemaMigrator MIGRATOR = new SchemaMigrator() {
-        @Override
-        public int currentVersion() {
-            return SCHEMA_VERSION;
-        }
-
-        @Override
-        public JsonObject migrate(JsonObject data, int fromVersion) {
-            return data; // v1 is the first version; future versions add explicit steps here.
-        }
-    };
 
     private final JsonStore store;
     private final List<Task> tasks;
@@ -40,21 +23,11 @@ public class JsonTaskRepository implements TaskRepository {
     }
 
     private List<Task> load() {
-        JsonStore.StoredDoc doc = store.read(FILE, MIGRATOR);
-        if (doc == null) {
-            return new ArrayList<>();
-        }
-        if (!doc.data().has("tasks") || !doc.data().get("tasks").isJsonArray()) {
-            return new ArrayList<>();
-        }
-        List<Task> parsed = GsonFactory.create().fromJson(doc.data().getAsJsonArray("tasks"), TASK_LIST);
-        return parsed == null ? new ArrayList<>() : new ArrayList<>(parsed);
+        return new ArrayList<>(store.readList(FILE, "tasks", TASK_LIST));
     }
 
     private void persist() {
-        JsonObject data = new JsonObject();
-        data.add("tasks", GsonFactory.create().toJsonTree(tasks));
-        store.write(FILE, SCHEMA_VERSION, data);
+        store.writeList(FILE, "tasks", SCHEMA_VERSION, tasks);
     }
 
     @Override
@@ -94,17 +67,4 @@ public class JsonTaskRepository implements TaskRepository {
         persist();
     }
 
-    /** Sorted copy used by views: by due date, then priority, then created. */
-    public List<Task> sorted() {
-        Comparator<Task> byPriority = Comparator.comparingInt(t -> -t.priority.ordinal());
-        return tasks.stream()
-                .sorted(Comparator.comparing(Task::getDueDateOrMax)
-                        .thenComparing(byPriority)
-                        .thenComparing(t -> t.createdAt))
-                .toList();
-    }
-
-    public int count() {
-        return tasks.size();
-    }
 }

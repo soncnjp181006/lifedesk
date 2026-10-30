@@ -98,9 +98,4 @@ public class AiManager {
             default -> "rule-engine-1.0";
         };
     }
-
-    /** Availability of the active provider (cheap probe). */
-    public boolean currentProviderAvailable() {
-        return currentProvider().map(AiProvider::isAvailable).orElse(false);
-    }
 }

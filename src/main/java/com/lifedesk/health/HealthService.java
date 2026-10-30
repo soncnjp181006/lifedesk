@@ -1,15 +1,11 @@
 package com.lifedesk.health;
 
-import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import com.lifedesk.common.ChangeNotifier;
 import com.lifedesk.common.ValidationException;
 import com.lifedesk.common.Validators;
-import com.lifedesk.storage.GsonFactory;
 import com.lifedesk.storage.JsonStore;
-import com.lifedesk.storage.SchemaMigrator;
 
-import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -35,37 +31,24 @@ public class HealthService {
 
     public HealthService(JsonStore store) {
         this.store = store;
-        Type entryType = new TypeToken<List<HealthEntry>>() {
-        }.getType();
-        Type metricType = new TypeToken<List<MetricDef>>() {
-        }.getType();
-        entries.addAll(readList("health/entries.json", "entries", entryType));
-        metrics.addAll(readList("health/metrics.json", "metrics", metricType));
+        entries.addAll(store.readList("health/entries.json", "entries",
+                new TypeToken<List<HealthEntry>>() {
+                }.getType()));
+        metrics.addAll(store.readList("health/metrics.json", "metrics",
+                new TypeToken<List<MetricDef>>() {
+                }.getType()));
     }
 
     public ChangeNotifier changes() {
         return change;
     }
 
-    private <T> List<T> readList(String file, String key, Type listType) {
-        JsonStore.StoredDoc doc = store.read(file, SchemaMigrator.none(1));
-        if (doc == null || !doc.data().has(key) || !doc.data().get(key).isJsonArray()) {
-            return new ArrayList<>();
-        }
-        List<T> parsed = GsonFactory.create().fromJson(doc.data().getAsJsonArray(key), listType);
-        return parsed == null ? new ArrayList<>() : parsed;
-    }
-
     private void persistEntries() {
-        JsonObject data = new JsonObject();
-        data.add("entries", GsonFactory.create().toJsonTree(entries));
-        store.write("health/entries.json", 1, data);
+        store.writeList("health/entries.json", "entries", 1, entries);
     }
 
     private void persistMetrics() {
-        JsonObject data = new JsonObject();
-        data.add("metrics", GsonFactory.create().toJsonTree(metrics));
-        store.write("health/metrics.json", 1, data);
+        store.writeList("health/metrics.json", "metrics", 1, metrics);
     }
 
     public List<HealthEntry> entries() {
@@ -182,21 +165,6 @@ public class HealthService {
                 case WEIGHT -> e.weightKg;
                 case EXERCISE -> e.exerciseMinutes == null ? null : BigDecimal.valueOf(e.exerciseMinutes);
             };
-            if (v != null) {
-                map.put(e.date, v);
-            }
-        }
-        return map.entrySet().stream().map(e -> new SeriesPoint(e.getKey(), e.getValue())).toList();
-    }
-
-    /** Series for a custom metric. */
-    public List<SeriesPoint> customSeries(LocalDate from, LocalDate to, String metricId) {
-        TreeMap<LocalDate, BigDecimal> map = new TreeMap<>();
-        for (HealthEntry e : entries()) {
-            if (e.date.isBefore(from) || e.date.isAfter(to)) {
-                continue;
-            }
-            BigDecimal v = e.customMetrics.get(metricId);
             if (v != null) {
                 map.put(e.date, v);
             }

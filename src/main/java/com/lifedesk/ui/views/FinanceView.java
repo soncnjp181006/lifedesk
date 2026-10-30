@@ -16,6 +16,7 @@ import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.EmptyState;
 import com.lifedesk.ui.components.IconView;
+import com.lifedesk.ui.editors.FinanceDialogs;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.collections.FXCollections;
 import javafx.geometry.Pos;
@@ -25,7 +26,6 @@ import javafx.scene.chart.CategoryAxis;
 import javafx.scene.chart.NumberAxis;
 import javafx.scene.chart.PieChart;
 import javafx.scene.control.Button;
-import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
@@ -34,7 +34,6 @@ import javafx.scene.control.TabPane;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
-import javafx.scene.control.Toggle;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
@@ -53,6 +52,7 @@ import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -60,6 +60,8 @@ import java.util.Map;
 /**
  * Personal finance: always-visible quick entry (income/expense), month
  * navigation with summary cards, budgets, debts and reports + CSV.
+ * Editor dialogs live in {@link FinanceDialogs}; this class owns layout,
+ * tables and the quick-add bar.
  */
 public class FinanceView extends View {
     private static final NumberFormat VND = NumberFormat.getNumberInstance(new Locale("vi", "VN"));
@@ -90,6 +92,12 @@ public class FinanceView extends View {
 
     private final TableView<Budget> budgetTable = new TableView<>();
     private final TableView<Debt> debtTable = new TableView<>();
+    /**
+     * Budget status (spent/remaining) per budget id, computed once per refresh.
+     * Cell factories only read this map — recomputing categoryTotals per painted
+     * cell made every table repaint O(rows × transactions).
+     */
+    private Map<String, FinanceService.BudgetStatus> budgetStatusById = Map.of();
 
     public FinanceView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -119,7 +127,7 @@ public class FinanceView extends View {
         importBtn.setOnAction(e -> importCsv());
         Button catBtn = new Button("Danh mục…");
         catBtn.setTooltip(new Tooltip("Thêm / đổi tên / xóa danh mục"));
-        catBtn.setOnAction(e -> manageCategories());
+        catBtn.setOnAction(e -> FinanceDialogs.manageCategories(ctx, this::afterCategoryChange));
         HBox header = new HBox(10, title, spacer, catBtn, exportBtn, importBtn);
         header.setAlignment(Pos.CENTER_LEFT);
 
@@ -136,17 +144,9 @@ public class FinanceView extends View {
         return new VBox(12, header, tabs);
     }
 
-    private volatile boolean refreshQueued = false;
-
-    private void scheduleRefresh() {
-        if (refreshQueued) {
-            return;
-        }
-        refreshQueued = true;
-        javafx.application.Platform.runLater(() -> {
-            refreshQueued = false;
-            refresh();
-        });
+    private void afterCategoryChange() {
+        reloadQuickCategories();
+        refresh();
     }
 
     // ------------------------------------------------------------------ transactions tab
@@ -230,7 +230,7 @@ public class FinanceView extends View {
         editTx.setOnAction(e -> {
             Transaction t = txTable.getSelectionModel().getSelectedItem();
             if (t != null) {
-                openTransactionEditor(t);
+                FinanceDialogs.editTransaction(ctx, t, this::refresh);
             }
         });
         Button delTx = new Button("Xóa");
@@ -303,7 +303,7 @@ public class FinanceView extends View {
         txTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         txTable.setOnMouseClicked(e -> {
             if (e.getClickCount() == 2 && txTable.getSelectionModel().getSelectedItem() != null) {
-                openTransactionEditor(txTable.getSelectionModel().getSelectedItem());
+                FinanceDialogs.editTransaction(ctx, txTable.getSelectionModel().getSelectedItem(), this::refresh);
             }
         });
         VBox.setVgrow(txTable, Priority.ALWAYS);
@@ -420,92 +420,6 @@ public class FinanceView extends View {
         reloadQuickCategories();
     }
 
-    void openTransactionEditor(Transaction existing) {
-        javafx.scene.control.Dialog<Transaction> dialog = Dialogs.newDialog();
-        dialog.setTitle(existing == null ? "Thêm giao dịch" : "Sửa giao dịch");
-        dialog.setHeaderText(null);
-        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
-                javafx.scene.control.ButtonType.CANCEL);
-
-        DatePicker date = new DatePicker(existing == null ? LocalDate.now() : existing.date);
-        ComboBox<TxType> type = new ComboBox<>(FXCollections.observableArrayList(TxType.values()));
-        type.setValue(existing == null ? TxType.EXPENSE : existing.type);
-        TextField amount = new TextField(existing == null ? "" : existing.amount.toPlainString());
-        amount.setPromptText("VD: 1250000");
-        ComboBox<Category> category = new ComboBox<>();
-        Runnable reloadCategories = () -> {
-            category.getItems().setAll(ctx.finance().categories(type.getValue()));
-            if (existing != null) {
-                category.getItems().stream().filter(c -> c.id.equals(existing.categoryId)).findFirst()
-                        .ifPresent(category.getSelectionModel()::select);
-            } else {
-                category.getSelectionModel().selectFirst();
-            }
-        };
-        type.setOnAction(e -> reloadCategories.run());
-        reloadCategories.run();
-        ComboBox<PaymentMethod> method = new ComboBox<>(FXCollections.observableArrayList(PaymentMethod.values()));
-        method.setValue(existing == null ? PaymentMethod.CASH : existing.method);
-        TextField description = new TextField(existing == null ? "" : existing.description);
-        TextField tags = new TextField(existing == null ? "" : String.join(", ", existing.tags));
-
-        VBox content = new VBox(10,
-                new HBox(10, labeled("Ngày", date), labeled("Loại", type), labeled("Phương thức", method)),
-                new HBox(10, labeled("Số tiền (VND) *", amount), labeled("Danh mục", category)),
-                labeled("Mô tả", description),
-                labeled("Tags (phân cách bằng dấu phẩy)", tags));
-        content.setPadding(new javafx.geometry.Insets(10));
-        if (existing != null) {
-            com.lifedesk.ui.components.NoteLinkPicker noteLinks =
-                    new com.lifedesk.ui.components.NoteLinkPicker(ctx, "finance", existing.id,
-                            "Ghi chú liên quan (bật/tắt để gắn hoặc gỡ — lưu ngay):");
-            content.getChildren().add(noteLinks);
-        }
-        dialog.getDialogPane().setContent(content);
-
-        dialog.setResultConverter(bt -> {
-            if (bt.getButtonData() != javafx.scene.control.ButtonBar.ButtonData.OK_DONE) {
-                return null;
-            }
-            try {
-                BigDecimal value = new BigDecimal(amount.getText().trim());
-                Category cat = category.getValue();
-                if (existing == null) {
-                    var tagsSet = new java.util.LinkedHashSet<String>();
-                    for (String t : tags.getText().split(",")) {
-                        if (!t.isBlank()) {
-                            tagsSet.add(t.trim());
-                        }
-                    }
-                    return ctx.finance().addTransaction(date.getValue(), type.getValue(), value, cat.id,
-                            method.getValue(), description.getText(), tagsSet, null, false);
-                }
-                existing.date = date.getValue();
-                existing.type = type.getValue();
-                existing.amount = value;
-                existing.categoryId = cat.id;
-                existing.method = method.getValue();
-                existing.description = description.getText();
-                existing.tags.clear();
-                for (String t : tags.getText().split(",")) {
-                    if (!t.isBlank()) {
-                        existing.tags.add(t.trim());
-                    }
-                }
-                ctx.finance().updateTransaction(existing);
-                return existing;
-            } catch (NumberFormatException ex) {
-                Dialogs.error("Số tiền không hợp lệ", "Hãy nhập số tiền dạng số, ví dụ 1250000");
-                return null;
-            } catch (RuntimeException ex) {
-                Dialogs.error("Không lưu được giao dịch", ex.getMessage());
-                return null;
-            }
-        });
-        dialog.showAndWait();
-        refresh();
-    }
-
     private void deleteSelectedTransaction() {
         Transaction t = txTable.getSelectionModel().getSelectedItem();
         if (t != null && Dialogs.confirm("Xóa giao dịch",
@@ -520,12 +434,12 @@ public class FinanceView extends View {
         buildBudgetTable();
         Button addBudget = new Button("Đặt ngân sách");
         addBudget.getStyleClass().add("primary-btn");
-        addBudget.setOnAction(e -> openBudgetEditor(null));
+        addBudget.setOnAction(e -> FinanceDialogs.editBudget(ctx, null, this::refresh));
         Button editBudget = new Button("Sửa");
         editBudget.setOnAction(e -> {
             Budget b = budgetTable.getSelectionModel().getSelectedItem();
             if (b != null) {
-                openBudgetEditor(b);
+                FinanceDialogs.editBudget(ctx, b, this::refresh);
             }
         });
         Button delBudget = new Button("Xóa");
@@ -548,17 +462,25 @@ public class FinanceView extends View {
         TableColumn<Budget, String> limitCol = new TableColumn<>("Hạn mức");
         limitCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(VND.format(p.getValue().limitAmount) + " đ"));
         TableColumn<Budget, String> spentCol = new TableColumn<>("Đã chi");
-        spentCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(VND.format(
-                ctx.finance().budgetStatus(p.getValue().month).stream()
-                        .filter(s -> s.budget().id.equals(p.getValue().id))
-                        .findFirst().map(FinanceService.BudgetStatus::spent).orElse(BigDecimal.ZERO)) + " đ"));
+        spentCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(VND.format(spentOf(p.getValue())) + " đ"));
         TableColumn<Budget, String> remainCol = new TableColumn<>("Còn lại");
-        remainCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(VND.format(
-                ctx.finance().budgetStatus(p.getValue().month).stream()
-                        .filter(s -> s.budget().id.equals(p.getValue().id))
-                        .findFirst().map(FinanceService.BudgetStatus::remaining).orElse(BigDecimal.ZERO)) + " đ"));
+        remainCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(VND.format(remainingOf(p.getValue())) + " đ"));
         budgetTable.getColumns().setAll(List.of(monthCol, catCol, limitCol, spentCol, remainCol));
         budgetTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+    }
+
+    private FinanceService.BudgetStatus statusOf(Budget b) {
+        return budgetStatusById.get(b.id);
+    }
+
+    private BigDecimal spentOf(Budget b) {
+        FinanceService.BudgetStatus s = statusOf(b);
+        return s == null ? BigDecimal.ZERO : s.spent();
+    }
+
+    private BigDecimal remainingOf(Budget b) {
+        FinanceService.BudgetStatus s = statusOf(b);
+        return s == null ? BigDecimal.ZERO : s.remaining();
     }
 
     private String safeBudgetCategory(Budget b) {
@@ -569,63 +491,18 @@ public class FinanceView extends View {
         }
     }
 
-    void openBudgetEditor(Budget existing) {
-        javafx.scene.control.Dialog<Budget> dialog = Dialogs.newDialog();
-        dialog.setTitle(existing == null ? "Đặt ngân sách" : "Sửa ngân sách");
-        dialog.setHeaderText(null);
-        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
-                javafx.scene.control.ButtonType.CANCEL);
-        ComboBox<YearMonth> month = new ComboBox<>();
-        for (int i = -2; i <= 3; i++) {
-            month.getItems().add(YearMonth.now().plusMonths(i));
-        }
-        month.setValue(existing == null ? YearMonth.now() : existing.month);
-        ComboBox<Category> category = new ComboBox<>(FXCollections.observableArrayList(
-                ctx.finance().categories(TxType.EXPENSE)));
-        if (existing != null) {
-            category.getItems().stream().filter(c -> c.id.equals(existing.categoryId)).findFirst()
-                    .ifPresent(category.getSelectionModel()::select);
-        } else {
-            category.getSelectionModel().selectFirst();
-        }
-        TextField limit = new TextField(existing == null ? "" : existing.limitAmount.toPlainString());
-        CheckBox recurring = new CheckBox("Lặp lại hàng tháng (áp dụng cho mọi tháng)");
-        recurring.setSelected(existing != null && existing.recurring);
-        VBox content = new VBox(10, new HBox(10, labeled("Tháng", month), labeled("Danh mục chi", category)),
-                labeled("Hạn mức (VND)", limit), recurring);
-        content.setPadding(new javafx.geometry.Insets(10));
-        dialog.getDialogPane().setContent(content);
-        dialog.setResultConverter(bt -> {
-            if (bt.getButtonData() != javafx.scene.control.ButtonBar.ButtonData.OK_DONE || category.getValue() == null) {
-                return null;
-            }
-            try {
-                BigDecimal value = new BigDecimal(limit.getText().trim());
-                return ctx.finance().addBudget(month.getValue(), category.getValue().id, value, recurring.isSelected());
-            } catch (NumberFormatException e) {
-                Dialogs.error("Số tiền không hợp lệ", "Nhập số, ví dụ 5000000");
-                return null;
-            } catch (RuntimeException e) {
-                Dialogs.error("Không lưu được ngân sách", e.getMessage());
-                return null;
-            }
-        });
-        dialog.showAndWait();
-        refresh();
-    }
-
     // ------------------------------------------------------------------ debts
 
     private Node buildDebtsTab() {
         buildDebtTable();
         Button addDebt = new Button("Thêm khoản");
         addDebt.getStyleClass().add("primary-btn");
-        addDebt.setOnAction(e -> openDebtEditor(null));
+        addDebt.setOnAction(e -> FinanceDialogs.editDebt(ctx, null, this::refresh));
         Button editDebt = new Button("Sửa");
         editDebt.setOnAction(e -> {
             Debt d = debtTable.getSelectionModel().getSelectedItem();
             if (d != null) {
-                openDebtEditor(d);
+                FinanceDialogs.editDebt(ctx, d, this::refresh);
             }
         });
         Button settle = new Button("Tất toán");
@@ -662,54 +539,6 @@ public class FinanceView extends View {
                 p.getValue().status == DebtStatus.OPEN ? "Đang mở" : "Đã tất toán"));
         debtTable.getColumns().setAll(List.of(dirCol, partyCol, amountCol, dueCol, statusCol));
         debtTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-    }
-
-    void openDebtEditor(Debt existing) {
-        javafx.scene.control.Dialog<Debt> dialog = Dialogs.newDialog();
-        dialog.setTitle(existing == null ? "Thêm khoản phải thu / phải trả" : "Sửa khoản");
-        dialog.setHeaderText(null);
-        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
-                javafx.scene.control.ButtonType.CANCEL);
-        ComboBox<DebtDirection> dir = new ComboBox<>(FXCollections.observableArrayList(DebtDirection.values()));
-        dir.setValue(existing == null ? DebtDirection.RECEIVABLE : existing.direction);
-        TextField party = new TextField(existing == null ? "" : existing.party);
-        TextField amount = new TextField(existing == null ? "" : existing.amount.toPlainString());
-        DatePicker due = new DatePicker(existing == null || existing.dueDate == null
-                ? LocalDate.now().plusDays(7) : existing.dueDate);
-        javafx.scene.control.TextArea note = new javafx.scene.control.TextArea(existing == null ? "" : existing.note);
-        note.setPrefRowCount(2);
-        VBox content = new VBox(10, new HBox(10, labeled("Loại", dir), labeled("Đối tượng", party)),
-                new HBox(10, labeled("Số tiền (VND)", amount), labeled("Hạn", due)),
-                labeled("Ghi chú", note));
-        content.setPadding(new javafx.geometry.Insets(10));
-        dialog.getDialogPane().setContent(content);
-        dialog.setResultConverter(bt -> {
-            if (bt.getButtonData() != javafx.scene.control.ButtonBar.ButtonData.OK_DONE) {
-                return null;
-            }
-            try {
-                BigDecimal value = new BigDecimal(amount.getText().trim());
-                if (existing == null) {
-                    return ctx.finance().addDebt(dir.getValue(), party.getText(), value,
-                            LocalDate.now(), due.getValue(), note.getText());
-                }
-                existing.direction = dir.getValue();
-                existing.party = party.getText();
-                existing.amount = value;
-                existing.dueDate = due.getValue();
-                existing.note = note.getText();
-                ctx.finance().updateDebt(existing);
-                return existing;
-            } catch (NumberFormatException e) {
-                Dialogs.error("Số tiền không hợp lệ", "Nhập số, ví dụ 2000000");
-                return null;
-            } catch (RuntimeException e) {
-                Dialogs.error("Không lưu được", e.getMessage());
-                return null;
-            }
-        });
-        dialog.showAndWait();
-        refresh();
     }
 
     // ------------------------------------------------------------------ reports
@@ -801,76 +630,19 @@ public class FinanceView extends View {
         }
     }
 
-    /** Manage categories: rename + delete (delete blocked while transactions use the category). */
-    private void manageCategories() {
-        javafx.scene.control.Dialog<Void> dialog = Dialogs.newDialog();
-        dialog.setTitle("Quản lý danh mục");
-        dialog.setHeaderText("Danh mục thu / chi");
-        dialog.getDialogPane().getButtonTypes().add(javafx.scene.control.ButtonType.CLOSE);
-
-        javafx.scene.control.ListView<Category> list = new javafx.scene.control.ListView<>();
-        list.getItems().setAll(ctx.finance().categories(null));
-        list.setCellFactory(v -> new javafx.scene.control.ListCell<>() {
-            @Override
-            protected void updateItem(Category item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null ? null
-                        : item.name + "  (" + (item.type == TxType.INCOME ? "thu" : "chi") + ")");
-            }
-        });
-        list.setPrefHeight(280);
-
-        Button rename = new Button("Đổi tên");
-        rename.setOnAction(e -> {
-            Category c = list.getSelectionModel().getSelectedItem();
-            if (c == null) {
-                return;
-            }
-            String newName = Dialogs.prompt("Đổi tên danh mục",
-                    "Tên mới cho \"" + c.name + "\":", c.name).orElse(null);
-            if (newName == null || newName.isBlank()) {
-                return;
-            }
-            try {
-                ctx.finance().renameCategory(c.id, newName);
-                list.getItems().setAll(ctx.finance().categories(null));
-            } catch (RuntimeException ex) {
-                Dialogs.error("Không đổi được tên", ex.getMessage());
-            }
-        });
-        Button delete = new Button("Xóa danh mục");
-        delete.getStyleClass().add("danger-btn");
-        delete.setOnAction(e -> {
-            Category c = list.getSelectionModel().getSelectedItem();
-            if (c == null) {
-                return;
-            }
-            if (Dialogs.confirm("Xóa danh mục", "Xóa danh mục \"" + c.name + "\"?")) {
-                try {
-                    ctx.finance().deleteCategory(c.id);
-                    list.getItems().setAll(ctx.finance().categories(null));
-                } catch (RuntimeException ex) {
-                    Dialogs.warn("Không xóa được", ex.getMessage());
-                }
-            }
-        });
-        Label hint = new Label("Danh mục đang có giao dịch sẽ không xóa được — hãy đổi tên thay thế.");
-        hint.getStyleClass().add("dim-label");
-
-        dialog.getDialogPane().setContent(new VBox(10, list, new HBox(8, rename, delete), hint));
-        dialog.setResizable(true);
-        dialog.showAndWait();
-        reloadQuickCategories();
-        refresh();
-    }
-
     @Override
     public void onShow() {
         refresh();
     }
 
-    private void refresh() {
+    @Override
+    protected void refresh() {
         refreshTransactions();
+        Map<String, FinanceService.BudgetStatus> statuses = new HashMap<>();
+        for (FinanceService.BudgetStatus s : ctx.finance().budgetStatus(YearMonth.now())) {
+            statuses.put(s.budget().id, s);
+        }
+        budgetStatusById = statuses;
         budgetTable.getItems().setAll(ctx.finance().budgetsFor(YearMonth.now()));
         debtTable.getItems().setAll(ctx.finance().debts(null, null));
     }
@@ -883,11 +655,5 @@ public class FinanceView extends View {
                     refresh();
                     txTable.getSelectionModel().select(t);
                 });
-    }
-
-    private VBox labeled(String labelText, Node field) {
-        Label l = new Label(labelText);
-        l.getStyleClass().add("dim-label");
-        return new VBox(2, l, field);
     }
 }

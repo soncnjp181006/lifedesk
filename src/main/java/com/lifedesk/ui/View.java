@@ -11,6 +11,7 @@ public abstract class View extends VBox {
     protected final AppContext ctx;
     protected final MainWindow main;
     private boolean built = false;
+    private volatile boolean refreshQueued = false;
 
     protected View(AppContext ctx, MainWindow main) {
         this.ctx = ctx;
@@ -34,6 +35,40 @@ public abstract class View extends VBox {
 
     /** Open a specific record (from search results or notifications). */
     public void openRecord(String recordId) {
+    }
+
+    /**
+     * Re-read data and update the UI. Called by {@link #onShow()} overrides and
+     * by {@link #scheduleRefresh()} when a service fires a background change.
+     */
+    protected void refresh() {
+    }
+
+    /**
+     * Coalesce service change notifications into one {@link #refresh()} on the
+     * FX thread. Services may fire from background threads; several changes in
+     * quick succession produce a single repaint.
+     */
+    protected void scheduleRefresh() {
+        if (refreshQueued) {
+            return;
+        }
+        refreshQueued = true;
+        javafx.application.Platform.runLater(() -> {
+            refreshQueued = false;
+            refresh();
+        });
+    }
+
+    /** Persist app config on the IO executor after a UI-initiated change. */
+    protected void saveConfig() {
+        Fx.async(ctx.executors().io(), () -> {
+            new com.lifedesk.config.ConfigService(com.lifedesk.config.ConfigService.defaultConfigDir())
+                    .save(ctx.config());
+            ctx.persistAiSnapshot();
+            return true;
+        }, ok -> {
+        }, err -> main.status("Lưu cấu hình thất bại: " + err.getMessage()));
     }
 
     /** Bind a shortcut that is live only while this view is on screen. */
