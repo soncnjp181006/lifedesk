@@ -41,6 +41,8 @@ public class ReviewSessionPane extends VBox {
     private int correct = 0;
     private int reviewed = 0;
     private long elapsedSeconds = 0;
+    /** Last markdown handed to the card pane, so a theme switch can re-render it. */
+    private String cardMarkdown = "";
 
     public ReviewSessionPane(AppContext ctx) {
         this.ctx = ctx;
@@ -130,8 +132,8 @@ public class ReviewSessionPane extends VBox {
 
     private void showCurrent() {
         if (queue.isEmpty()) {
-            cardPane.render("**Không có thẻ nào đến hạn ôn.** 🎉\n\nHãy quay lại khi có thẻ đến hạn — "
-                    + "hoặc thêm thẻ mới ở tab Flashcards.", palette());
+            renderCard("**Không có thẻ nào đến hạn ôn.**\n\nHãy quay lại khi có thẻ đến hạn — "
+                    + "hoặc thêm thẻ mới ở tab Flashcards.");
             progressLabel.setText("0 thẻ");
             statsLabel.setText("");
             flipBtn.setDisable(true);
@@ -148,10 +150,20 @@ public class ReviewSessionPane extends VBox {
         showingBack = false;
         correctBtn.setDisable(true);
         wrongBtn.setDisable(true);
-        cardPane.render(card.front, palette());
+        renderCard(card.front);
         progressLabel.setText("Thẻ " + (index + 1) + "/" + queue.size()
                 + "  —  box " + card.box);
         updateStats();
+    }
+
+    /** Re-paint the current card with the active theme (called on theme switch). */
+    public void retheme() {
+        renderCard(cardMarkdown);
+    }
+
+    private void renderCard(String markdown) {
+        cardMarkdown = markdown;
+        cardPane.render(markdown, palette());
     }
 
     private void flip() {
@@ -160,7 +172,7 @@ public class ReviewSessionPane extends VBox {
         }
         showingBack = true;
         Flashcard card = queue.get(index);
-        cardPane.render("---\n\n" + card.back, palette());
+        renderCard("---\n\n" + card.back);
         correctBtn.setDisable(false);
         wrongBtn.setDisable(false);
         flipBtn.setDisable(true);
@@ -183,10 +195,10 @@ public class ReviewSessionPane extends VBox {
     private void finishSession() {
         timer.stop();
         int minutes = (int) Math.max(1, elapsedSeconds / 60);
-        cardPane.render("**Hoàn tất phiên ôn!**\n\n"
+        renderCard("**Hoàn tất phiên ôn!**\n\n"
                 + "• Đã ôn " + reviewed + " thẻ\n"
                 + "• Nhớ: " + correct + " — Quên: " + (reviewed - correct) + "\n"
-                + "• Thời gian: " + minutes + " phút", palette());
+                + "• Thời gian: " + minutes + " phút");
         progressLabel.setText("Phiên kết thúc");
         String topic = "Ôn tập " + LocalDate.now() + " (" + reviewed + " thẻ)";
         ctx.learning().addSession(null, LocalDate.now(), minutes, topic);

@@ -131,7 +131,11 @@ public class FinanceView extends View {
         Button catBtn = new Button("Danh mục…");
         catBtn.setTooltip(new Tooltip("Thêm / đổi tên / xóa danh mục"));
         catBtn.setOnAction(e -> FinanceDialogs.manageCategories(ctx, this::afterCategoryChange));
-        HBox header = new HBox(10, title, spacer, catBtn, exportBtn, importBtn);
+        Label subtitle = new Label("Thu chi, ngân sách, khoản phải trả và báo cáo trong một chỗ");
+        subtitle.getStyleClass().add("page-subtitle");
+        VBox titleBlock = new VBox(1, title, subtitle);
+        HBox header = new HBox(10, titleBlock, spacer, catBtn, exportBtn, importBtn);
+        header.getStyleClass().add("view-header");
         header.setAlignment(Pos.CENTER_LEFT);
 
         TabPane tabs = new TabPane();
@@ -248,6 +252,7 @@ public class FinanceView extends View {
         delTx.setOnAction(e -> deleteSelectedTransaction());
 
         HBox toolbar = new HBox(8, txSearch, new Label("Loại:"), txTypeFilter, editTx, delTx);
+        toolbar.getStyleClass().add("toolbar-strip");
         toolbar.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(txSearch, Priority.ALWAYS);
 
@@ -766,7 +771,8 @@ public class FinanceView extends View {
 
     @Override
     public void onShow() {
-        refresh();
+        // Only re-read when the module actually changed since the last paint.
+        refreshWhenChanged(ctx.finance().changes());
     }
 
     @Override

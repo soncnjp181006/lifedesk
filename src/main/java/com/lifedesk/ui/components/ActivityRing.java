@@ -18,7 +18,6 @@ import javafx.scene.text.TextAlignment;
  */
 public class ActivityRing extends StackPane {
     private final Canvas canvas = new Canvas(110, 110);
-    private final Label caption = new Label();
     private double progress;
     private String colorClass = "#4caf7d";
     private String valueText = "";
@@ -26,10 +25,11 @@ public class ActivityRing extends StackPane {
 
     public ActivityRing(String title, String colorClass) {
         this.colorClass = colorClass;
-        caption.getStyleClass().add("dim-label");
         Label titleLabel = new Label(title);
         titleLabel.getStyleClass().add("dim-label");
-        VBox box = new VBox(2, titleLabel, canvas, caption);
+        // Value + goal live INSIDE the ring; a second goal line below just
+        // duplicated the center text.
+        VBox box = new VBox(4, titleLabel, canvas);
         box.setAlignment(Pos.CENTER);
         getChildren().add(box);
         setAlignment(Pos.CENTER);
@@ -41,7 +41,6 @@ public class ActivityRing extends StackPane {
         this.progress = Math.max(0, Math.min(1.2, progress));
         this.valueText = valueText;
         this.goalText = goalText;
-        caption.setText(goalText);
         draw();
     }
 

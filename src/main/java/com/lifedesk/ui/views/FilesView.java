@@ -76,6 +76,7 @@ public class FilesView extends View {
         auditBtn.setTooltip(new Tooltip("Quét trùng lặp / file quá lớn / file rỗng (chỉ đọc)"));
         auditBtn.setOnAction(e -> runAudit());
         HBox header = new HBox(10, title, spacer, auditBtn, addRoot);
+        header.getStyleClass().add("view-header");
         header.setAlignment(Pos.CENTER_LEFT);
 
         scopeNote.getStyleClass().add("dim-label");

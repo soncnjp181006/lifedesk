@@ -44,6 +44,22 @@ public final class SmokeMain {
         }
     }
 
+    /** Depth-first search for a Button with the given label (smoke navigation aid). */
+    private static javafx.scene.Node findButton(javafx.scene.Node root, String text) {
+        if (root instanceof javafx.scene.control.Button b && text.equals(b.getText())) {
+            return b;
+        }
+        if (root instanceof javafx.scene.Parent p) {
+            for (javafx.scene.Node n : p.getChildrenUnmodifiable()) {
+                javafx.scene.Node found = findButton(n, text);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
     // ------------------------------------------------------------------ services smoke
 
     static boolean runServicesSmoke() throws Exception {
@@ -193,6 +209,103 @@ public final class SmokeMain {
         }
     }
 
+    // ------------------------------------------------------------------ demo dataset
+
+    /**
+     * A month of plausible personal data. Deliberately includes overdue work, a
+     * budget that is nearly spent, a broken habit streak and a deck due today, so
+     * the snapshots exercise the states a real screen has to survive — not just the
+     * happy path a hand-typed fixture would produce.
+     */
+    private static void seedDemoData(AppContext ctx) {
+        LocalDate today = LocalDate.now();
+        String[] titles = {
+                "Nộp báo cáo tuần cho quản lý", "Chuẩn bị slide họp sprint", "Trả lời email đối tác",
+                "Ôn 30 từ vựng tiếng Nhật", "Đặt lịch khám răng", "Mua quà sinh nhật mẹ",
+                "Rà soát lại ngân sách tháng", "Chạy bộ 5km", "Dọn dẹp thư mục Downloads",
+                "Viết nháp chương 3", "Gọi điện cho anh Nam", "Kiểm tra hoá đơn điện" };
+        String[] groups = {"Công việc", "Cá nhân", "Học tập", "Sức khỏe"};
+        com.lifedesk.tasks.Priority[] pri = {com.lifedesk.tasks.Priority.HIGH,
+                com.lifedesk.tasks.Priority.MEDIUM, com.lifedesk.tasks.Priority.LOW};
+        for (int i = 0; i < 34; i++) {
+            LocalDate due = i < 6 ? today.minusDays(1 + i) : today.plusDays(i % 9);
+            var t = ctx.tasks().create(titles[i % titles.length] + (i >= titles.length ? " (" + (i / titles.length + 1) + ")" : ""),
+                    i % 3 == 0 ? "Ghi chú: ưu tiên xử lý trước 17h." : "",
+                    pri[i % 3], i % 11 == 0 ? null : due, null,
+                    groups[i % groups.length], List.of(i % 2 == 0 ? "focus" : "nhà"), null);
+            if (i % 4 == 3) {
+                ctx.tasks().setStatus(t.id, com.lifedesk.tasks.TaskStatus.DONE);
+            } else if (i % 5 == 2) {
+                ctx.tasks().setStatus(t.id, com.lifedesk.tasks.TaskStatus.IN_PROGRESS);
+            }
+        }
+
+        String[][] notes = {
+                {"Kế hoạch tháng 11", "# Kế hoạch tháng 11\n\n## Mục tiêu\n- Hoàn thành báo cáo Q4\n- Chạy 40km trong tháng\n- Đọc xong *Thinking, Fast and Slow*\n\n## Ghi chú\n> Tuần đầu tiên chỉ tập trung vào việc quan trọng nhất.\n\n| Tuần | Trọng tâm |\n|---|---|\n| 1 | Báo cáo |\n| 2 | Ôn thi |\n"},
+                {"Công thức nấu ăn nhanh", "# Món dưới 20 phút\n\n1. Mì trứng cà chua\n2. Cơm rang dưa bò\n3. Salad ức gà\n\n`nước mắm 1 thìa` + `đường 1/2 thìa`\n"},
+                {"Ghi chú họp 28/10", "## Quyết định\n- Dời deadline sang 05/11\n- Họp lại thứ Sáu 9h\n\n## Việc cần làm\n- [x] Gửi biên bản\n- [ ] Cập nhật bảng tiến độ\n"},
+                {"Ý tưởng dự án cá nhân", "# Ý tưởng\n\n- Ứng dụng theo dõi thói quen cho người mới bắt đầu\n- Newsletter tổng hợp tin công nghệ hằng tuần\n"},
+                {"Sách đang đọc", "# Danh sách\n\n- [x] Atomic Habits\n- [ ] Deep Work\n- [ ] The Almanack of Naval Ravikant\n"},
+                {"Ngân sách tháng 10", "# Chi tiêu cố định\n\n- Tiền nhà: 5.000.000\n- Điện nước: 850.000\n- Internet: 220.000\n"} };
+        for (String[] n : notes) {
+            ctx.notes().create(n[0], "work", n[1], java.util.Set.of("kế hoạch"));
+        }
+
+        var expense = ctx.finance().categories(com.lifedesk.finance.TxType.EXPENSE);
+        var income = ctx.finance().categories(com.lifedesk.finance.TxType.INCOME);
+        String[] spend = {"Ăn trưa văn phòng", "Cà phê sáng", "Grab đi làm", "Siêu thị cuối tuần",
+                "Tiền điện", "Mua sách", "Xem phim", "Thuốc cảm", "Xăng xe", "Đồ dùng bếp"};
+        java.util.Random rnd = new java.util.Random(42);
+        for (int back = 0; back < 75; back++) {
+            LocalDate d = today.minusDays(back);
+            ctx.finance().addTransaction(d, com.lifedesk.finance.TxType.EXPENSE,
+                    new java.math.BigDecimal(45_000 + rnd.nextInt(600_000)),
+                    expense.get(rnd.nextInt(expense.size())).id,
+                    com.lifedesk.finance.PaymentMethod.values()[rnd.nextInt(3)],
+                    spend[rnd.nextInt(spend.length)], null, null, false);
+            if (d.getDayOfMonth() == 5) {
+                ctx.finance().addTransaction(d, com.lifedesk.finance.TxType.INCOME,
+                        new java.math.BigDecimal("24500000"), income.get(0).id,
+                        com.lifedesk.finance.PaymentMethod.BANK_TRANSFER, "Lương tháng", null, "salary-" + d, false);
+            }
+        }
+        try {
+            ctx.finance().addBudget(java.time.YearMonth.from(today), expense.get(0).id,
+                    new java.math.BigDecimal("4000000"), true);
+        } catch (RuntimeException ignored) {
+            // duplicate budget in a re-seeded fixture is fine
+        }
+
+        var ensure = ctx.habits().addHabit("Đọc 20 trang", "Trước khi ngủ", java.util.Set.of(
+                java.time.DayOfWeek.MONDAY, java.time.DayOfWeek.WEDNESDAY, java.time.DayOfWeek.FRIDAY), "#60a5fa");
+        ctx.habits().addHabit("Uống 2 lít nước", "", java.util.EnumSet.allOf(java.time.DayOfWeek.class), "#4ade80");
+        ctx.habits().addHabit("Thiền 10 phút", "", java.util.EnumSet.allOf(java.time.DayOfWeek.class), "#a78bfa");
+        for (int back = 0; back < 26; back++) {
+            LocalDate d = today.minusDays(back);
+            if (back % 4 != 0) {
+                ctx.habits().setCompletion(ensure.id, d, true, "smoke", "smoke");
+            }
+        }
+        ctx.habits().addGoal("Chạy 40km trong tháng", "", today.plusDays(20));
+        ctx.habits().addGoal("Đọc xong 2 cuốn sách", "", today.plusDays(45));
+
+        for (int back = 0; back < 18; back++) {
+            ctx.health().upsert(today.minusDays(back),
+                    new java.math.BigDecimal(String.valueOf(6.5 + (back % 4) * 0.4)),
+                    15 + (back % 5) * 10, new java.math.BigDecimal("68.4"), null, null);
+        }
+
+        var course = ctx.learning().addCourse("Tiếng Nhật N4", "JLPT", null, java.util.Set.of("ngoại ngữ"));
+        var deck = ctx.learning().addDeck("N4 · Từ vựng tuần 3", course.id);
+        for (String[] c : new String[][]{{"改善", "cải thiện"}, {"経験", "kinh nghiệm"},
+                {"準備", "chuẩn bị"}, {"約束", "lời hẹn"}, {"相談", "trao đổi"}, {"我慢", "chịu đựng"}}) {
+            ctx.learning().addCard(deck.id, c[0], c[1]);
+        }
+        ctx.learning().addSession(course.id, today.minusDays(1), 45, "Từ vựng bài 7");
+        ctx.learning().addSession(course.id, today.minusDays(3), 30, "Ngữ pháp て-form");
+        System.out.println("Seeded demo dataset: 34 tasks, 6 notes, ~76 transactions, 3 habits, 18 health rows");
+    }
+
     // ------------------------------------------------------------------ ui smoke
 
     private static void runUiSmoke() throws Exception {
@@ -210,11 +323,16 @@ public final class SmokeMain {
         Path screenshot = Path.of(uiArgs.length > 1 ? uiArgs[1] : "target/ui-smoke.png");
         Files.createDirectories(screenshot.toAbsolutePath().getParent());
 
-        // no seeded data: the UI opens empty, exactly what a fresh user sees
         AppConfig config = new AppConfig();
         config.dataDir = dataDir.toString();
         config.remindersEnabled = false;
         AppContext ctx = new AppContext(dataDir, config);
+        // An empty database makes every screen look the same and makes navigation
+        // timings meaningless. Without an explicit fixture, seed a realistic month so
+        // both the snapshots and the timing numbers describe the app people actually run.
+        if (seedDir == null || seedDir.isBlank()) {
+            seedDemoData(ctx);
+        }
         ctx.shutdown();
         seedNoteIdHolder = firstNoteId(dataDir);
 
@@ -315,6 +433,14 @@ public final class SmokeMain {
                         if ("NOTES".equals(v[0]) && seedNoteId != null) {
                             LifeDeskApp.mainWindowRef.openRecord("NOTE", seedNoteId);
                         }
+                        // Proves the switch happened at all: a view that never replaced
+                        // the previous one still snapshots "successfully".
+                        var area = (javafx.scene.layout.Pane) LifeDeskApp.primaryStageRef.getScene()
+                                .lookup(".content-area");
+                        String shown = area != null && !area.getChildren().isEmpty()
+                                && area.getChildren().get(0) instanceof com.lifedesk.ui.View shownView
+                                        ? shownView.id() : "(none)";
+                        System.out.println("SHOW " + v[0] + " -> " + shown);
                         ok.complete(true);
                     } catch (Throwable t) {
                         ok.completeExceptionally(t);
@@ -339,10 +465,18 @@ public final class SmokeMain {
                                 }
                             }
                             // Overflow guard: horizontal clipping is invisible in code review.
-                            javafx.scene.layout.BorderPane bp =
-                                    (javafx.scene.layout.BorderPane) scene.getRoot();
-                            javafx.scene.control.ScrollPane sp =
-                                    (javafx.scene.control.ScrollPane) bp.getCenter();
+                            // Found by style class, not by a fixed tree position: the probe
+                            // must survive a shell restructure without silently skipping.
+                            javafx.scene.control.ScrollPane sp = null;
+                            for (javafx.scene.Node n = scene.lookup(".content-area"); n != null; n = n.getParent()) {
+                                if (n instanceof javafx.scene.control.ScrollPane found) {
+                                    sp = found;
+                                    break;
+                                }
+                            }
+                            if (sp == null) {
+                                throw new IllegalStateException("Không tìm thấy vùng nội dung cuộn (.content-area)");
+                            }
                             double viewport = sp.getViewportBounds().getWidth();
                             double contentW = sp.getContent().getLayoutBounds().getWidth();
                             String center = "(?)";
@@ -351,6 +485,17 @@ public final class SmokeMain {
                                 center = kids.get(0) instanceof com.lifedesk.ui.View mv
                                         ? mv.id() : kids.get(0).getClass().getSimpleName();
                             }
+                            // The rendered page title must belong to the view we just
+                            // showed: a desync between the rail highlight and the content
+                            // is invisible in a layout check but obvious to the user.
+                            String renderedTitle = "?";
+                            var titleNode = scene.lookup(".title-label");
+                            if (titleNode instanceof javafx.scene.control.Label tl) {
+                                renderedTitle = tl.getText();
+                            }
+                            System.out.println("RENDER " + v[0] + " title=\"" + renderedTitle + "\"");
+                            // Once printed this as a note; a note nobody fails on is not a check.
+                            check("không tràn ngang khi ở " + v[0], contentW <= viewport + 1);
                             System.out.println("LAYOUT " + v[0] + " center=" + center
                                     + " children=" + ((javafx.scene.layout.Pane) sp.getContent()).getChildren().size()
                                     + " viewport=" + Math.round(viewport)
@@ -368,8 +513,162 @@ public final class SmokeMain {
                             "png", viewShot.toFile());
                     System.out.println("View snapshot: " + v[0] + " -> " + viewShot);
                 } catch (Exception e) {
+                    // Previously this only printed, so a harness that could not inspect
+                    // anything still reported PASS.
+                    check("chụp và kiểm tra được view " + v[0], false);
                     System.out.println("View snapshot FAILED for " + v[0] + ": " + e);
                 }
+            }
+        }
+        // ---- Theme-switch regression: WebView panes (review card, markdown preview,
+        // RSS reader) embed the palette inside their HTML, so a stylesheet swap alone
+        // used to leave them wearing the previous theme's colors. Switch Dark→Light
+        // on LEARNING and measure the review-card region: it must actually lighten.
+        if (captured && LifeDeskApp.mainWindowRef != null) {
+            java.util.concurrent.CompletableFuture<java.awt.image.BufferedImage> themeCap =
+                    new java.util.concurrent.CompletableFuture<>();
+            javafx.application.Platform.runLater(() -> {
+                try {
+                    com.lifedesk.ui.MainWindow w = LifeDeskApp.mainWindowRef;
+                    w.showView(com.lifedesk.ui.MainWindow.ViewId.LEARNING);
+                    w.switchTheme("Light");
+                    themeCap.complete(null);
+                } catch (Throwable t) {
+                    themeCap.completeExceptionally(t);
+                }
+            });
+            try {
+                themeCap.get(10, java.util.concurrent.TimeUnit.SECONDS);
+                Thread.sleep(1500); // WebView reload + repaint
+                java.util.concurrent.CompletableFuture<java.awt.image.BufferedImage> cap3 =
+                        new java.util.concurrent.CompletableFuture<>();
+                javafx.application.Platform.runLater(() -> {
+                    try {
+                        var scene = LifeDeskApp.primaryStageRef.getScene();
+                        javafx.scene.image.WritableImage img3 = scene.snapshot(null);
+                        java.awt.image.BufferedImage buffered = new java.awt.image.BufferedImage(
+                                (int) img3.getWidth(), (int) img3.getHeight(),
+                                java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                        for (int y = 0; y < (int) img3.getHeight(); y++) {
+                            for (int x = 0; x < (int) img3.getWidth(); x++) {
+                                buffered.setRGB(x, y, img3.getPixelReader().getArgb(x, y));
+                            }
+                        }
+                        cap3.complete(buffered);
+                    } catch (Throwable t) {
+                        cap3.completeExceptionally(t);
+                    }
+                });
+                java.awt.image.BufferedImage lightShot = cap3.get(60, java.util.concurrent.TimeUnit.SECONDS);
+                Path themeShotPath = screenshot.toAbsolutePath().getParent()
+                        .resolve("ui-smoke-learning-after-theme-switch.png");
+                javax.imageio.ImageIO.write(lightShot, "png", themeShotPath.toFile());
+                // Average brightness of a 200x200 patch at the scene center — the review
+                // card fills that area. Light page ≈ white; a stale dark palette ≈ #1a2436.
+                int cx = lightShot.getWidth() / 2;
+                int cy = lightShot.getHeight() / 2;
+                long lum = 0;
+                int n = 0;
+                for (int y = cy - 100; y < cy + 100; y += 4) {
+                    for (int x = cx - 100; x < cx + 100; x += 4) {
+                        int argb = lightShot.getRGB(x, y);
+                        int r = (argb >> 16) & 0xFF;
+                        int g = (argb >> 8) & 0xFF;
+                        int b = argb & 0xFF;
+                        lum += (r + g + b) / 3;
+                        n++;
+                    }
+                }
+                long avg = lum / Math.max(1, n);
+                System.out.println("THEME review-card brightness after Dark→Light: " + avg);
+                check("thẻ ôn tập đổi màu theo theme (" + avg + ")", avg > 180);
+            } catch (Exception e) {
+                check("đổi theme không lỗi", false);
+                System.out.println("Theme switch FAILED: " + e);
+            }
+        }
+        // ---- Task-dialog regression: the create dialog must show Vietnamese enum
+        // names (never raw "MEDIUM"/"TODO", which used to truncate to "…") and a
+        // non-squeezed layout. Open it, screen-capture, then Esc out.
+        if (captured && LifeDeskApp.mainWindowRef != null) {
+            java.util.concurrent.CompletableFuture<Boolean> dlg = new java.util.concurrent.CompletableFuture<>();
+            javafx.application.Platform.runLater(() -> {
+                try {
+                    com.lifedesk.ui.MainWindow w = LifeDeskApp.mainWindowRef;
+                    w.showView(com.lifedesk.ui.MainWindow.ViewId.TASKS);
+                    javafx.scene.Node found = findButton(
+                            LifeDeskApp.primaryStageRef.getScene().getRoot(), "Công việc mới");
+                    if (!(found instanceof javafx.scene.control.Button b)) {
+                        throw new IllegalStateException("Không tìm thấy nút Công việc mới");
+                    }
+                    // complete BEFORE fire(): showAndWait() blocks this lambda in a
+                    // nested event loop until the dialog closes.
+                    dlg.complete(true);
+                    b.fire();
+                } catch (Throwable t) {
+                    dlg.completeExceptionally(t);
+                }
+            });
+            try {
+                dlg.get(10, java.util.concurrent.TimeUnit.SECONDS);
+                Thread.sleep(1500);
+                // Snapshot the dialog's OWN scene — a full-screen Robot capture would
+                // grab whatever window happens to be frontmost (browser, chat…).
+                java.util.concurrent.CompletableFuture<java.awt.image.BufferedImage> capDlg =
+                        new java.util.concurrent.CompletableFuture<>();
+                javafx.application.Platform.runLater(() -> {
+                    try {
+                        for (javafx.stage.Window win : javafx.stage.Window.getWindows()) {
+                            if (win instanceof javafx.stage.Stage st && st.isShowing()
+                                    && st != LifeDeskApp.primaryStageRef
+                                    && st.getScene() != null) {
+                                javafx.scene.image.WritableImage img =
+                                        st.getScene().snapshot(null);
+                                java.awt.image.BufferedImage buffered = new java.awt.image.BufferedImage(
+                                        (int) img.getWidth(), (int) img.getHeight(),
+                                        java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                                for (int y = 0; y < (int) img.getHeight(); y++) {
+                                    for (int x = 0; x < (int) img.getWidth(); x++) {
+                                        buffered.setRGB(x, y, img.getPixelReader().getArgb(x, y));
+                                    }
+                                }
+                                capDlg.complete(buffered);
+                                return;
+                            }
+                        }
+                        capDlg.completeExceptionally(new IllegalStateException("Dialog window not found"));
+                    } catch (Throwable t) {
+                        capDlg.completeExceptionally(t);
+                    }
+                });
+                java.awt.image.BufferedImage shot = capDlg.get(60, java.util.concurrent.TimeUnit.SECONDS);
+                Path dlgShot = screenshot.toAbsolutePath().getParent().resolve("ui-smoke-task-dialog.png");
+                javax.imageio.ImageIO.write(shot, "png", dlgShot.toFile());
+                System.out.println("Task dialog snapshot: " + dlgShot);
+                // Close the dialog via its Cancel button (locale-independent ButtonBar
+                // role). A stuck-open dialog crashed the JVM in glass.dll during the
+                // final Platform.exit (JDK 25 window-close race).
+                javafx.application.Platform.runLater(() -> {
+                    for (javafx.stage.Window win : javafx.stage.Window.getWindows()) {
+                        if (win instanceof javafx.stage.Stage st && st.isShowing()
+                                && st != LifeDeskApp.primaryStageRef
+                                && st.getScene() != null
+                                && st.getScene().getRoot() instanceof javafx.scene.Parent root
+                                && root.lookup(".button-bar") instanceof javafx.scene.control.ButtonBar bar) {
+                            bar.getButtons().stream()
+                                    .filter(n -> n instanceof javafx.scene.control.Button b
+                                            && javafx.scene.control.ButtonBar.getButtonData(b)
+                                                    == javafx.scene.control.ButtonBar.ButtonData.CANCEL_CLOSE)
+                                    .findFirst()
+                                    .ifPresent(n -> ((javafx.scene.control.Button) n).fire());
+                        }
+                    }
+                });
+                Thread.sleep(800);
+                check("mở được dialog công việc mới", true);
+            } catch (Exception e) {
+                check("mở được dialog công việc mới", false);
+                System.out.println("Task dialog snapshot FAILED: " + e);
             }
         }
         // ---- View-switch latency: navigation is a UI-thread operation, so time the
@@ -395,7 +694,16 @@ public final class SmokeMain {
                                     .append('=').append(ms).append("ms ");
                         }
                     }
-                    timings.complete(report.toString());
+                    // Same view again: showView() short-circuits to onShow(), so this is
+                    // the data-refresh cost alone, without swapping nodes or a layout pass.
+                    StringBuilder refresh = new StringBuilder();
+                    for (com.lifedesk.ui.MainWindow.ViewId id : ids) {
+                        long t0 = System.nanoTime();
+                        w.showView(id);
+                        long ms = (System.nanoTime() - t0) / 1_000_000;
+                        refresh.append(' ').append(id).append('=').append(ms).append("ms");
+                    }
+                    timings.complete(report + "| refresh-only:" + refresh);
                 } catch (Throwable t) {
                     timings.completeExceptionally(t);
                 }
@@ -404,6 +712,62 @@ public final class SmokeMain {
                 System.out.println("SWITCH " + timings.get(30, java.util.concurrent.TimeUnit.SECONDS));
             } catch (Exception e) {
                 System.out.println("SWITCH measurement FAILED: " + e);
+            }
+        }
+        // ---- Frame pacing: "lag" is a long gap between pulses, not a slow average.
+        // Switch views once per pulse and record the worst gap + how many frames blew
+        // the 50ms budget — the numbers a design/CSS change can be judged against.
+        if (captured && LifeDeskApp.mainWindowRef != null) {
+            java.util.concurrent.CompletableFuture<String> perf = new java.util.concurrent.CompletableFuture<>();
+            javafx.application.Platform.runLater(() -> {
+                try {
+                    com.lifedesk.ui.MainWindow w = LifeDeskApp.mainWindowRef;
+                    var ids = com.lifedesk.ui.MainWindow.ViewId.values();
+                    int[] frame = {0};
+                    long[] last = {System.nanoTime()};
+                    long[] maxGap = {0};
+                    int[] slow = {0};
+                    // Gap attributed to the view that was on screen while the pause
+                    // happened — the average hides a single 120ms offender.
+                    String[] shown = {"(startup)"};
+                    java.util.Map<String, Long> worstByView = new java.util.LinkedHashMap<>();
+                    long start = System.nanoTime();
+                    new javafx.animation.AnimationTimer() {
+                        @Override
+                        public void handle(long now) {
+                            long t = System.nanoTime();
+                            long gap = (t - last[0]) / 1_000_000;
+                            if (frame[0] > 2) {          // ignore startup pulses
+                                maxGap[0] = Math.max(maxGap[0], gap);
+                                if (gap > 50) {
+                                    slow[0]++;
+                                }
+                                worstByView.merge(shown[0], gap, Math::max);
+                            }
+                            last[0] = t;
+                            shown[0] = ids[frame[0] % ids.length].name();
+                            w.showView(ids[frame[0]++ % ids.length]);
+                            if (frame[0] >= 84) {
+                                stop();
+                                long totalMs = (System.nanoTime() - start) / 1_000_000;
+                                StringBuilder perView = new StringBuilder();
+                                worstByView.forEach((k, v) -> perView.append(' ').append(k).append('=').append(v));
+                                perf.complete("frames=" + frame[0] + " totalMs=" + totalMs
+                                        + " avgFps=" + Math.round(frame[0] * 1000.0 / Math.max(1, totalMs))
+                                        + " maxGapMs=" + maxGap[0]
+                                        + " framesOver50ms=" + slow[0]
+                                        + " | worstGapByView:" + perView);
+                            }
+                        }
+                    }.start();
+                } catch (Throwable t) {
+                    perf.completeExceptionally(t);
+                }
+            });
+            try {
+                System.out.println("PERF " + perf.get(120, java.util.concurrent.TimeUnit.SECONDS));
+            } catch (Exception e) {
+                System.out.println("PERF measurement FAILED: " + e);
             }
         }
         // ---- AI chat round-trip: type a question, press Enter, snapshot the reply.

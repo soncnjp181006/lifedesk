@@ -13,23 +13,44 @@ public final class Chips {
         return l;
     }
 
-    public static Label taskStatus(String status) {
+    /** Vietnamese display name — single source for chips and editor dialogs. */
+    public static String taskStatusName(String status) {
         return switch (status) {
-            case "TODO" -> chip("Cần làm", "chip-todo");
-            case "IN_PROGRESS" -> chip("Đang làm", "chip-doing");
-            case "DONE" -> chip("Hoàn thành", "chip-done");
-            case "CANCELLED" -> chip("Đã hủy", "chip-cancelled");
-            default -> chip(status, "chip-info");
+            case "TODO" -> "Cần làm";
+            case "IN_PROGRESS" -> "Đang làm";
+            case "DONE" -> "Hoàn thành";
+            case "CANCELLED" -> "Đã hủy";
+            default -> status;
         };
     }
 
-    public static Label priority(String p) {
+    /** Vietnamese display name — single source for chips and editor dialogs. */
+    public static String priorityName(String p) {
         return switch (p) {
-            case "URGENT" -> chip("Khẩn cấp", "chip-urgent");
-            case "HIGH" -> chip("Cao", "chip-high");
-            case "MEDIUM" -> chip("Trung bình", "chip-medium");
-            default -> chip("Thấp", "chip-low");
+            case "URGENT" -> "Khẩn cấp";
+            case "HIGH" -> "Cao";
+            case "MEDIUM" -> "Trung bình";
+            default -> "Thấp";
         };
+    }
+
+    public static Label taskStatus(String status) {
+        return chip(taskStatusName(status), switch (status) {
+            case "TODO" -> "chip-todo";
+            case "IN_PROGRESS" -> "chip-doing";
+            case "DONE" -> "chip-done";
+            case "CANCELLED" -> "chip-cancelled";
+            default -> "chip-info";
+        });
+    }
+
+    public static Label priority(String p) {
+        return chip(priorityName(p), switch (p) {
+            case "URGENT" -> "chip-urgent";
+            case "HIGH" -> "chip-high";
+            case "MEDIUM" -> "chip-medium";
+            default -> "chip-low";
+        });
     }
 
     public static Label overdue(String text) {

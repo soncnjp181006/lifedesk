@@ -38,10 +38,45 @@ public abstract class View extends VBox {
     }
 
     /**
+     * Called after the theme stylesheet swap. JavaFX nodes recolor themselves via
+     * the new stylesheet, but WebView content (markdown preview, review cards,
+     * charts) carries its own palette inside the HTML — subclasses re-render here
+     * or those panes keep the previous theme's colors.
+     */
+    public void onThemeChanged() {
+    }
+
+    /**
      * Re-read data and update the UI. Called by {@link #onShow()} overrides and
      * by {@link #scheduleRefresh()} when a service fires a background change.
      */
     protected void refresh() {
+    }
+
+    /** Last service revision this view painted, per notifier. */
+    private final java.util.Map<com.lifedesk.common.ChangeNotifier, Long> paintedRevision =
+            new java.util.HashMap<>();
+
+    /**
+     * Repaint on show only if the data behind this view actually changed since the
+     * last paint. Views that are shown repeatedly (every module in a session) used
+     * to re-read, re-filter and re-fill their whole model on every visit; skipping
+     * that when nothing changed is the difference between a switch that lands in one
+     * frame and one that spends several milliseconds rebuilding identical rows.
+     */
+    protected void refreshWhenChanged(com.lifedesk.common.ChangeNotifier... notifiers) {
+        boolean changed = false;
+        for (var n : notifiers) {
+            Long painted = paintedRevision.get(n);
+            long now = n.revision();
+            if (painted == null || painted != now) {
+                paintedRevision.put(n, now);
+                changed = true;
+            }
+        }
+        if (changed) {
+            refresh();
+        }
     }
 
     /**
@@ -54,6 +89,9 @@ public abstract class View extends VBox {
             return;
         }
         refreshQueued = true;
+        // A background change may arrive for data this view already considers
+        // painted, so forget all stamps: the next onShow() must re-read once.
+        paintedRevision.clear();
         javafx.application.Platform.runLater(() -> {
             refreshQueued = false;
             refresh();

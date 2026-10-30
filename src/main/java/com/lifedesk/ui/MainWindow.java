@@ -115,11 +115,24 @@ public class MainWindow {
     /** Scroll offset per view, restored when the view is shown again. */
     private final Map<ViewId, Double> scrollPositions = new HashMap<>();
     private ScrollPane centerScroll;
+    /**
+     * "Reduce motion" honoured from the environment: entry movement is a nicety,
+     * and for some users it is the difference between a usable app and a headache.
+     * Set by -Dlifedesk.reduceMotion=true or LIFEDESK_REDUCE_MOTION=1.
+     */
+    private static final boolean REDUCE_MOTION = Boolean.getBoolean("lifedesk.reduceMotion")
+            || "1".equals(System.getenv("LIFEDESK_REDUCE_MOTION"));
+    private javafx.animation.TranslateTransition previousEnter;
     private ViewId current = null;
 
     private Label statusLabel;
     private Label notifBadge;
+    /** Top-bar theme selector; kept so switchTheme() can sync its shown value. */
+    private javafx.scene.control.ComboBox<String> themeCombo;
     private Label brandTitleLabel;
+    private Label brandMark;
+    private VBox brandNames;
+    private Button collapseBtn;
     private VBox brandBox;
     private Popup notifPopup;
     private VBox notifList;
@@ -159,8 +172,6 @@ public class MainWindow {
     }
 
     private void buildLayout() {
-        root.setTop(buildTopBar());
-        root.setLeft(buildSidebar());
         content.getStyleClass().add("content-area");
         centerScroll = new ScrollPane(content);
         centerScroll.setFitToWidth(true);
@@ -169,8 +180,19 @@ public class MainWindow {
         content.minHeightProperty().bind(centerScroll.viewportBoundsProperty()
                 .map(b -> b.getHeight()));
         centerScroll.setStyle("-fx-background-color: transparent;");
-        root.setCenter(centerScroll);
-        root.setBottom(buildStatusBar());
+
+        // The rail runs the full window height and the bar belongs to the content
+        // column. Previously the bar spanned the whole window with the collapse
+        // button floating above the rail, which read as a floating leftover and
+        // pushed the brand out of the column it was supposed to head.
+        VBox mainColumn = new VBox(buildTopBar(), centerScroll, buildStatusBar());
+        mainColumn.getStyleClass().add("main-column");
+        mainColumn.setFillWidth(true);
+        VBox.setVgrow(centerScroll, Priority.ALWAYS);
+
+        HBox shell = new HBox(buildSidebar(), mainColumn);
+        HBox.setHgrow(mainColumn, Priority.ALWAYS);
+        root.setCenter(shell);
         installShortcuts();
         showView(ViewId.DASHBOARD);
     }
@@ -182,15 +204,12 @@ public class MainWindow {
         bar.getStyleClass().add("topbar");
         bar.setAlignment(Pos.CENTER_LEFT);
 
-        Button collapseBtn = new Button("", new IconView("menu", 17));
-        collapseBtn.getStyleClass().add("icon-btn");
-        collapseBtn.setTooltip(new Tooltip("Thu gọn thanh bên"));
-        collapseBtn.setOnAction(e -> toggleSidebar());
-
         searchField = new TextField();
         searchField.setPromptText("Tìm kiếm toàn cục  (Ctrl+K)");
         searchField.getStyleClass().add("search-field");
-        HBox.setHgrow(searchField, Priority.SOMETIMES);
+        searchField.setPrefWidth(360);
+        searchField.setMaxWidth(380);
+        HBox.setHgrow(searchField, Priority.NEVER);
         searchField.setOnAction(e -> {
             String q = searchField.getText();
             if (q != null && !q.isBlank()) {
@@ -202,7 +221,7 @@ public class MainWindow {
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
         // Theme selector
-        var themeCombo = new javafx.scene.control.ComboBox<String>();
+        themeCombo = new javafx.scene.control.ComboBox<>();
         themeCombo.getItems().addAll(ctx.themeManager().availableThemes());
         themeCombo.setValue(ctx.config().theme);
         themeCombo.setTooltip(new Tooltip("Chủ đề giao diện"));
@@ -233,39 +252,59 @@ public class MainWindow {
         settingsBtn.setTooltip(new Tooltip("Cài đặt"));
         settingsBtn.setOnAction(e -> showView(ViewId.SETTINGS));
 
-        bar.getChildren().addAll(collapseBtn, searchField, spacer, themeCombo, bellStack, settingsBtn);
+        bar.getChildren().addAll(searchField, spacer, themeCombo, bellStack, settingsBtn);
         return bar;
     }
 
     private Node buildSidebar() {
         sidebarBox.getStyleClass().add("sidebar");
         sidebarCollapsed = ctx.config().sidebarCollapsed;
-        brandBox = new VBox(1);
+
+        brandMark = new Label("L");
+        brandMark.getStyleClass().add("brand-mark");
         brandTitleLabel = new Label("LifeDesk");
         brandTitleLabel.getStyleClass().add("brand-title");
         Label brandSub = new Label("Trợ lý cá nhân");
         brandSub.getStyleClass().add("brand-subtitle");
-        brandBox.getChildren().addAll(brandTitleLabel, brandSub);
+        brandNames = new VBox(0, brandTitleLabel, brandSub);
+
+        Button collapseBtn = new Button("", new IconView("menu", 16));
+        collapseBtn.getStyleClass().add("icon-btn");
+        collapseBtn.setTooltip(new Tooltip("Thu gọn thanh bên  (Ctrl+B)"));
+        collapseBtn.setOnAction(e -> toggleSidebar());
+        this.collapseBtn = collapseBtn;
+
+        HBox brandRow = new HBox(9, brandMark, brandNames);
+        brandRow.setAlignment(Pos.CENTER_LEFT);
         Region brandSpacer = new Region();
-        brandSpacer.setMinHeight(8);
-        sidebarBox.getChildren().addAll(brandBox, brandSpacer);
+        HBox.setHgrow(brandSpacer, Priority.ALWAYS);
+        brandRow.getChildren().addAll(brandSpacer, collapseBtn);
+        brandRow.getStyleClass().add("brand-row");
+        brandBox = new VBox(brandRow);
+        brandBox.setPadding(new Insets(0, 0, 10, 0));
+
+        sidebarBox.getChildren().add(brandBox);
         rebuildSidebarButtons();
         VBox.setVgrow(sidebarBox, Priority.ALWAYS);
         return sidebarBox;
     }
 
     private void rebuildSidebarButtons() {
-        // Remove previous nav buttons, keep the brand block (first two children).
-        if (sidebarBox.getChildren().size() > 2) {
-            sidebarBox.getChildren().remove(2, sidebarBox.getChildren().size());
+        // Remove previous nav buttons, keep the brand block (first child).
+        if (sidebarBox.getChildren().size() > 1) {
+            sidebarBox.getChildren().remove(1, sidebarBox.getChildren().size());
         }
         navButtons.clear();
-        // Collapsed rail shows icons only; the brand block disappears instead of
-        // shrinking to a lone "L" that reads like a stray character.
-        brandBox.setVisible(!sidebarCollapsed);
-        brandBox.setManaged(!sidebarCollapsed);
+        // Collapsed rail shows icons only. The brand text goes away but the mark and
+        // the collapse control stay, otherwise the rail cannot be reopened.
+        boolean showNames = !sidebarCollapsed;
+        brandNames.setVisible(showNames);
+        brandNames.setManaged(showNames);
+        brandMark.setVisible(showNames);
+        brandMark.setManaged(showNames);
         if (sidebarCollapsed) {
-            sidebarBox.setStyle("-fx-min-width: 58;");
+            sidebarBox.setStyle("-fx-min-width: 68; -fx-pref-width: 68; -fx-max-width: 68;");
+            collapseBtn.setAlignment(Pos.CENTER);
         } else {
             sidebarBox.setStyle("");
         }
@@ -273,9 +312,20 @@ public class MainWindow {
             if (id == ViewId.SEARCH) {
                 continue; // opened via search action only
             }
+            // Group markers: the rail is an information architecture, not a dump of
+            // twelve equal rows. Collapsed mode has no room for the label.
+            String group = id == ViewId.DASHBOARD ? "TỔNG QUAN"
+                    : id == ViewId.TASKS ? "QUẢN LÝ"
+                    : id == ViewId.AI ? "TRỢ LÝ"
+                    : id == ViewId.RSS ? "KHÁC" : null;
+            if (group != null && !sidebarCollapsed) {
+                Label groupLabel = new Label(group);
+                groupLabel.getStyleClass().add("nav-group");
+                sidebarBox.getChildren().add(groupLabel);
+            }
             // Iconic pattern: a user-picked icon (config) replaces the default.
             String icon = ctx.config().iconOverrides.getOrDefault(id.name(), id.icon);
-            Button btn = new Button(sidebarCollapsed ? "" : id.label, new IconView(icon, 16));
+            Button btn = new Button(sidebarCollapsed ? "" : id.label, new IconView(icon, 17));
             btn.getStyleClass().add("nav-item");
             btn.setMaxWidth(Double.MAX_VALUE);
             btn.setAlignment(sidebarCollapsed ? Pos.CENTER : Pos.CENTER_LEFT);
@@ -448,12 +498,36 @@ public class MainWindow {
         VBox.setVgrow(view, Priority.ALWAYS);
         updateNavSelection();
         view.onShow();
+        animateIn(view);
         if (centerScroll != null) {
             double v = scrollPositions.getOrDefault(id, 0.0);
             if (v > 0) {
                 javafx.application.Platform.runLater(() -> centerScroll.setVvalue(v));
             }
         }
+    }
+
+    /**
+     * A 190ms rise on entry. Only a translate — a transform, never a layout
+     * property — so the frame that draws a newly switched page costs the same as
+     * one that draws a settled page. The curve is an ease-out spline: fast start,
+     * long soft landing, which is what makes a switch read as "moved" rather than
+     * "jumped".
+     */
+    private void animateIn(Node view) {
+        if (REDUCE_MOTION) {
+            return;
+        }
+        if (previousEnter != null) {
+            previousEnter.stop();
+        }
+        javafx.animation.TranslateTransition rise = new javafx.animation.TranslateTransition(
+                javafx.util.Duration.millis(190), view);
+        rise.setFromY(9);
+        rise.setToY(0);
+        rise.setInterpolator(javafx.animation.Interpolator.SPLINE(0.22, 1.0, 0.36, 1.0));
+        rise.play();
+        previousEnter = rise;
     }
 
     /**
@@ -519,6 +593,24 @@ public class MainWindow {
         scene.getStylesheets().setAll(ctx.themeManager().stylesheetsFor(ctx.config().theme));
         // Dialogs live in their own windows - hand them the active theme explicitly.
         Dialogs.setGlobalStylesheets(scene.getStylesheets());
+        // WebView panes embed the palette in their HTML, so a stylesheet swap
+        // alone leaves them wearing the previous theme's colors.
+        for (View v : views.values()) {
+            v.onThemeChanged();
+        }
+    }
+
+    /** Switch theme by name and apply it live (settings UI + automation hook). */
+    public void switchTheme(String theme) {
+        if (themeCombo != null && !theme.equals(themeCombo.getValue())) {
+            // Setting the value fires the combo's action handler, which applies
+            // and persists — so the top bar never shows a stale theme name.
+            themeCombo.setValue(theme);
+        } else {
+            ctx.config().theme = theme;
+            applyTheme();
+            saveConfig();
+        }
     }
 
     private void saveConfig() {

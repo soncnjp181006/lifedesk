@@ -62,6 +62,7 @@ public class LibraryView extends View {
         add.getStyleClass().add("primary-btn");
         add.setOnAction(e -> openEditor(null));
         HBox header = new HBox(10, title, spacer, statsLabel, new Label("Loại:"), kindFilter, add);
+        header.getStyleClass().add("view-header");
         header.setAlignment(Pos.CENTER_LEFT);
 
         shelves.getStyleClass().add("library-shelves");

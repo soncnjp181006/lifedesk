@@ -38,6 +38,14 @@ public class SettingsView extends View {
 
     @Override
     protected Node build() {
+        // Every other screen opens with a title block; settings used to start with
+        // bare tabs flush against the window edge, which read as an unfinished page.
+        Label title = new Label("Cài đặt");
+        title.getStyleClass().add("title-label");
+        Label subtitle = new Label("Giao diện, AI, dữ liệu, quyền truy cập tệp và nhắc việc");
+        subtitle.getStyleClass().add("page-subtitle");
+        VBox titleBlock = new VBox(1, title, subtitle);
+
         TabPane tabs = new TabPane();
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         tabs.getTabs().addAll(
@@ -47,7 +55,8 @@ public class SettingsView extends View {
                 new Tab("Quyền truy cập tệp", buildRootsTab()),
                 new Tab("Nhắc việc", buildRemindersTab()),
                 new Tab("Giới thiệu", buildAboutTab()));
-        return tabs;
+        VBox.setVgrow(tabs, javafx.scene.layout.Priority.ALWAYS);
+        return new VBox(12, titleBlock, tabs);
     }
 
     // ------------------------------------------------------------------ appearance
@@ -60,11 +69,7 @@ public class SettingsView extends View {
             RadioButton rb = new RadioButton(theme);
             rb.setToggleGroup(group);
             rb.setSelected(theme.equals(ctx.config().theme));
-            rb.setOnAction(e -> {
-                ctx.config().theme = theme;
-                main.applyTheme();
-                saveConfig();
-            });
+            rb.setOnAction(e -> main.switchTheme(theme));
             box.getChildren().add(rb);
         }
         return wrapScroll(box);

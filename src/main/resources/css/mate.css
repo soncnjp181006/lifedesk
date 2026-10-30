@@ -10,6 +10,7 @@
     -ld-input: #4e5357;
     -ld-elev: #585d61;
     -ld-border: #727a7f;
+    -ld-hairline: -ld-border;
     -ld-text: #f4f2ef;
     -ld-text-dim: #d2dade;
     -ld-accent: #a3d977;

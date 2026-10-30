@@ -78,6 +78,7 @@ public class HabitsView extends View {
         Button logBtn = new Button("Nhật ký thay đổi", new IconView("scroll-text", 15));
         logBtn.setOnAction(e -> showChangeLog());
         HBox header = new HBox(10, title, spacer, todayOnlyMode, weekBtn, logBtn);
+        header.getStyleClass().add("view-header");
         header.setAlignment(Pos.CENTER_LEFT);
 
         // ---- habits tab
@@ -464,7 +465,8 @@ public class HabitsView extends View {
 
     @Override
     public void onShow() {
-        refresh();
+        // Only re-read when the module actually changed since the last paint.
+        refreshWhenChanged(ctx.habits().changes(), ctx.tasks().changes());
     }
 
     @Override

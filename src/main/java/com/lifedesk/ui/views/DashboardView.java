@@ -47,6 +47,14 @@ public class DashboardView extends View {
     private LocalDate rangeFrom = LocalDate.now();
     private LocalDate rangeTo = LocalDate.now();
     private final Map<String, Node> widgets = new LinkedHashMap<>();
+    /** The four headline numbers above the widget grid. */
+    private HBox metricStrip;
+    /**
+     * Fingerprint of everything the dashboard draws. Rebuilding ten cards on every
+     * visit to an unchanged page was the slowest navigation in the app (~58ms of
+     * layout churn), so a repeat visit with the same data now does nothing at all.
+     */
+    private String lastStamp;
 
     public DashboardView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -62,11 +70,14 @@ public class DashboardView extends View {
         initWidgetDefs();
 
         HBox header = new HBox(10);
+        header.getStyleClass().add("view-header");
         header.setAlignment(Pos.CENTER_LEFT);
-        VBox titleBlock = new VBox(1);
-        Label title = new Label("Dashboard");
+        VBox titleBlock = new VBox(2);
+        // The app is Vietnamese everywhere else; an English "Dashboard" heading on
+        // the landing screen was the one label that did not belong to the product.
+        Label title = new Label("Tổng quan");
         title.getStyleClass().add("title-label");
-        Label subtitle = new Label("Tổng quan công việc, tài chính, thói quen và học tập của bạn");
+        Label subtitle = new Label("Việc cần làm, tiền, thói quen và việc học trong một trang");
         subtitle.getStyleClass().add("page-subtitle");
         titleBlock.getChildren().addAll(title, subtitle);
         Region spacer = new Region();
@@ -118,8 +129,24 @@ public class DashboardView extends View {
         Button manage = new Button("Quản lý widget");
         manage.setOnAction(e -> showWidgetManager());
 
-        header.getChildren().addAll(titleBlock, spacer, new Label("Khoảng:"), preset,
-                new Label("từ"), from, new Label("đến"), to, manage);
+        // One quiet control strip instead of nine loose controls hanging off the
+        // heading: the range is secondary information and now sits like it.
+        Label rangeLabel = new Label("Khoảng");
+        rangeLabel.getStyleClass().add("toolbar-label");
+        Label fromLabel = new Label("từ");
+        fromLabel.getStyleClass().add("toolbar-label");
+        Label toLabel = new Label("đến");
+        toLabel.getStyleClass().add("toolbar-label");
+        from.getStyleClass().add("compact-control");
+        to.getStyleClass().add("compact-control");
+        preset.getStyleClass().add("compact-control");
+        HBox rangeStrip = new HBox(8, rangeLabel, preset, fromLabel, from, toLabel, to);
+        rangeStrip.setAlignment(Pos.CENTER_LEFT);
+        rangeStrip.getStyleClass().add("toolbar-strip");
+
+        HBox headerActions = new HBox(10, rangeStrip, manage);
+        headerActions.setAlignment(Pos.CENTER_RIGHT);
+        header.getChildren().addAll(titleBlock, spacer, headerActions);
 
         widgetGrid.setHgap(14);
         widgetGrid.setVgap(14);
@@ -129,8 +156,13 @@ public class DashboardView extends View {
         widgetCol.setHgrow(Priority.ALWAYS);
         widgetGrid.getColumnConstraints().addAll(widgetCol, widgetCol, widgetCol);
 
-        VBox root = new VBox(12, header, widgetGrid);
+        metricStrip = new HBox(12);
+        metricStrip.setMinWidth(0);
+        metricStrip.setMaxWidth(Double.MAX_VALUE);
+
+        VBox root = new VBox(14, header, metricStrip, widgetGrid);
         VBox.setVgrow(widgetGrid, Priority.ALWAYS);
+        root.getStyleClass().add("dashboard");
         return root;
     }
 
@@ -154,7 +186,20 @@ public class DashboardView extends View {
     }
 
     @Override
+    public void onThemeChanged() {
+        // dataStamp() includes the theme, so this forces the charts (which embed
+        // the accent color in their HTML) to rebuild with the new palette.
+        scheduleRefresh();
+    }
+
+    @Override
     protected void refresh() {
+        String stamp = dataStamp();
+        if (stamp.equals(lastStamp) && !widgetGrid.getChildren().isEmpty()) {
+            return;                       // nothing on this page changed
+        }
+        lastStamp = stamp;
+        rebuildMetrics();
         widgets.clear();
         widgets.put("w_today", todayWidget());
         widgets.put("w_overdue", overdueWidget());
@@ -176,7 +221,6 @@ public class DashboardView extends View {
             if (on != null && on && w != null) {
                 if (w instanceof Card c) {
                     c.setMaxWidth(Double.MAX_VALUE);
-                    c.setMinHeight(140);
                     GridPane.setHgrow(c, Priority.ALWAYS);
                     GridPane.setFillWidth(c, true);
                 }
@@ -194,13 +238,145 @@ public class DashboardView extends View {
         }
     }
 
+    /**
+     * Cheap fingerprint: counts and totals the widgets actually render. Not a cache
+     * key for correctness-critical state — just a reason to skip a full teardown.
+     */
+    private String dataStamp() {
+        var m = ctx.finance().monthSummary(java.time.YearMonth.now());
+        long streaks = 0;
+        for (Habit h : ctx.habits().habits(false)) {
+            streaks += ctx.habits().currentStreak(h);
+        }
+        return ctx.config().theme + '|' + rangeFrom + '|' + rangeTo
+                + '|' + ctx.tasks().dueToday().size() + '|' + ctx.tasks().overdue().size()
+                + '|' + ctx.tasks().openCount()
+                + '|' + m.income() + '|' + m.expense()
+                + '|' + ctx.habits().habits(false).size() + '|' + streaks
+                + '|' + ctx.habits().goals().size()
+                + '|' + ctx.notes().list().size()
+                + '|' + ctx.learning().dueCount() + '|' + ctx.learning().cardCount()
+                + '|' + ctx.finance().budgetStatus(java.time.YearMonth.now()).size()
+                + '|' + String.valueOf(ctx.health().averageDays(
+                        com.lifedesk.health.HealthService.HealthField.SLEEP, 30));
+    }
+
+    // ------------------------------------------------------------------ metric strip
+
+    private void rebuildMetrics() {
+        if (metricStrip == null) {
+            return;
+        }
+        int dueToday = 0;
+        for (Task t : ctx.tasks().dueToday()) {
+            if (t.status != com.lifedesk.tasks.TaskStatus.DONE) {
+                dueToday++;
+            }
+        }
+        int overdue = ctx.tasks().overdue().size();
+        var month = ctx.finance().monthSummary(java.time.YearMonth.now());
+        int cards = ctx.learning().dueCount();
+
+        metricStrip.getChildren().setAll(
+                metricTile("Việc hôm nay", String.valueOf(dueToday), "việc",
+                        overdue == 0 ? "không có việc quá hạn" : overdue + " việc đã quá hạn",
+                        overdue > 0, () -> main.showView(MainWindow.ViewId.TASKS)),
+                metricTile("Số dư tháng " + java.time.YearMonth.now().getMonthValue(),
+                        compactVnd(month.net()), "",
+                        "thu " + compactVnd(month.income()) + " · chi " + compactVnd(month.expense()),
+                        month.net().signum() < 0, () -> main.showView(MainWindow.ViewId.FINANCE)),
+                metricTile("Thẻ đến hạn", String.valueOf(cards), "thẻ",
+                        cards == 0 ? "không có gì phải ôn hôm nay" : "khoảng " + Math.max(5, cards * 2) + " phút ôn tập",
+                        false, () -> main.showView(MainWindow.ViewId.LEARNING)),
+                metricTile("Ghi chú", String.valueOf(ctx.notes().list().size()), "ghi chú",
+                        ctx.notes().list().isEmpty() ? "chưa có ghi chú nào" : "mở tab Ghi chú để viết tiếp",
+                        false, () -> main.showView(MainWindow.ViewId.NOTES)));
+    }
+
+    /** A headline number the user can click through to the module it summarises. */
+    private VBox metricTile(String caption, String value, String unit, String note,
+                            boolean alert, Runnable onClick) {
+        Label cap = new Label(caption);
+        cap.getStyleClass().add("metric-caption");
+        Label val = new Label(value);
+        val.getStyleClass().add("metric-value");
+        HBox valueRow = new HBox(6, val);
+        valueRow.setAlignment(Pos.BASELINE_LEFT);
+        if (!unit.isEmpty()) {
+            Label u = new Label(unit);
+            u.getStyleClass().add("metric-unit");
+            valueRow.getChildren().add(u);
+        }
+        Label n = new Label(note);
+        n.getStyleClass().add("metric-note");
+        n.setWrapText(false);
+        if (alert) {
+            val.getStyleClass().add("metric-neg");
+        }
+        VBox tile = new VBox(2, cap, valueRow, n);
+        tile.getStyleClass().add("metric-tile");
+        tile.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(tile, Priority.ALWAYS);
+        tile.setOnMouseClicked(e -> onClick.run());
+        tile.setOnMouseEntered(e -> tile.setCursor(javafx.scene.Cursor.HAND));
+        return tile;
+    }
+
+    /** 12.400.000 → "12,4 tr" — a 30px number cannot show nine digits. */
+    private static String compactVnd(java.math.BigDecimal amount) {
+        boolean negative = amount.signum() < 0;
+        long abs = Math.abs(amount.longValue());
+        String out;
+        if (abs >= 1_000_000_000L) {
+            out = String.format(java.util.Locale.US, "%.1f", abs / 1_000_000_000.0).replace('.', ',') + " tỷ";
+        } else if (abs >= 1_000_000L) {
+            out = String.format(java.util.Locale.US, "%.1f", abs / 1_000_000.0).replace('.', ',') + " tr";
+        } else if (abs >= 1_000L) {
+            out = String.format(java.util.Locale.US, "%,d", abs).replace(',', '.') + " đ";
+        } else {
+            out = abs + " đ";
+        }
+        return (negative ? "-" : "") + out;
+    }
+
+    /** Compact in-card empty state: states the gap and offers the way out of it. */
+    private VBox emptyBlock(String text, String actionLabel, Runnable action) {
+        Label msg = new Label(text);
+        msg.getStyleClass().add("card-empty-text");
+        msg.setWrapText(true);
+        VBox box = new VBox(4, msg);
+        box.getStyleClass().add("card-empty");
+        if (actionLabel != null) {
+            Button b = new Button(actionLabel + " →");
+            b.getStyleClass().add("card-action");
+            b.setOnAction(e -> action.run());
+            box.getChildren().add(b);
+        }
+        return box;
+    }
+
+    /** Label on the left, number on the right — the card equivalent of a table row. */
+    private HBox metricRow(String key, String value) {
+        Label k = new Label(key);
+        k.getStyleClass().add("metric-key");
+        Label v = new Label(value);
+        v.getStyleClass().add("metric-val");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox row = new HBox(8, k, spacer, v);
+        row.getStyleClass().add("metric-row");
+        row.setAlignment(Pos.CENTER_LEFT);
+        return row;
+    }
+
     // ------------------------------------------------------------------ widgets
 
     private Card todayWidget() {
         Card card = new Card("Việc hôm nay");
         List<Task> list = new ArrayList<>(ctx.tasks().dueToday());
         if (list.isEmpty()) {
-            card.content(Card.dim("Không có việc đến hạn hôm nay"));
+            card.content(emptyBlock("Không có việc đến hạn hôm nay.", "Mở công việc",
+                    () -> main.showView(MainWindow.ViewId.TASKS)));
             return card;
         }
         VBox box = new VBox(4);
@@ -218,7 +394,8 @@ public class DashboardView extends View {
             }
         }
         if (box.getChildren().isEmpty()) {
-            box.getChildren().add(Card.dim("Tất cả việc hôm nay đã xong"));
+            box.getChildren().add(emptyBlock("Tất cả việc hôm nay đã xong.", "Xem công việc",
+                    () -> main.showView(MainWindow.ViewId.TASKS)));
         }
         card.content(box);
         return card;
@@ -292,6 +469,14 @@ public class DashboardView extends View {
             expense.getData().add(new XYChart.Data<>(p.date().toEpochDay() - start, p.expense().doubleValue()));
         }
         chart.getData().addAll(income, expense);
+        boolean hasData = series.stream().anyMatch(p -> p.income().signum() != 0 || p.expense().signum() != 0);
+        if (!hasData) {
+            // An empty axis pair with a flat zero line looks like a broken chart.
+            // Say what is missing and link to the screen that fixes it.
+            card.content(emptyBlock("Chưa có giao dịch nào trong " + chartTitle + ".",
+                    "Thêm giao dịch", () -> main.showView(MainWindow.ViewId.FINANCE)));
+            return card;
+        }
         card.content(chart);
         return card;
     }
@@ -300,7 +485,8 @@ public class DashboardView extends View {
         Card card = new Card("Ngân sách " + java.time.YearMonth.now());
         var statuses = ctx.finance().budgetStatus(java.time.YearMonth.now());
         if (statuses.isEmpty()) {
-            card.content(Card.dim("Chưa đặt ngân sách cho tháng này (tab Tài chính)"));
+            card.content(emptyBlock("Chưa đặt ngân sách cho tháng này.", "Đặt ngân sách",
+                    () -> main.showView(MainWindow.ViewId.FINANCE)));
             return card;
         }
         VBox box = new VBox(6);
@@ -326,7 +512,8 @@ public class DashboardView extends View {
         Card card = new Card("Thói quen");
         List<Habit> habits = ctx.habits().habits(false);
         if (habits.isEmpty()) {
-            card.content(Card.dim("Chưa có thói quen nào"));
+            card.content(emptyBlock("Chưa có thói quen nào để theo dõi.", "Tạo thói quen",
+                    () -> main.showView(MainWindow.ViewId.HABITS)));
             return card;
         }
         VBox box = new VBox(6);
@@ -349,7 +536,8 @@ public class DashboardView extends View {
         var goals = ctx.habits().goals().stream()
                 .filter(g -> g.status() == com.lifedesk.habits.GoalStatus.ACTIVE).toList();
         if (goals.isEmpty()) {
-            card.content(Card.dim("Không có mục tiêu đang chạy"));
+            card.content(emptyBlock("Chưa có mục tiêu nào đang chạy.", "Đặt mục tiêu",
+                    () -> main.showView(MainWindow.ViewId.HABITS)));
             return card;
         }
         VBox box = new VBox(6);
@@ -374,14 +562,14 @@ public class DashboardView extends View {
         Card card = new Card("Học tập");
         LearningService ls = ctx.learning();
         long minutes = ls.minutesBetween(LocalDate.now().minusDays(6), LocalDate.now());
-        VBox box = new VBox(4,
-                new Label("Thẻ đến hạn ôn tập: " + ls.dueCount()),
-                new Label("Tổng thẻ: " + ls.cardCount()),
-                new Label("Thời gian học 7 ngày: " + (minutes / 60) + "h" + (minutes % 60) + "p"));
+        VBox box = new VBox(0,
+                metricRow("Thẻ đến hạn ôn", String.valueOf(ls.dueCount())),
+                metricRow("Tổng số thẻ", String.valueOf(ls.cardCount())),
+                metricRow("Học 7 ngày qua", (minutes / 60) + "h" + (minutes % 60) + "p"));
         var active = ls.courses().stream()
                 .filter(c -> c.status() == com.lifedesk.learning.CourseStatus.IN_PROGRESS).limit(5).toList();
         for (var c : active) {
-            box.getChildren().add(new Label("• " + c.title() + " (" + c.progressPercent() + "%)"));
+            box.getChildren().add(metricRow(c.title(), c.progressPercent() + "%"));
         }
         card.content(box);
         return card;
@@ -418,11 +606,15 @@ public class DashboardView extends View {
         Double sleep = ctx.health().averageDays(com.lifedesk.health.HealthService.HealthField.SLEEP, 30);
         Double exercise = ctx.health().averageDays(com.lifedesk.health.HealthService.HealthField.EXERCISE, 30);
         Double weight = ctx.health().averageDays(com.lifedesk.health.HealthService.HealthField.WEIGHT, 30);
-        VBox box = new VBox(4);
-        box.getChildren().add(new Label("Ngủ: " + (sleep == null ? "—" : sleep + " giờ/đêm")));
-        box.getChildren().add(new Label("Vận động: " + (exercise == null ? "—" : Math.round(exercise) + " phút/ngày")));
-        box.getChildren().add(new Label("Cân nặng TB: " + (weight == null ? "—" : weight + " kg")));
-        box.getChildren().add(Card.dim("Ghi nhận thủ công — không phải tư vấn y tế."));
+        VBox box = new VBox(0,
+                metricRow("Giấc ngủ", sleep == null ? "—" : String.format("%.1f giờ", sleep)),
+                metricRow("Vận động", exercise == null ? "—" : Math.round(exercise) + " phút/ngày"),
+                metricRow("Cân nặng TB", weight == null ? "—" : String.format("%.1f kg", weight)));
+        Label disclaimer = new Label("Số liệu bạn tự ghi nhận — không phải tư vấn y tế.");
+        disclaimer.getStyleClass().add("metric-note");
+        disclaimer.setWrapText(true);
+        VBox.setMargin(disclaimer, new javafx.geometry.Insets(8, 0, 0, 0));
+        box.getChildren().add(disclaimer);
         card.content(box);
         return card;
     }

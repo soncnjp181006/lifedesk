@@ -48,6 +48,7 @@ public class SearchResultsView extends View {
         query.setPromptText("Nhập từ khóa và Enter…");
         query.setOnAction(e -> search(query.getText()));
         HBox header = new HBox(10, title, spacer, query);
+        header.getStyleClass().add("view-header");
         header.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(query, Priority.ALWAYS);
 

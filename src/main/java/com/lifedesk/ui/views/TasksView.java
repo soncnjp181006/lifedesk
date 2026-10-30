@@ -4,6 +4,7 @@ import com.lifedesk.app.AppContext;
 import com.lifedesk.notes.NoteMeta;
 import com.lifedesk.tasks.Priority;
 import com.lifedesk.tasks.Task;
+import com.lifedesk.tasks.TaskQuickAdd;
 import com.lifedesk.tasks.TaskStatus;
 import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
@@ -60,6 +61,8 @@ public class TasksView extends View {
     private final ComboBox<String> priorityFilter = new ComboBox<>();
     private Button deleteSelectedBtn;
     private Task selected;
+    /** Live count line under the page title — the same header pattern other views use. */
+    private final Label subtitle = new Label();
 
     public TasksView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -83,6 +86,10 @@ public class TasksView extends View {
         statusFilter.setValue("(tất cả)");
         priorityFilter.getItems().addAll("(tất cả)", "URGENT", "HIGH", "MEDIUM", "LOW");
         priorityFilter.setValue("(tất cả)");
+        // Filters keep the raw enum values as keys but display Vietnamese, like the
+        // task chips and the editor dialog — raw "URGENT"/"TODO" read as a bug.
+        displayVietnamese(statusFilter, Chips::taskStatusName);
+        displayVietnamese(priorityFilter, Chips::priorityName);
         groupFilter.setOnAction(e -> refresh());
         statusFilter.setOnAction(e -> refresh());
         priorityFilter.setOnAction(e -> refresh());
@@ -112,13 +119,31 @@ public class TasksView extends View {
         deleteSelectedBtn.setOnAction(e -> deleteSelected());
         deleteSelectedBtn.setDisable(true);
 
-        HBox toolbar = new HBox(8, title, new Region(), searchField,
+        // Quick add: Todoist-style single line — most captures are "a title,
+        // maybe a date". The full dialog (Ctrl+N) stays for the rest.
+        TextField quickAdd = new TextField();
+        quickAdd.setPromptText("Thêm việc nhanh: \"nộp báo cáo @mai 9h #work !cao\" — Enter để thêm");
+        quickAdd.setOnAction(e -> quickAddTask(quickAdd));
+
+        // Two rows instead of one crowded line: the page header answers "what is
+        // this screen", the filter strip answers "which slice am I looking at".
+        // Everything had previously been fought over in a single 49px row.
+        subtitle.getStyleClass().add("page-subtitle");
+        VBox titleBlock = new VBox(1, title, subtitle);
+        Region headerSpacer = new Region();
+        HBox.setHgrow(headerSpacer, javafx.scene.layout.Priority.ALWAYS);
+        HBox headerRow = new HBox(10, titleBlock, headerSpacer, deleteSelectedBtn, newBtn);
+        headerRow.setAlignment(Pos.CENTER_LEFT);
+
+        searchField.setMinWidth(240);
+        HBox filterRow = new HBox(8, searchField,
                 new Label("Nhóm:"), groupFilter, new Label("Trạng thái:"), statusFilter,
-                new Label("Ưu tiên:"), priorityFilter, listToggle, boardToggle, deleteSelectedBtn, newBtn);
-        toolbar.setAlignment(Pos.CENTER_LEFT);
+                new Label("Ưu tiên:"), priorityFilter, new Region(), listToggle, boardToggle);
+        filterRow.getStyleClass().add("toolbar-strip");
+        filterRow.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(searchField, javafx.scene.layout.Priority.ALWAYS);
-        Region r = (Region) toolbar.getChildren().get(1);
-        HBox.setHgrow(r, javafx.scene.layout.Priority.NEVER);
+        HBox.setHgrow(filterRow.getChildren().get(filterRow.getChildren().size() - 3),
+                javafx.scene.layout.Priority.NEVER);
 
         buildTable();
         table.setPlaceholder(new EmptyState("clipboard-list", "Chưa có công việc nào."));
@@ -126,11 +151,29 @@ public class TasksView extends View {
         buildBoard();
 
         HBox.setHgrow(listPane, javafx.scene.layout.Priority.ALWAYS);
-        VBox root = new VBox(10, toolbar, listPane);
+        VBox root = new VBox(12, headerRow, quickAdd, filterRow, listPane);
         VBox.setVgrow(listPane, javafx.scene.layout.Priority.ALWAYS);
 
         ctx.tasks().changes().addListener(this::scheduleRefresh);
         return root;
+    }
+
+    /** Enter in the quick-add bar: parse, create with defaults, clear the line. */
+    private void quickAddTask(TextField quickAdd) {
+        TaskQuickAdd.Parsed p = TaskQuickAdd.parse(quickAdd.getText());
+        if (p == null) {
+            return;
+        }
+        try {
+            ctx.tasks().create(p.title(), "", p.priority(), p.dueDate(), p.dueTime(),
+                    p.group(), p.tags(), null);
+        } catch (RuntimeException ex) {
+            Dialogs.error("Không thêm được việc", ex.getMessage());
+            return;
+        }
+        quickAdd.clear();
+        refresh();
+        main.status("Đã thêm: " + p.title());
     }
 
     private void buildTable() {
@@ -343,6 +386,12 @@ public class TasksView extends View {
     @Override
     protected void refresh() {
         List<Task> tasks = filtered();
+        long open = ctx.tasks().all().stream()
+                .filter(t -> t.status != com.lifedesk.tasks.TaskStatus.DONE
+                        && t.status != com.lifedesk.tasks.TaskStatus.CANCELLED)
+                .count();
+        int late = ctx.tasks().overdue().size();
+        subtitle.setText(open + " việc đang mở" + (late > 0 ? "  ·  " + late + " quá hạn" : "  ·  không có việc trễ hạn"));
         if (boardMode) {
             table.setVisible(false);
             listPane.setCenter(boardBox);
@@ -360,7 +409,8 @@ public class TasksView extends View {
 
     @Override
     public void onShow() {
-        refresh();
+        // Only re-read when the module actually changed since the last paint.
+        refreshWhenChanged(ctx.tasks().changes());
     }
 
     @Override
@@ -373,5 +423,21 @@ public class TasksView extends View {
 
     void openEditor(Task existing) {
         TaskDialog.open(ctx, main, existing, this::refresh);
+    }
+
+    /** Combo keeps raw enum values as keys but shows Vietnamese names; "(…)" items pass through. */
+    private static void displayVietnamese(ComboBox<String> combo,
+            java.util.function.UnaryOperator<String> name) {
+        javafx.util.Callback<javafx.scene.control.ListView<String>, javafx.scene.control.ListCell<String>> cell =
+                v -> new javafx.scene.control.ListCell<>() {
+                    @Override
+                    protected void updateItem(String item, boolean empty) {
+                        super.updateItem(item, empty);
+                        setText(empty || item == null ? null
+                                : item.startsWith("(") ? item : name.apply(item));
+                    }
+                };
+        combo.setCellFactory(v -> cell.call(v));
+        combo.setButtonCell(cell.call(null));
     }
 }

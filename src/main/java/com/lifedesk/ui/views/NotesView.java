@@ -103,7 +103,11 @@ public class NotesView extends View {
     private String currentFolder = "";
     private boolean updatingTree;
     private String loadedHash = "";
-    private boolean previewMode = true;
+    /** Editor/preview layout: split shows both panes, read hides the source, edit hides the preview. */
+    private enum EditorMode { SPLIT, READ, EDIT }
+
+    private EditorMode editorMode = EditorMode.SPLIT;
+    private Button previewToggle;
 
     public NotesView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -273,14 +277,10 @@ public class NotesView extends View {
         saveBtn.setTooltip(new Tooltip("Lưu ngay (Ctrl+S)"));
         saveBtn.setOnAction(e -> saveNow());
         addAccelerator(new KeyCodeCombination(KeyCode.S, KeyCombination.CONTROL_DOWN), saveBtn::fire);
-        ToggleButton previewToggle = new ToggleButton("", new IconView("eye", 15));
+        previewToggle = new Button("", new IconView("eye", 15));
         previewToggle.getStyleClass().add("icon-btn");
-        previewToggle.setSelected(true);
-        previewToggle.setTooltip(new Tooltip("Xem trước"));
-        previewToggle.setOnAction(e -> {
-            previewMode = previewToggle.isSelected();
-            layoutEditorSplit();
-        });
+        previewToggle.setTooltip(new Tooltip("Chế độ xem: chia đôi — bấm để chỉ đọc"));
+        previewToggle.setOnAction(e -> cycleEditorMode());
         outlineToggle.setText("");
         outlineToggle.setTooltip(new Tooltip("Outline đề mục"));
         outlineToggle.selectedProperty().addListener((o, a, b) -> layoutEditorSplit());
@@ -375,6 +375,26 @@ public class NotesView extends View {
         editorPane.setBottom(null);
     }
 
+    /** Eye button cycles the layout: split (soạn + đọc) → read (chỉ xem trước) → edit (chỉ nguồn). */
+    private void cycleEditorMode() {
+        editorMode = switch (editorMode) {
+            case SPLIT -> EditorMode.READ;
+            case READ -> EditorMode.EDIT;
+            case EDIT -> EditorMode.SPLIT;
+        };
+        previewToggle.setGraphic(new IconView(switch (editorMode) {
+            case SPLIT -> "eye";
+            case READ -> "book-open";
+            case EDIT -> "pencil";
+        }, 15));
+        previewToggle.setTooltip(new Tooltip(switch (editorMode) {
+            case SPLIT -> "Chế độ xem: chia đôi — bấm để chỉ đọc";
+            case READ -> "Chế độ xem: chỉ xem trước — bấm để chỉ soạn";
+            case EDIT -> "Chế độ xem: chỉ soạn thảo — bấm để chia đôi";
+        }));
+        layoutEditorSplit();
+    }
+
     private void layoutEditorSplit() {
         BorderPane editorHost = new BorderPane();
         editorHost.setCenter(editor);
@@ -388,9 +408,15 @@ public class NotesView extends View {
             outlinePane.getStyleClass().add("outline-pane");
             editorHost.setRight(outlinePane);
         }
+        if (editorMode == EditorMode.READ) {
+            // Reading mode: the rendered page alone — no markdown source on screen.
+            editorPane.setCenter(preview);
+            renderPreview();
+            return;
+        }
         VBox editorStack = new VBox(editorHost);
         VBox.setVgrow(editorHost, Priority.ALWAYS);
-        if (previewMode) {
+        if (editorMode == EditorMode.SPLIT) {
             SplitPane split = new SplitPane(editorStack, preview);
             split.setDividerPositions(0.5);
             split.setMaxWidth(Double.MAX_VALUE);
@@ -407,13 +433,22 @@ public class NotesView extends View {
                 target -> ctx.notes().resolveLink(target).map(s -> "lifedesk://note/" + s).orElse(null));
     }
 
+    @Override
+    public void onThemeChanged() {
+        // The WebView keeps the old palette until re-rendered; a loaded note on
+        // screen must follow the new theme immediately.
+        if (current != null && editorMode != EditorMode.EDIT) {
+            renderPreview();
+        }
+    }
+
     // ------------------------------------------------------------------ list
 
     /** Debounced preview + outline rebuild (perf: no WebView repaint per keystroke). */
     private void queueLivePanels() {
         livePanels.stop();
         livePanels.setOnFinished(e -> {
-            if (previewMode) {
+            if (editorMode != EditorMode.EDIT) {
                 renderPreview();
             }
             outlinePane.update(current == null ? "" : current.id, editor.getText());

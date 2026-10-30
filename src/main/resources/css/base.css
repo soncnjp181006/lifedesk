@@ -53,6 +53,8 @@
 }
 
 .title-label {
+    /* 22px, not 24: at 24 the page title competed with the data on a 1700px
+       window, and the gap between it and the 12.5px body read as two documents. */
     -fx-font-size: 22px;
     -fx-font-weight: bold;
     -fx-text-fill: -ld-text;
@@ -60,7 +62,12 @@
 
 .page-subtitle {
     -fx-text-fill: -ld-text-dim;
-    -fx-font-size: 13px;
+    -fx-font-size: 12.5px;
+}
+
+/* Page header row (title + actions); extra bottom air separates it from tabs. */
+.view-header {
+    -fx-padding: 0 0 4 0;
 }
 
 .section-label {
@@ -74,10 +81,13 @@
     -fx-text-fill: -ld-text-dim;
 }
 
+/* Card labels are metadata, not headlines: quiet face, small size, and the
+   numbers beneath them carry the weight. That inversion is what stops a grid of
+   cards from reading as a wall of equal-weight boxes. */
 .card-title {
-    -fx-font-size: 13px;
+    -fx-font-size: 11.5px;
     -fx-font-weight: bold;
-    -fx-text-fill: -ld-text;
+    -fx-text-fill: -ld-text-dim;
 }
 
 .card-headline {
@@ -130,7 +140,7 @@
     -fx-stroke: -ld-text;
 }
 .primary-btn .ld-icon-part { -fx-stroke: -ld-accent-text; }
-.danger-btn .ld-icon-part  { -fx-stroke: white; }
+.danger-btn .ld-icon-part  { -fx-stroke: -ld-danger; }
 .nav-item.active .ld-icon-part { -fx-stroke: -ld-accent; }
 .button:disabled .ld-icon-part { -fx-stroke: -ld-text-dim; }
 
@@ -152,12 +162,12 @@
 .button {
     -fx-background-color: -ld-elev;
     -fx-text-fill: -ld-text;
-    -fx-background-radius: 8;
-    -fx-border-radius: 8;
-    -fx-border-color: -ld-border;
+    -fx-background-radius: 9;
+    -fx-border-radius: 9;
+    -fx-border-color: derive(-ld-border, -8%);
     -fx-border-width: 1;
-    -fx-padding: 7 13 7 13;
-    -fx-min-height: 34;
+    -fx-padding: 6 12 6 12;
+    -fx-min-height: 32;
     -fx-cursor: hand;
     -fx-font-size: 13px;
     -fx-font-weight: normal;
@@ -173,7 +183,7 @@
     -fx-background-color: -ld-elev;
     -fx-border-color: -ld-accent;
     -fx-border-width: 2;
-    -fx-padding: 6 12 6 12;               /* keep outer size stable while focused */
+    -fx-padding: 5 11 5 11;               /* keep outer size stable while focused */
 }
 
 .button:pressed {
@@ -187,9 +197,12 @@
 }
 
 .primary-btn {
-    -fx-background-color: -ld-accent;
+    /* a 6% vertical gradient reads as a lit surface instead of a flat blue slab;
+       it is a gradient, not a dropshadow, so it costs nothing on repaint */
+    -fx-background-color: linear-gradient(from 0% 0% to 0% 100%,
+            derive(-ld-accent, 10%), derive(-ld-accent, -8%));
     -fx-text-fill: -ld-accent-text;
-    -fx-border-color: -ld-accent;
+    -fx-border-color: derive(-ld-accent, -14%);
     -fx-font-weight: bold;
 }
 
@@ -208,16 +221,19 @@
     -fx-background-color: derive(-ld-accent, -14%);
 }
 
-/* Destructive actions are colored AND separated (rule: destructive-emphasis) */
+/* Destructive actions are colored AND separated (rule: destructive-emphasis).
+   Tinted, not filled: a solid red rectangle shouts louder than the data on
+   the screen and made every toolbar look alarmed. */
 .danger-btn {
-    -fx-background-color: -ld-danger;
-    -fx-text-fill: -ld-accent-text;
-    -fx-border-color: -ld-danger;
+    -fx-background-color: -ld-danger-soft;
+    -fx-text-fill: -ld-danger;
+    -fx-border-color: derive(-ld-danger, -20%);
     -fx-font-weight: bold;
 }
 
 .danger-btn:hover {
-    -fx-background-color: derive(-ld-danger, 12%);
+    -fx-background-color: derive(-ld-danger-soft, 12%);
+    -fx-border-color: -ld-danger;
 }
 
 .ghost-btn {
@@ -233,17 +249,15 @@
 .icon-btn {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
-    -fx-background-radius: 8;
-    -fx-border-radius: 8;
+    -fx-background-radius: 9;
+    -fx-border-radius: 9;
     -fx-padding: 0;
-    -fx-min-width: 34;
-    -fx-min-height: 34;
-    -fx-max-width: 34;
-    -fx-max-height: 34;
+    -fx-min-width: 32;                     /* hit area, rule: touch-target-size */
+    -fx-min-height: 32;
+    -fx-max-width: 32;
+    -fx-max-height: 32;
     -fx-alignment: center;
     -fx-font-size: 13px;
-    -fx-min-width: 30;                     /* hit area, rule: touch-target-size    */
-    -fx-alignment: center;
 }
 
 .icon-btn:hover {
@@ -414,33 +428,37 @@
 
 .table-view {
     -fx-background-color: -ld-card;
-    -fx-border-color: -ld-border;
-    -fx-border-radius: 8;
-    -fx-background-radius: 8;
+    -fx-border-color: -ld-hairline;
+    -fx-border-radius: 11;
+    -fx-background-radius: 11;
     -fx-control-inner-background: -ld-card;
     -fx-table-vertical-border-color: transparent;
-    -fx-table-header-border-color: -ld-border;
+    -fx-table-header-border-color: -ld-hairline;
     -fx-table-cell-border-color: transparent;
 }
 
 .table-view .table-cell {
     -fx-text-fill: -ld-text;
-    -fx-padding: 5 10 5 10;
+    /* 11px vertical padding was doing the job the row height should do; with the
+       outline chips gone the row lands at ~40px, which is the density a desktop
+       list wants — readable, and three more rows per screen than before. */
+    -fx-padding: 5 12 5 12;
     -fx-border-color: transparent;
     -fx-font-size: 12.5px;
+    -fx-alignment: center-left;
 }
 
 .table-view .column-header-background {
-    -fx-background-color: -ld-surface;
+    -fx-background-color: transparent;
     -fx-background-radius: 8 8 0 0;
-    -fx-padding: 2 6 0 6;
+    -fx-padding: 0 4 0 4;
 }
 
 .table-view .column-header, .table-view .filler {
     -fx-background-color: transparent;
-    -fx-size: 32;
+    -fx-size: 36;
     -fx-border-width: 0 0 1 0;
-    -fx-border-color: transparent transparent -ld-border transparent;
+    -fx-border-color: transparent transparent -ld-hairline transparent;
 }
 
 .table-view .column-header .label {
@@ -456,12 +474,11 @@
 
 .table-view .table-row-cell {
     -fx-background-color: -ld-card;
-    -fx-border-color: transparent;
-    -fx-padding: 2 0 2 0;
-}
-
-.table-view .table-row-cell:odd {
-    -fx-background-color: derive(-ld-card, 3%);
+    /* row separators instead of zebra: quieter, and money rows still align */
+    -fx-border-color: transparent transparent -ld-hairline transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 0;
+    -fx-cell-size: 40;
 }
 
 .table-view .table-row-cell:filled:hover {
@@ -629,6 +646,12 @@
     -fx-padding: 2;
 }
 
+.scroll-bar:vertical { -fx-pref-width: 10; }
+.scroll-bar:horizontal { -fx-pref-height: 10; }
+
+.scroll-bar:vertical .thumb { -fx-background-insets: 0 2 0 2; }
+.scroll-bar:horizontal .thumb { -fx-background-insets: 2 0 2 0; }
+
 .scroll-bar .thumb {
     /* functional (not structural) mark: WCAG 1.4.11 wants >=3:1, so the thumb
        uses the state-neutral -ld-text-dim rather than the 1px divider color. */
@@ -655,17 +678,50 @@
    8. Layout chrome
    ====================================================================== */
 
+/* The rail runs the full window height. 244px fits the longest label
+   ("Thói quen & Mục tiêu") without the ellipsis that made the old 212px rail look
+   broken, and the extra width is what the row padding needs to breathe. */
 .sidebar {
     -fx-background-color: -ld-surface;
     -fx-border-color: -ld-border;
     -fx-border-width: 0 1 0 0;
-    -fx-min-width: 208;
-    -fx-padding: 12 8 12 8;
-    -fx-spacing: 2;
+    -fx-min-width: 244;
+    -fx-pref-width: 244;
+    -fx-padding: 14 12 14 12;
+    -fx-spacing: 1;
+}
+
+.brand-row {
+    -fx-padding: 2 0 2 2;
+}
+
+/* The mark is the one place the accent is allowed to be a solid block; every
+   other accent in the chrome is a tint so the rail never competes with content. */
+.brand-mark {
+    -fx-background-color: -ld-accent;
+    -fx-text-fill: -ld-accent-text;
+    -fx-background-radius: 9;
+    -fx-min-width: 28;
+    -fx-min-height: 28;
+    -fx-max-width: 28;
+    -fx-max-height: 28;
+    -fx-alignment: center;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+/* Section marker inside the rail: twelve flat rows read as one undifferentiated
+   list, three labelled groups read as an information architecture. */
+.nav-group {
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ld-text-dim;
+    -fx-opacity: 0.7;
+    -fx-padding: 16 10 5 13;
 }
 
 .brand-title {
-    -fx-font-size: 15px;
+    -fx-font-size: 14px;
     -fx-font-weight: bold;
     -fx-text-fill: -ld-text;
 }
@@ -678,15 +734,16 @@
 .nav-item {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
-    -fx-border-width: 0 0 0 3;
-    -fx-background-radius: 6;
-    -fx-border-radius: 6;
-    -fx-alignment: baseline-left;
-    -fx-padding: 7 10 7 10;
+    -fx-border-width: 0;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-alignment: center-left;
+    -fx-padding: 8 10 8 10;
+    -fx-min-height: 33;
     -fx-max-width: infinity;
-    -fx-font-size: 12.5px;
+    -fx-font-size: 13px;
     -fx-text-fill: -ld-text-dim;
-    -fx-graphic-text-gap: 9;
+    -fx-graphic-text-gap: 10;
     -fx-cursor: hand;
 }
 
@@ -696,15 +753,21 @@
 }
 
 .nav-item:focused {
-    -fx-border-color: -ld-accent transparent transparent transparent;
-    -fx-border-width: 0 0 2 3;
+    -fx-background-color: -ld-elev;
+    -fx-text-fill: -ld-text;
+    -fx-border-color: -ld-accent;
+    -fx-border-width: 1;
 }
 
-/* rule: nav-state-active — weight AND rail AND fill, never color alone */
+/* rule: nav-state-active — weight AND fill AND a 3px rail, never color alone.
+   The rail is a first background layer inset from the pill, so the pill keeps its
+   rounded corners instead of squaring off on the accent edge. */
 .nav-item.active {
-    -fx-background-color: -ld-accent-soft;
-    -fx-border-color: -ld-accent transparent transparent transparent;
-    -fx-border-width: 0 0 0 3;
+    -fx-background-color: -ld-accent, -ld-accent-soft;
+    -fx-background-insets: 0, 0 0 0 3;
+    -fx-background-radius: 3, 0 8 8 0;
+    -fx-border-color: transparent;
+    -fx-border-width: 0;
     -fx-text-fill: -ld-accent;
     -fx-font-weight: bold;
 }
@@ -713,24 +776,27 @@
     -fx-text-fill: -ld-accent;
 }
 
+/* The bar belongs to the content column and shares its ground, so the page reads
+   as one plane with a hairline header instead of four stacked bands. */
 .topbar {
-    -fx-background-color: -ld-surface;
+    -fx-background-color: -ld-bg;
     -fx-border-color: -ld-border;
     -fx-border-width: 0 0 1 0;
-    -fx-padding: 8 16 8 16;
+    -fx-padding: 11 26 11 26;
     -fx-spacing: 10;
+    -fx-min-height: 56;
 }
 
 .content-area {
     -fx-background-color: -ld-bg;
-    -fx-padding: 22 24 22 24;
+    -fx-padding: 26 28 30 28;
 }
 
 .statusbar {
     -fx-background-color: -ld-surface;
     -fx-border-color: -ld-border;
     -fx-border-width: 1 0 0 0;
-    -fx-padding: 4 12 4 12;
+    -fx-padding: 5 26 5 26;
     -fx-font-size: 11px;
     -fx-spacing: 12;
 }
@@ -742,23 +808,111 @@
    ====================================================================== */
 
 .card {
-    -fx-background-color: -ld-card;
-    -fx-background-radius: 12;
-    -fx-border-color: -ld-border;
-    -fx-border-radius: 12;
+    /* Double bezel: a 4% top sheen gives the surface a lit edge, and the outline
+       is the hairline token (one step off the surface) rather than the strong
+       border, so twelve cards in a grid read as one calm plane, not a wireframe. */
+    -fx-background-color:
+        linear-gradient(from 0% 0% to 0% 16%, rgba(255,255,255,0.038), transparent),
+        -ld-card;
+    -fx-background-radius: 13;
+    -fx-border-color: -ld-hairline;
+    -fx-border-radius: 13;
     -fx-border-width: 1;
-    -fx-padding: 16 18 16 18;
-    -fx-spacing: 10;
+    -fx-padding: 17 19 17 19;
+    -fx-spacing: 9;
 }
 
 .summary-card {
     -fx-background-color: -ld-card;
     -fx-background-radius: 12;
-    -fx-border-color: -ld-border;
+    -fx-border-color: -ld-hairline;
     -fx-border-radius: 12;
     -fx-border-width: 1;
-    -fx-padding: 14 16 14 16;
+    -fx-padding: 15 17 15 17;
     -fx-spacing: 6;
+}
+
+/* ---------- dashboard metric tiles ----------------------------------
+   One number, one caption, one quiet label. These sit above the widget grid
+   so the page answers "how am I doing" before the user reads a single list. */
+.metric-tile {
+    -fx-background-color:
+        linear-gradient(from 0% 0% to 0% 100%, rgba(255,255,255,0.04), transparent),
+        -ld-card;
+    -fx-background-radius: 13;
+    -fx-border-color: -ld-hairline;
+    -fx-border-radius: 13;
+    -fx-border-width: 1;
+    -fx-padding: 14 18 14 18;
+    -fx-spacing: 3;
+    -fx-min-height: 86;
+}
+
+.metric-caption {
+    -fx-font-size: 11.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ld-text-dim;
+}
+
+.metric-value {
+    -fx-font-family: "Segoe UI Variable Display", "Segoe UI", "Arial", sans-serif;
+    -fx-font-size: 30px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ld-text;
+}
+
+.metric-unit {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ld-text-dim;
+}
+
+.metric-note {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: -ld-text-dim;
+}
+
+/* Label / value row used inside cards (health, learning, budget): a hairline
+   separator does the work that a table border would do, without the weight. */
+.metric-row {
+    -fx-padding: 5 0 5 0;
+    -fx-border-width: 0 0 1 0;
+    -fx-border-color: transparent transparent derive(-ld-border, -18%) transparent;
+}
+
+.metric-key {
+    -fx-font-size: 12.5px;
+    -fx-text-fill: -ld-text-dim;
+}
+
+.metric-val {
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ld-text;
+}
+
+/* Compact in-card empty state: says what is missing and offers the action. */
+.card-empty {
+    -fx-spacing: 6;
+    -fx-padding: 6 0 2 0;
+}
+
+.card-empty-text {
+    -fx-font-size: 12.5px;
+    -fx-text-fill: -ld-text-dim;
+}
+
+.card-action {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-text-fill: -ld-accent;
+    -fx-font-size: 12.5px;
+    -fx-font-weight: bold;
+    -fx-padding: 2 0 2 0;
+    -fx-cursor: hand;
+}
+
+.card-action:hover {
+    -fx-underline: true;
 }
 
 /* Panel used for the RSS/reader columns: same card language, but the body
@@ -799,28 +953,43 @@
        theme's own soft tokens rather than a fixed derive() percentage.
    ====================================================================== */
 
+/* Tint-only chips. The previous version outlined every chip, and a table of
+   sixteen outlined pills in four hues reads as a colour swatch sheet rather than
+   data: the eye has nowhere to land. Fill alone carries the state, the label
+   carries the meaning, and the row text stays the loudest thing in the row. */
 .chip {
-    -fx-background-radius: 999;
-    -fx-border-radius: 999;
-    -fx-border-width: 1;
-    -fx-padding: 1 8 1 8;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-border-width: 0;
+    -fx-padding: 1 7 1 7;
     -fx-font-size: 11px;
     -fx-font-weight: bold;
     -fx-background-color: -ld-elev;
-    -fx-border-color: -ld-border;
-    -fx-text-fill: -ld-text;
+    -fx-text-fill: -ld-text-dim;
 }
 
-.chip-todo      { -fx-background-color: -ld-accent-soft; -fx-border-color: -ld-accent; -fx-text-fill: -ld-accent; }
-.chip-medium    { -fx-background-color: -ld-accent-soft; -fx-border-color: -ld-accent; -fx-text-fill: -ld-accent; }
-.chip-doing     { -fx-background-color: -ld-warn-soft;   -fx-border-color: -ld-warn;   -fx-text-fill: -ld-warn; }
-.chip-high      { -fx-background-color: -ld-warn-soft;   -fx-border-color: -ld-warn;   -fx-text-fill: -ld-warn; }
-.chip-done      { -fx-background-color: -ld-ok-soft;     -fx-border-color: -ld-ok;     -fx-text-fill: -ld-ok; }
-.chip-overdue   { -fx-background-color: -ld-danger-soft; -fx-border-color: -ld-danger; -fx-text-fill: -ld-danger; }
-.chip-urgent    { -fx-background-color: -ld-danger-soft; -fx-border-color: -ld-danger; -fx-text-fill: -ld-danger; }
-.chip-info      { -fx-background-color: -ld-info-soft;   -fx-border-color: -ld-info;   -fx-text-fill: -ld-info; }
-.chip-cancelled { -fx-background-color: -ld-elev;        -fx-border-color: -ld-border; -fx-text-fill: -ld-text-dim; }
-.chip-low       { -fx-background-color: -ld-elev;        -fx-border-color: -ld-border; -fx-text-fill: -ld-text-dim; }
+.chip-todo      { -fx-background-color: -ld-accent-soft; -fx-text-fill: -ld-accent; }
+.chip-medium    { -fx-background-color: -ld-accent-soft; -fx-text-fill: -ld-accent; }
+.chip-doing     { -fx-background-color: -ld-warn-soft;   -fx-text-fill: -ld-warn; }
+.chip-high      { -fx-background-color: -ld-warn-soft;   -fx-text-fill: -ld-warn; }
+.chip-done      { -fx-background-color: -ld-ok-soft;     -fx-text-fill: -ld-ok; }
+.chip-overdue   { -fx-background-color: -ld-danger-soft; -fx-text-fill: -ld-danger; }
+.chip-urgent    { -fx-background-color: -ld-danger-soft; -fx-text-fill: -ld-danger; }
+.chip-info      { -fx-background-color: -ld-info-soft;   -fx-text-fill: -ld-info; }
+.chip-cancelled { -fx-background-color: transparent;     -fx-text-fill: -ld-text-dim; }
+.chip-low       { -fx-background-color: transparent;     -fx-text-fill: -ld-text-dim; }
+
+/* A control strip: filters and view switches sit on their own quiet plane
+   instead of floating loose between the page title and the content. */
+.toolbar-strip {
+    -fx-background-color: -ld-card;
+    -fx-background-radius: 11;
+    -fx-border-color: -ld-hairline;
+    -fx-border-radius: 11;
+    -fx-border-width: 1;
+    -fx-padding: 8 10 8 10;
+    -fx-spacing: 8;
+}
 
 /* ======================================================================
    11. States
@@ -939,7 +1108,13 @@
 
 .tab-pane > .tab-header-area {
     -fx-background-color: transparent;
-    -fx-padding: 0 0 8 0;
+    -fx-padding: 2 0 10 0;
+}
+
+/* Tab body must not sit flush against the pill row — toolbars inside tabs
+   otherwise touch the header line. */
+.tab-pane > .tab-content-area {
+    -fx-padding: 8 0 0 0;
 }
 
 .tab-pane > .tab-header-area .tab-header-background {
@@ -951,7 +1126,7 @@
 .tab-pane .tab {
     -fx-background-color: transparent;
     -fx-background-radius: 6;
-    -fx-padding: 3 4 3 4;
+    -fx-padding: 4 5 4 5;
     -fx-border-width: 0;
 }
 
@@ -965,7 +1140,7 @@
     -fx-text-fill: -ld-text-dim;
     -fx-font-weight: normal;
     -fx-font-size: 12.5px;
-    -fx-padding: 4 10 4 10;
+    -fx-padding: 5 12 5 12;
     -fx-background-color: transparent;
 }
 
@@ -978,6 +1153,27 @@
     -fx-border-color: transparent;
     -fx-border-width: 0;
     -fx-border-insets: 0;
+}
+
+/* Collapsible detail sections (task dialog "Chi tiết thêm") — quiet header,
+   no boxed content so the expanded fields read as part of the same form. */
+.titled-pane > .title {
+    -fx-background-color: transparent;
+    -fx-padding: 2 0 2 0;
+}
+
+.titled-pane > .title > .text {
+    -fx-fill: -ld-text-dim;
+}
+
+.titled-pane > .title > .arrow-button .arrow {
+    -fx-background-color: -ld-text-dim;
+}
+
+.titled-pane > .content {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 4 0 0 0;
 }
 
 .split-pane {

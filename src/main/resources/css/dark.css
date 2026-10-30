@@ -1,33 +1,36 @@
 /* ==========================================================================
    Dark theme — slate neutral ramp (Swiss / dense professional).
-   Every palette must define the SAME 24 tokens consumed by base.css.
+   Every palette must define the SAME 25 tokens consumed by base.css.
    Surface ramp: bg < surface < card < input < elev < border.
    *-soft tokens are chip/banner backgrounds; the matching vivid token is
    used as their foreground, so soft must stay dark enough for >=4.5:1.
    ========================================================================== */
 .root {
-    -ld-bg: #0f172a;
-    -ld-surface: #141e31;
-    -ld-card: #1a2436;
-    -ld-input: #1e293b;
-    -ld-elev: #263349;
-    -ld-border: #3b4a63;
-    -ld-text: #e2e8f0;
-    -ld-text-dim: #9ba9bd;
-    -ld-accent: #60a5fa;
-    -ld-accent-text: #0b1220;
-    -ld-accent-soft: #1e3a5f;
-    -ld-danger: #f87171;
-    -ld-ok: #4ade80;
-    -ld-warn: #fbbf24;
-    -ld-info: #22d3ee;
-    -ld-danger-soft: #3b1d20;
-    -ld-ok-soft: #16352a;
-    -ld-warn-soft: #3a2c10;
-    -ld-info-soft: #12353d;
-    -ld-chart-1: #60a5fa;
-    -ld-chart-2: #4ade80;
-    -ld-chart-3: #fbbf24;
-    -ld-chart-4: #a78bfa;
-    -ld-chart-5: #f87171;
+    -ld-bg: #0b0f16;
+    -ld-surface: #10151f;
+    -ld-card: #141b26;
+    -ld-input: #18212e;
+    -ld-elev: #1e2836;
+    -ld-border: #263040;
+    /* Card/table hairline: one step off the surface so structure stays legible
+       without drawing a wireframe around every panel. */
+    -ld-hairline: #1f2836;
+    -ld-text: #e7edf6;
+    -ld-text-dim: #93a0b4;
+    -ld-accent: #7aa7ff;
+    -ld-accent-text: #08111f;
+    -ld-accent-soft: #1b2b45;
+    -ld-danger: #f4867f;
+    -ld-ok: #5fd08a;
+    -ld-warn: #e7b34a;
+    -ld-info: #5cc9e0;
+    -ld-danger-soft: #341c1f;
+    -ld-ok-soft: #14301f;
+    -ld-warn-soft: #322611;
+    -ld-info-soft: #10303a;
+    -ld-chart-1: #7aa7ff;
+    -ld-chart-2: #5fd08a;
+    -ld-chart-3: #e7b34a;
+    -ld-chart-4: #a892f5;
+    -ld-chart-5: #f4867f;
 }

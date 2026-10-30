@@ -18,7 +18,6 @@ import javafx.scene.chart.LineChart;
 import javafx.scene.chart.NumberAxis;
 import javafx.scene.chart.XYChart;
 import javafx.scene.control.Button;
-import javafx.scene.control.ComboBox;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
@@ -55,17 +54,18 @@ public class HealthView extends View {
     private final VBox metricFields = new VBox(4);
     private final Map<String, TextField> metricInputs = new HashMap<>();
     private final TableView<HealthEntry> historyTable = new TableView<>();
-    private final ComboBox<String> trendField = new ComboBox<>();
-    private final VBox chartHost = new VBox();
+    private final VBox sleepChartHost = new VBox();
+    private final VBox weightChartHost = new VBox();
     private final com.lifedesk.ui.components.ActivityRing sleepRing =
-            new com.lifedesk.ui.components.ActivityRing("Giấc ngủ / mục tiêu 8h", "#5b8def");
+            new com.lifedesk.ui.components.ActivityRing("Ngủ", "#5b8def");
     private final com.lifedesk.ui.components.ActivityRing exerciseRing =
-            new com.lifedesk.ui.components.ActivityRing("Vận động / mục tiêu 30'", "#4caf7d");
+            new com.lifedesk.ui.components.ActivityRing("Vận động", "#4caf7d");
     private final com.lifedesk.ui.components.ActivityRing logRing =
             new com.lifedesk.ui.components.ActivityRing("Ghi nhận 30 ngày", "#e0a13d");
     private final com.lifedesk.ui.components.CalendarHeatmap heatmap =
             new com.lifedesk.ui.components.CalendarHeatmap();
     private com.lifedesk.ui.components.NoteLinkPicker dayNoteLinks;
+    private javafx.scene.control.TitledPane noteLinksPane;
 
     public HealthView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -78,77 +78,85 @@ public class HealthView extends View {
 
     @Override
     protected Node build() {
-        Label title = new Label("Sức khỏe (ghi nhận thủ công)");
+        Label title = new Label("Sức khỏe");
         title.getStyleClass().add("title-label");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Button manageMetrics = new Button("Quản lý chỉ số tùy chọn");
+        Button manageMetrics = new Button("Chỉ số tùy chọn…");
+        manageMetrics.setTooltip(new javafx.scene.control.Tooltip("Thêm/bỏ chỉ số bạn tự theo dõi"));
         manageMetrics.setOnAction(e -> showMetricManager());
         HBox header = new HBox(10, title, spacer, manageMetrics);
+        header.getStyleClass().add("view-header");
         header.setAlignment(Pos.CENTER_LEFT);
 
-        // ---- vitals row: Apple-Health-style rings + consistency heatmap
-        HBox rings = new HBox(24, sleepRing, exerciseRing, logRing);
+        // ---- vitals: today's rings, one caption line per ring (inside)
+        HBox rings = new HBox(40, sleepRing, exerciseRing, logRing);
         rings.setAlignment(Pos.CENTER);
         Card vitalsCard = new Card("Hôm nay");
         vitalsCard.content(rings);
+
+        // ---- charts always visible: sleep | weight side by side, no mode switcher
+        Card sleepCard = new Card("Giấc ngủ — 30 ngày");
+        sleepCard.content(sleepChartHost);
+        Card weightCard = new Card("Cân nặng — 30 ngày");
+        weightCard.content(weightChartHost);
+        HBox chartsRow = new HBox(12, sleepCard, weightCard);
+        chartsRow.getChildren().forEach(n -> HBox.setHgrow(n, Priority.ALWAYS));
+
         Card heatmapCard = new Card("Tần suất vận động — 26 tuần gần nhất");
         heatmapCard.content(heatmap);
 
-        // ---- entry form
+        // ---- entry: one compact strip, prompt text carries the labels
+        entryDate.setPrefWidth(150);
+        sleepField.setPromptText("Giờ ngủ (0-24)");
+        exerciseField.setPromptText("Phút vận động");
+        weightField.setPromptText("Cân nặng (kg)");
+        noteField.setPromptText("Ghi chú sức khỏe…");
         entryDate.setOnAction(e -> {
             loadEntry();
             refreshHistory();
         });
-        Button save = new Button("Lưu hôm nay", new IconView("save", 15));
+        Button save = new Button("Lưu", new IconView("save", 15));
         save.getStyleClass().add("primary-btn");
         save.setOnAction(e -> saveEntry());
         addAccelerator(new KeyCodeCombination(KeyCode.S, KeyCombination.CONTROL_DOWN), save::fire);
-        Button delete = new Button("Xóa ngày này", new IconView("trash", 15));
+        Button delete = new Button("", new IconView("trash", 15));
+        delete.getStyleClass().add("icon-btn");
+        delete.setTooltip(new javafx.scene.control.Tooltip("Xóa dữ liệu ngày đang chọn"));
         delete.setOnAction(e -> deleteEntry());
-
-        HBox formRow1 = new HBox(14,
-                labeled("Ngày", entryDate),
-                labeled("Giờ ngủ (0-24)", sleepField),
-                labeled("Phút vận động", exerciseField),
-                labeled("Cân nặng (kg)", weightField));
-        formRow1.getChildren().forEach(n -> HBox.setHgrow(n, Priority.ALWAYS));
-        entryDate.setMaxWidth(Double.MAX_VALUE);
         sleepField.setMaxWidth(Double.MAX_VALUE);
         exerciseField.setMaxWidth(Double.MAX_VALUE);
         weightField.setMaxWidth(Double.MAX_VALUE);
-        HBox formRow2 = new HBox(14, labeled("Ghi chú sức khỏe", noteField), new VBox(6, save, delete));
-        HBox.setHgrow(formRow2.getChildren().get(0), Priority.ALWAYS);
         noteField.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(sleepField, Priority.ALWAYS);
+        HBox.setHgrow(exerciseField, Priority.ALWAYS);
+        HBox.setHgrow(weightField, Priority.ALWAYS);
+        HBox.setHgrow(noteField, Priority.ALWAYS);
+        HBox entryRow = new HBox(8, entryDate, sleepField, exerciseField, weightField, noteField, save, delete);
+        entryRow.setAlignment(Pos.CENTER_LEFT);
+
         dayNoteLinks = new com.lifedesk.ui.components.NoteLinkPicker(ctx, "health",
-                "date:" + entryDate.getValue(), "Ghi chú liên quan cho ngày này (sổ tay, đơn thuốc…):");
+                "date:" + entryDate.getValue(), "Sổ tay, đơn thuốc, kết quả khám…");
+        noteLinksPane = new javafx.scene.control.TitledPane("Gắn ghi chú cho ngày này", dayNoteLinks);
+        noteLinksPane.setExpanded(false);
 
-        VBox formCard = new VBox(10, formRow1, metricFields, formRow2, dayNoteLinks);
-        formCard.getStyleClass().add("card");
+        VBox entryCard = new VBox(10, entryRow, metricFields, noteLinksPane);
+        entryCard.getStyleClass().add("card");
 
-        // ---- history of past entries (the data was saved but never listed anywhere)
+        // ---- history
         buildHistoryTable();
         historyTable.setPrefHeight(150);
-        VBox historyCard = new VBox(8, new Label("Lịch sử đã ghi"), historyTable);
-        historyCard.getStyleClass().add("card");
-
-        // ---- trends
-        trendField.getItems().addAll("Giấc ngủ", "Vận động (phút)", "Cân nặng (kg)");
-        trendField.setValue("Cân nặng (kg)");
-        trendField.setOnAction(e -> renderTrend());
-        HBox trendHeader = new HBox(8, new Label("Xu hướng:"), trendField);
-        trendHeader.setAlignment(Pos.CENTER_LEFT);
-        VBox trendCard = new VBox(8, trendHeader, chartHost);
-        trendCard.getStyleClass().add("card");
+        Card historyCard = new Card("Lịch sử");
+        historyCard.content(historyTable);
 
         Label disclaimer = new Label(HealthService.DISCLAIMER);
         disclaimer.getStyleClass().add("dim-label");
         disclaimer.setWrapText(true);
 
-        VBox root = new VBox(12, header, vitalsCard, formCard, heatmapCard, historyCard, trendCard, disclaimer);
+        VBox root = new VBox(12, header, vitalsCard, chartsRow, heatmapCard, entryCard, historyCard, disclaimer);
         loadEntry();
         refreshHistory();
-        renderTrend();
+        renderCharts();
         renderRings();
         return root;
     }
@@ -157,7 +165,6 @@ public class HealthView extends View {
     private VBox labeled(String text, Node field) {
         if (field instanceof TextField tf) {
             tf.setPrefWidth(140);
-            tf.setPromptText("—");
         }
         return FormGrid.labeled(text, field);
     }
@@ -165,6 +172,11 @@ public class HealthView extends View {
     private void loadEntry() {
         if (dayNoteLinks != null) {
             dayNoteLinks.setRecordId("date:" + entryDate.getValue());
+        }
+        if (noteLinksPane != null) {
+            // Only open the pane when the day actually carries linked notes.
+            noteLinksPane.setExpanded(!ctx.notes()
+                    .notesLinkedTo("health", "date:" + entryDate.getValue()).isEmpty());
         }
         metricInputs.clear();
         metricFields.getChildren().clear();
@@ -209,7 +221,7 @@ public class HealthView extends View {
             }
             ctx.health().upsert(entryDate.getValue(), sleep, exercise, weight, custom, noteField.getText());
             refreshHistory();
-            renderTrend();
+            renderCharts();
             renderRings();
         } catch (NumberFormatException e) {
             Dialogs.error("Giá trị không hợp lệ", "Chỉ nhập số cho các trường số liệu.");
@@ -223,7 +235,7 @@ public class HealthView extends View {
             ctx.health().deleteEntry(entryDate.getValue());
             loadEntry();
             refreshHistory();
-            renderTrend();
+            renderCharts();
         } catch (RuntimeException e) {
             Dialogs.error("Không xóa được", e.getMessage());
         }
@@ -265,40 +277,52 @@ public class HealthView extends View {
                 .ifPresent(historyTable.getSelectionModel()::select);
     }
 
-    private void renderTrend() {
-        chartHost.getChildren().clear();
+    /** Both trend charts at once — no mode switcher, the user sees everything. */
+    private void renderCharts() {
         LocalDate to = LocalDate.now();
         LocalDate from = to.minusDays(30);
-        HealthService.HealthField field = switch (trendField.getValue()) {
-            case "Giấc ngủ" -> HealthService.HealthField.SLEEP;
-            case "Vận động (phút)" -> HealthService.HealthField.EXERCISE;
-            default -> HealthService.HealthField.WEIGHT;
-        };
-        List<HealthService.SeriesPoint> points = ctx.health().series(from, to, field);
-        if (points.isEmpty()) {
-            chartHost.getChildren().add(Card.dim("Chưa có dữ liệu cho chỉ số này trong 30 ngày qua."));
+        renderLineChart(sleepChartHost, ctx.health().series(from, to, HealthService.HealthField.SLEEP),
+                from, to, "Ngủ (h)", 8.0, "Mục tiêu 8h");
+        Double weightGoal = ctx.health().metrics().stream()
+                .filter(m -> m.name.toLowerCase().contains("cân") && m.target != null)
+                .map(m -> m.target.doubleValue()).findFirst().orElse(null);
+        renderLineChart(weightChartHost, ctx.health().series(from, to, HealthService.HealthField.WEIGHT),
+                from, to, "Cân nặng (kg)", weightGoal, weightGoal == null ? null : "Mục tiêu");
+    }
+
+    /** One themed line chart; a non-null goal renders as a flat reference line. */
+    private void renderLineChart(VBox host, List<HealthService.SeriesPoint> points,
+                                 LocalDate from, LocalDate to, String seriesName,
+                                 Double goal, String goalName) {
+        host.getChildren().clear();
+        if (points.isEmpty() && goal == null) {
+            host.getChildren().add(Card.dim("Chưa có dữ liệu trong 30 ngày qua."));
             return;
         }
         NumberAxis x = com.lifedesk.ui.components.DateAxes.epochDay("Ngày", from, to, 5);
         NumberAxis y = new NumberAxis();
+        // Weight ~65kg would sit glued to the top of a 0-based axis; range to the data.
+        y.setForceZeroInRange(false);
         LineChart<Number, Number> chart = new LineChart<>(x, y);
-        chart.setTitle(field + " — 30 ngày");
+        chart.setLegendVisible(goal != null);
         chart.setCreateSymbols(true);
-        chart.setPrefHeight(260);
-        XYChart.Series<Number, Number> series = new XYChart.Series<>();
-        series.setName(trendField.getValue());
+        chart.setPrefHeight(240);
+        chart.setMaxWidth(Double.MAX_VALUE);
         long start = from.toEpochDay();
+        XYChart.Series<Number, Number> series = new XYChart.Series<>();
+        series.setName(seriesName);
         for (HealthService.SeriesPoint p : points) {
             series.getData().add(new XYChart.Data<>(p.date().toEpochDay() - start, p.value().doubleValue()));
         }
         chart.getData().add(series);
-        chartHost.getChildren().add(chart);
-        // Personal target line for weight if a metric named "Cân nặng" defines one
-        for (MetricDef m : ctx.health().metrics()) {
-            if (m.name.toLowerCase().contains("cân") && m.target != null && field == HealthService.HealthField.WEIGHT) {
-                chartHost.getChildren().add(Card.dim("Mục tiêu cá nhân: " + m.target.toPlainString()));
-            }
+        if (goal != null) {
+            XYChart.Series<Number, Number> goalSeries = new XYChart.Series<>();
+            goalSeries.setName(goalName);
+            goalSeries.getData().add(new XYChart.Data<>(0, goal));
+            goalSeries.getData().add(new XYChart.Data<>(to.toEpochDay() - start, goal));
+            chart.getData().add(goalSeries);
         }
+        host.getChildren().add(chart);
     }
 
     /** Rings + heatmap recompute from entries (Apple-Health-style daily closure). */
@@ -369,9 +393,15 @@ public class HealthView extends View {
 
     @Override
     public void onShow() {
+        // Only re-read when health data changed since the last paint.
+        refreshWhenChanged(ctx.health().changes());
+    }
+
+    @Override
+    protected void refresh() {
         loadEntry();
         refreshHistory();
-        renderTrend();
+        renderCharts();
         renderRings();
     }
 
@@ -383,7 +413,7 @@ public class HealthView extends View {
                     entryDate.setValue(e.date);
                     loadEntry();
                     refreshHistory();
-                    renderTrend();
+                    renderCharts();
                 });
     }
 }

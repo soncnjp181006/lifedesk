@@ -57,6 +57,7 @@ public class AgentView extends View {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         HBox header = new HBox(10, title, spacer, modeLabel);
+        header.getStyleClass().add("view-header");
         header.setAlignment(Pos.CENTER_LEFT);
 
         // ---- workflow cards (natural height, no clipping)

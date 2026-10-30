@@ -4,28 +4,29 @@
    the matching vivid token at >=4.5:1 as chip foreground.
    ========================================================================== */
 .root {
-    -ld-bg: #f4f6f9;
-    -ld-surface: #eaeef4;
+    -ld-bg: #f5f6f8;
+    -ld-surface: #ffffff;
     -ld-card: #ffffff;
     -ld-input: #ffffff;
-    -ld-elev: #dde4ee;
-    -ld-border: #bcc6d4;
-    -ld-text: #0f172a;
-    -ld-text-dim: #4e5c6e;
-    -ld-accent: #1d4ed8;
+    -ld-elev: #eef1f5;
+    -ld-border: #e2e7ee;
+    -ld-hairline: #e9edf3;
+    -ld-text: #111827;
+    -ld-text-dim: #5a6577;
+    -ld-accent: #2f6fed;
     -ld-accent-text: #ffffff;
-    -ld-accent-soft: #dbeafe;
-    -ld-danger: #b91c1c;
-    -ld-ok: #15803d;
-    -ld-warn: #8c5604;
+    -ld-accent-soft: #e8f0ff;
+    -ld-danger: #b3261e;
+    -ld-ok: #157f43;
+    -ld-warn: #8a5a00;
     -ld-info: #0e7490;
-    -ld-danger-soft: #fee2e2;
-    -ld-ok-soft: #dcfce7;
-    -ld-warn-soft: #fef3c7;
-    -ld-info-soft: #cffafe;
-    -ld-chart-1: #1d4ed8;
-    -ld-chart-2: #15803d;
-    -ld-chart-3: #8c5604;
-    -ld-chart-4: #7c3aed;
-    -ld-chart-5: #b91c1c;
+    -ld-danger-soft: #fdeceb;
+    -ld-ok-soft: #e7f6ec;
+    -ld-warn-soft: #fdf4e0;
+    -ld-info-soft: #e3f6fa;
+    -ld-chart-1: #2f6fed;
+    -ld-chart-2: #157f43;
+    -ld-chart-3: #8a5a00;
+    -ld-chart-4: #6d3ff0;
+    -ld-chart-5: #b3261e;
 }

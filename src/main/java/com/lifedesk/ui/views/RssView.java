@@ -37,6 +37,8 @@ public class RssView extends View {
     private final ListView<RssService.Article> articleList = new ListView<>();
     private final com.lifedesk.markdown.MarkdownPreviewPane reader =
             new com.lifedesk.markdown.MarkdownPreviewPane();
+    /** Last markdown shown in the reader (placeholder until an article opens). */
+    private String readerMarkdown = "Chọn một bài viết để đọc tại đây.";
     private final Label articleCount = new Label();
     private final Label feedCount = new Label();
     private static final DateTimeFormatter DATE_FMT =
@@ -67,6 +69,7 @@ public class RssView extends View {
         Button opmlImport = new Button("Nhập OPML");
         opmlImport.setOnAction(e -> importOpml());
         HBox header = new HBox(10, title, spacer, opmlImport, opmlExport, addFeed, refresh);
+        header.getStyleClass().add("view-header");
         header.setAlignment(Pos.CENTER_LEFT);
 
         // ---- left: feeds
@@ -106,6 +109,8 @@ public class RssView extends View {
             }
         });
         feedCount.getStyleClass().add("chip");
+        feedList.setPlaceholder(new EmptyState("rss",
+                "Chưa theo dõi feed nào.\nBấm \"Thêm feed\" hoặc nhập OPML."));
         VBox feedPanel = panel("Feeds", feedCount, delFeed, feedList);
         feedPanel.setMinWidth(190);
         feedPanel.setPrefWidth(230);
@@ -144,8 +149,7 @@ public class RssView extends View {
         // ---- right: reader
         reader.setMinHeight(0);
         VBox.setVgrow(reader, Priority.ALWAYS);
-        reader.render("Chọn một bài viết để đọc tại đây.",
-                ctx.themeManager().previewPalette(ctx.config().theme));
+        renderReader("Chọn một bài viết để đọc tại đây.");
         VBox readerPanel = panel("Đọc bài", null, saveButton(), reader);
         HBox.setHgrow(readerPanel, Priority.ALWAYS);
 
@@ -162,6 +166,9 @@ public class RssView extends View {
      * One dashboard column. Panels are built by the same helper so their header
      * row, padding and baseline are identical — mismatched columns were the
      * "UI lệch" complaint on this screen.
+     *
+     * The panel is a double enclosure: a tinted shell with generous inner padding
+     * around a card core, so a column reads as one object instead of a bordered box.
      */
     private VBox panel(String title, Label badge, Node action, Node body) {
         Label heading = new Label(title);
@@ -259,9 +266,20 @@ public class RssView extends View {
         String markdown = "# " + article.title() + "\n\n"
                 + article.feedTitle() + " — " + DATE_FMT.format(article.published()) + "  ·  "
                 + article.url() + "\n\n---\n\n" + body;
+        renderReader(markdown);
+        refreshArticleList();
+    }
+
+    /** Reader render that remembers the markdown, so a theme switch can re-paint it. */
+    private void renderReader(String markdown) {
+        readerMarkdown = markdown;
         reader.render(markdown, ctx.themeManager().previewPalette(ctx.config().theme),
                 target -> null);
-        refreshArticleList();
+    }
+
+    @Override
+    public void onThemeChanged() {
+        renderReader(readerMarkdown);
     }
 
     /** Save the selected article into Notes as a markdown note (rss→note conversion). */

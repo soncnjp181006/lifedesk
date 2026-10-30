@@ -42,9 +42,10 @@ public class LearningView extends View {
     private final TableView<Course> courseTable = new TableView<>();
     private final TableView<Flashcard> cardTable = new TableView<>();
     private final ListView<Deck> deckList = new ListView<>();
-    private final Label dueLabel = new Label();
     /** Reference for jumping to the review tab from header buttons. */
     private javafx.scene.control.TabPane tabPane;
+    private com.lifedesk.ui.panes.ReviewSessionPane reviewPane;
+    private Button reviewBtn;
 
     public LearningView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -61,11 +62,11 @@ public class LearningView extends View {
         title.getStyleClass().add("title-label");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Button reviewBtn = new Button("Ôn tập (" + ctx.learning().dueCount() + " thẻ đến hạn)", new IconView("target", 15));
+        reviewBtn = new Button("Ôn tập (" + ctx.learning().dueCount() + " thẻ đến hạn)", new IconView("target", 15));
         reviewBtn.getStyleClass().add("primary-btn");
         reviewBtn.setOnAction(e -> startReview());
-        dueLabel.getStyleClass().add("dim-label");
-        HBox header = new HBox(12, title, spacer, dueLabel, reviewBtn);
+        HBox header = new HBox(12, title, spacer, reviewBtn);
+        header.getStyleClass().add("view-header");
         header.setAlignment(Pos.CENTER_LEFT);
 
         // ---- courses
@@ -178,8 +179,7 @@ public class LearningView extends View {
         HBox deckToolbar = new HBox(10, addDeck, renameDeck, reviewDeckBtn);
         deckToolbar.setAlignment(Pos.CENTER_LEFT);
         // Review session tab first — it is the daily entry point of the module.
-        com.lifedesk.ui.panes.ReviewSessionPane reviewPane =
-                new com.lifedesk.ui.panes.ReviewSessionPane(ctx);
+        reviewPane = new com.lifedesk.ui.panes.ReviewSessionPane(ctx);
         tabPane = tabs;
         tabs.getTabs().addAll(
                 new Tab("Ôn tập", reviewPane),
@@ -461,7 +461,15 @@ public class LearningView extends View {
             deckList.getSelectionModel().selectFirst();
         }
         refreshCards();
-        dueLabel.setText("Thẻ đến hạn: " + ctx.learning().dueCount());
+        int due = ctx.learning().dueCount();
+        reviewBtn.setText("Ôn tập (" + due + " thẻ đến hạn)");
+    }
+
+    @Override
+    public void onThemeChanged() {
+        if (reviewPane != null) {
+            reviewPane.retheme();
+        }
     }
 
     private final Label deckStats = new Label();
@@ -480,7 +488,8 @@ public class LearningView extends View {
 
     @Override
     public void onShow() {
-        refresh();
+        // Only re-read when the module actually changed since the last paint.
+        refreshWhenChanged(ctx.learning().changes());
     }
 
     @Override

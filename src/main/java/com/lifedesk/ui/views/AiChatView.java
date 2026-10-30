@@ -130,6 +130,7 @@ public class AiChatView extends View {
         settingsBtn.setOnAction(e -> main.showView(MainWindow.ViewId.SETTINGS));
         providerStatus.getStyleClass().add("dim-label");
         HBox header = new HBox(10, title, spacer, providerStatus, newChatBtn, settingsBtn);
+        header.getStyleClass().add("view-header");
         header.setAlignment(Pos.CENTER_LEFT);
 
         // ---- conversation surface ("khung chat")
