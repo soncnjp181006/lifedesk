@@ -743,22 +743,45 @@
 
 .card {
     -fx-background-color: -ld-card;
-    -fx-background-radius: 10;
+    -fx-background-radius: 12;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 10;
+    -fx-border-radius: 12;
     -fx-border-width: 1;
-    -fx-padding: 18;
-    -fx-spacing: 12;
+    -fx-padding: 16 18 16 18;
+    -fx-spacing: 10;
 }
 
 .summary-card {
     -fx-background-color: -ld-card;
-    -fx-background-radius: 10;
+    -fx-background-radius: 12;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 10;
+    -fx-border-radius: 12;
     -fx-border-width: 1;
     -fx-padding: 14 16 14 16;
     -fx-spacing: 6;
+}
+
+/* Panel used for the RSS/reader columns: same card language, but the body
+   fills the column so panels in a row always end on the same baseline. */
+.panel {
+    -fx-background-color: -ld-card;
+    -fx-background-radius: 12;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 12;
+    -fx-border-width: 1;
+    -fx-padding: 12;
+    -fx-spacing: 10;
+}
+
+.panel-head {
+    -fx-background-color: transparent;
+    -fx-padding: 0 0 2 0;
+}
+
+.panel-title {
+    -fx-text-fill: -ld-text;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
 }
 
 .quick-add-bar {
@@ -1121,27 +1144,274 @@
 .notif-item.unread .label { -fx-font-weight: bold; }
 
 /* ======================================================================
-   15. Chat
+   15. Chat — a bordered conversation surface with its own header,
+       scrolling message column and pinned composer.
    ====================================================================== */
 
+.chat-surface {
+    -fx-background-color: -ld-card;
+    -fx-background-radius: 14;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 14;
+    -fx-border-width: 1;
+}
+
+.chat-head {
+    -fx-background-color: -ld-surface;
+    -fx-background-radius: 13 13 0 0;
+    -fx-border-color: transparent transparent -ld-border transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 9 12 9 14;
+}
+
+.chat-scroll,
+.chat-scroll > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+}
+
+.chat-messages {
+    -fx-padding: 18 20 14 20;
+}
+
+.chat-empty {
+    -fx-padding: 34 20 26 20;
+}
+
+.chat-avatar-large {
+    -fx-background-color: -ld-accent-soft;
+    -fx-background-radius: 999;
+    -fx-min-width: 62;
+    -fx-min-height: 62;
+    -fx-max-width: 62;
+    -fx-max-height: 62;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 999;
+}
+
+.chat-avatar {
+    -fx-background-color: -ld-accent-soft;
+    -fx-background-radius: 999;
+    -fx-min-width: 32;
+    -fx-min-height: 32;
+    -fx-max-width: 32;
+    -fx-max-height: 32;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 999;
+}
+
+.chat-author {
+    -fx-text-fill: -ld-text-dim;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}
+
+.chat-meta {
+    -fx-text-fill: -ld-text-dim;
+    -fx-font-size: 10.5px;
+}
+
+.chat-hint {
+    -fx-text-fill: -ld-text-dim;
+    -fx-font-size: 11px;
+}
+
 .chat-bubble-user {
-    -fx-background-color: -ld-accent;
-    -fx-text-fill: -ld-accent-text;
-    -fx-background-radius: 8 8 2 8;
-    -fx-padding: 8 12 8 12;
+    -fx-background-color: -ld-accent-soft;
+    -fx-text-fill: -ld-text;
+    -fx-background-radius: 12 12 4 12;
+    -fx-border-color: derive(-ld-accent, -35%);
+    -fx-border-radius: 12 12 4 12;
+    -fx-border-width: 1;
+    -fx-padding: 9 13 9 13;
+    -fx-font-size: 13.5px;
 }
 
 .chat-bubble-user .label, .chat-bubble-user Text {
-    -fx-text-fill: -ld-accent-text;
+    -fx-text-fill: -ld-text;
 }
 
 .chat-bubble-ai {
-    -fx-background-color: -ld-card;
-    -fx-background-radius: 8 8 8 2;
-    -fx-padding: 8 12 8 12;
+    -fx-background-color: -ld-surface;
+    -fx-background-radius: 4 12 12 12;
     -fx-border-color: -ld-border;
     -fx-border-width: 1;
-    -fx-border-radius: 8 8 8 2;
+    -fx-border-radius: 4 12 12 12;
+    -fx-padding: 12 15 10 15;
+    -fx-spacing: 8;
+}
+
+.chat-thinking {
+    -fx-text-fill: -ld-text-dim;
+    -fx-font-size: 12px;
+    -fx-padding: 2 0 2 0;
+}
+
+.chat-error {
+    -fx-text-fill: -ld-danger;
+    -fx-font-size: 12.5px;
+}
+
+.chat-footer {
+    -fx-padding: 4 0 0 0;
+    -fx-border-color: -ld-border transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+}
+
+.chat-composer {
+    -fx-background-color: -ld-surface;
+    -fx-background-radius: 0 0 13 13;
+    -fx-border-color: -ld-border transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 10 12 8 12;
+}
+
+.chat-input {
+    -fx-background-color: -ld-input;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-font-size: 13.5px;
+}
+
+.chat-input .content {
+    -fx-background-color: -ld-input;
+    -fx-background-radius: 10;
+    -fx-padding: 8 10 8 10;
+}
+
+.suggestion-chip {
+    -fx-background-color: -ld-elev;
+    -fx-text-fill: -ld-text;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 999;
+    -fx-background-radius: 999;
+    -fx-padding: 6 14 6 14;
+    -fx-font-size: 12.5px;
+    -fx-cursor: hand;
+}
+
+.suggestion-chip:hover {
+    -fx-background-color: -ld-accent-soft;
+    -fx-border-color: -ld-accent;
+    -fx-text-fill: -ld-accent;
+}
+
+/* ---------- markdown rendered with TextFlow (chat) ---------- */
+
+.md-flow {
+    -fx-spacing: 7;
+}
+
+.md-text {
+    -fx-fill: -ld-text;
+    -fx-font-size: 13.5px;
+}
+
+.md-strong  { -fx-fill: -ld-text; -fx-font-weight: bold; -fx-font-size: 13.5px; }
+.md-em      { -fx-fill: -ld-text; -fx-font-style: italic; -fx-font-size: 13.5px; }
+.md-del     { -fx-fill: -ld-text-dim; -fx-strikethrough: true; -fx-font-size: 13.5px; }
+.md-highlight { -fx-fill: -ld-warn; -fx-font-weight: bold; -fx-font-size: 13.5px; }
+.md-inline-code,
+.md-code-block {
+    -fx-fill: -ld-text;
+    -fx-font-family: "Cascadia Code", "Consolas", "Segoe UI Mono", monospace;
+    -fx-font-size: 12.5px;
+}
+.md-inline-code { -fx-fill: -ld-accent; }
+.md-link    { -fx-fill: -ld-accent; -fx-underline: true; -fx-font-size: 13.5px; }
+.md-math    { -fx-fill: -ld-info; -fx-font-family: "Cambria Math", "Consolas", monospace; -fx-font-size: 13px; }
+.md-image   { -fx-fill: -ld-text-dim; -fx-font-style: italic; -fx-font-size: 12.5px; }
+.md-wiki    { -fx-fill: -ld-info; -fx-underline: true; -fx-font-size: 13.5px; }
+.md-caret   { -fx-fill: -ld-accent; -fx-font-size: 13.5px; }
+.md-empty   { -fx-text-fill: transparent; -fx-font-size: 1px; }
+
+.md-h1 { -fx-fill: -ld-text; -fx-font-size: 20px; -fx-font-weight: bold; }
+.md-h2 { -fx-fill: -ld-text; -fx-font-size: 17px; -fx-font-weight: bold; }
+.md-h3 { -fx-fill: -ld-text; -fx-font-size: 15px; -fx-font-weight: bold; }
+.md-h4, .md-h5, .md-h6 { -fx-fill: -ld-text; -fx-font-size: 13.5px; -fx-font-weight: bold; }
+
+.md-heading-block {
+    -fx-border-color: transparent transparent -ld-border transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 2 0 6 0;
+}
+
+.md-quote {
+    -fx-border-color: transparent transparent transparent -ld-accent;
+    -fx-border-width: 0 0 0 3;
+    -fx-padding: 2 0 2 12;
+}
+
+.md-quote-text .md-text,
+.md-quote-text .md-strong,
+.md-quote-text .md-em {
+    -fx-fill: -ld-text-dim;
+    -fx-font-style: italic;
+}
+
+.md-list-row { -fx-padding: 0; }
+
+.md-list-marker {
+    -fx-text-fill: -ld-accent;
+    -fx-font-size: 12.5px;
+    -fx-font-weight: bold;
+    -fx-min-width: 15;
+}
+
+.md-code-box {
+    -fx-background-color: -ld-bg;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-border-width: 1;
+    -fx-padding: 9 12 9 12;
+}
+
+.md-code-lang {
+    -fx-text-fill: -ld-text-dim;
+    -fx-font-size: 10.5px;
+}
+
+.md-rule {
+    -fx-border-color: -ld-border transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+    -fx-min-height: 1;
+    -fx-pref-height: 1;
+    -fx-padding: 2 0 2 0;
+}
+
+.md-table { -fx-hgap: 0; -fx-vgap: 0; }
+
+.md-th {
+    -fx-background-color: -ld-surface;
+    -fx-border-color: transparent transparent -ld-border transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 6 10 6 10;
+}
+
+.md-th .md-text { -fx-fill: -ld-text; -fx-font-weight: bold; -fx-font-size: 12.5px; }
+
+.md-td {
+    -fx-border-color: transparent transparent -ld-border transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 6 10 6 10;
+}
+
+.log-row {
+    -fx-background-color: -ld-surface;
+    -fx-background-radius: 8;
+    -fx-padding: 7 10 7 10;
+}
+
+.log-row-ok {
+    -fx-border-color: transparent transparent transparent -ld-ok;
+    -fx-border-width: 0 0 0 2;
+}
+
+.log-row-err {
+    -fx-border-color: transparent transparent transparent -ld-danger;
+    -fx-border-width: 0 0 0 2;
 }
 
 .chat-bubble-system {

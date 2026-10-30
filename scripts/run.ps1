@@ -11,8 +11,15 @@ if (-not (Test-Path $java)) {
     $java = $cmd.Source
 }
 
+# Bounded heap so a session cannot grow into the OS commit limit and die with
+# a native malloc failure (see run-app.ps1 for the full explanation).
 Start-Process -FilePath $java -ArgumentList @(
     '-Dstdout.encoding=UTF-8',
+    '-Xms64m',
+    '-Xmx1024m',
+    '-XX:MaxMetaspaceSize=256m',
+    '-XX:ReservedCodeCacheSize=128m',
+    '-XX:MaxDirectMemorySize=256m',
     '-cp', "target\classes;target\lib\*",
     'com.lifedesk.app.Launcher'
 ) -WorkingDirectory $root

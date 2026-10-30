@@ -93,8 +93,18 @@ if (-not (Test-Path $classDir) -or -not (Test-Path $libDir)) {
 }
 
 # ---- 4. launch ----
+# Bounded heap: the default is 1/4 of RAM (~8 GB reserved on a 32 GB machine),
+# which lets a session grow until Windows' commit limit is gone — the JVM then
+# dies with a native malloc failure ("insufficient memory ... Chunk::new") and
+# the window simply disappears. 1 GB is ample for this app and keeps the
+# process well inside the system's commit budget.
 $argsList = @(
-    '-Dstdout.encoding=UTF-8'
+    '-Dstdout.encoding=UTF-8',
+    '-Xms64m',
+    '-Xmx1024m',
+    '-XX:MaxMetaspaceSize=256m',
+    '-XX:ReservedCodeCacheSize=128m',
+    '-XX:MaxDirectMemorySize=256m'
 )
 
 if (-not [string]::IsNullOrWhiteSpace($DataDir)) {

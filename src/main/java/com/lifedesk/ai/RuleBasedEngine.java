@@ -105,6 +105,45 @@ public class RuleBasedEngine implements AiProvider {
     }
 
     /**
+     * The rule engine already has the full answer before it returns, so streaming
+     * is purely presentational: release it in word groups so the chat surface
+     * shows text arriving instead of a wall of text appearing in one frame.
+     * Deltas are emitted on the caller's background thread; the view throttles
+     * them, so this loop must stay cheap.
+     */
+    @Override
+    public String chatStream(List<ChatMessage> messages, String model,
+                             java.util.function.Consumer<String> onDelta) {
+        String reply = chat(messages, model);
+        if (reply == null || reply.isEmpty()) {
+            onDelta.accept("");
+            return reply;
+        }
+        String[] words = reply.split("(?<=\\s)");
+        StringBuilder chunk = new StringBuilder();
+        int inChunk = 0;
+        for (String word : words) {
+            chunk.append(word);
+            if (++inChunk < 3) {
+                continue;
+            }
+            onDelta.accept(chunk.toString());
+            chunk.setLength(0);
+            inChunk = 0;
+            try {
+                Thread.sleep(14);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        if (chunk.length() > 0) {
+            onDelta.accept(chunk.toString());
+        }
+        return reply;
+    }
+
+    /**
      * One assistant capability. Adding an intent = appending one entry here:
      * a match predicate on the raw input, a handler for it, and (optionally)
      * the help bullet it contributes to {@link #help()} — nothing else to edit.
@@ -123,13 +162,13 @@ public class RuleBasedEngine implements AiProvider {
 
     /** Dispatch order matters: explicit regex commands win over keyword matches. */
     private final List<Intent> intents = List.of(
-            new Intent("• \"tạo task: <tiêu đề>\" — tạo công việc mới (hỗ trợ \"hạn mai\", \"hạn 2026-01-31\", \"hạn 31/12\")",
+            new Intent("- \"tạo task: <tiêu đề>\" — tạo công việc mới (hỗ trợ \"hạn mai\", \"hạn 2026-01-31\", \"hạn 31/12\")",
                     q -> CREATE_TASK.matcher(q).find(),
                     q -> createTask(group(q, CREATE_TASK))),
-            new Intent("• \"tóm tắt ghi chú: <tên>\" — tóm tắt rút trích từ nội dung ghi chú",
+            new Intent("- \"tóm tắt ghi chú: <tên>\" — tóm tắt rút trích từ nội dung ghi chú",
                     q -> SUMMARIZE_NOTE.matcher(q).find(),
                     q -> summarizeNote(group(q, SUMMARIZE_NOTE))),
-            new Intent("• \"tìm: <từ khóa>\" — tìm kiếm xuyên module",
+            new Intent("- \"tìm: <từ khóa>\" — tìm kiếm xuyên module",
                     q -> SEARCH_CMD.matcher(q).find() && !q.toLowerCase(Locale.ROOT).contains("tìm kiếm model"),
                     q -> doSearch(group(q, SEARCH_CMD))),
             new Intent(null,
@@ -139,57 +178,68 @@ public class RuleBasedEngine implements AiProvider {
                                 || lower.equals("?") || lower.contains("huong dan");
                     },
                     q -> help()),
-            new Intent("• \"việc hôm nay\" / \"today\" — danh sách công việc đến hạn hôm nay",
+            // Must sit above the "hôm nay" intent: "tổng quan hôm nay" is a briefing,
+            // not a task list, and the plain keyword would otherwise swallow it.
+            new Intent("- \"tổng quan hôm nay\" — bản tin một trang: việc gấp, thói quen, tiền, ôn tập",
+                    q -> {
+                        String lower = com.lifedesk.common.TextSearch.normalize(q);
+                        return lower.contains("tong quan") || lower.contains("tinh hinh") || lower.contains("briefing")
+                                || lower.contains("sang nay") || lower.contains("dau ngay")
+                                || lower.contains("bat dau tu dau") || lower.contains("uu tien gi")
+                                || lower.contains("lam gi truoc") || lower.contains("the nao roi");
+                    },
+                    q -> briefing()),
+            new Intent("- \"việc hôm nay\" / \"today\" — danh sách công việc đến hạn hôm nay",
                     q -> {
                         String lower = com.lifedesk.common.TextSearch.normalize(q);
                         return lower.contains("hom nay") || lower.contains("today") || lower.contains("viec hom nay");
                     },
                     q -> tasksDueToday()),
-            new Intent("• \"quá hạn\" / \"overdue\" — công việc trễ hạn",
+            new Intent("- \"quá hạn\" / \"overdue\" — công việc trễ hạn",
                     q -> {
                         String lower = com.lifedesk.common.TextSearch.normalize(q);
                         return lower.contains("qua han") || lower.contains("overdue");
                     },
                     q -> tasksOverdue()),
-            new Intent("• \"sắp tới\" — lịch 7 ngày tới",
+            new Intent("- \"sắp tới\" — lịch 7 ngày tới",
                     q -> {
                         String lower = com.lifedesk.common.TextSearch.normalize(q);
                         return lower.contains("sap toi") || lower.contains("upcoming") || lower.contains("lich sap toi");
                     },
                     q -> upcoming()),
-            new Intent("• \"chi tiêu tháng này\" — tổng hợp thu chi",
+            new Intent("- \"chi tiêu tháng này\" — tổng hợp thu chi",
                     q -> {
                         String lower = com.lifedesk.common.TextSearch.normalize(q);
                         return lower.contains("chi tieu") || lower.contains("thu chi") || lower.contains("tai chinh")
                                 || lower.contains("finance") || lower.contains("expense");
                     },
                     q -> financeSummary()),
-            new Intent("• \"thói quen\" — chuỗi ngày và tỷ lệ hoàn thành",
+            new Intent("- \"thói quen\" — chuỗi ngày và tỷ lệ hoàn thành",
                     q -> {
                         String lower = com.lifedesk.common.TextSearch.normalize(q);
                         return lower.contains("thoi quen") || lower.contains("habit") || lower.contains("streak");
                     },
                     q -> habitStatus()),
-            new Intent("• \"mục tiêu\" — tiến độ mục tiêu",
+            new Intent("- \"mục tiêu\" — tiến độ mục tiêu",
                     q -> {
                         String lower = com.lifedesk.common.TextSearch.normalize(q);
                         return lower.contains("muc tieu") || lower.contains("goal");
                     },
                     q -> goalStatus()),
-            new Intent("• \"ôn tập\" — số flashcard đến hạn",
+            new Intent("- \"ôn tập\" — số flashcard đến hạn",
                     q -> {
                         String lower = com.lifedesk.common.TextSearch.normalize(q);
                         return lower.contains("on tap") || lower.contains("flashcard") || lower.contains("hoc tap")
                                 || lower.contains("review") || lower.contains("learning");
                     },
                     q -> learningStatus()),
-            new Intent("• \"gợi ý\" — đề xuất việc cần làm",
+            new Intent("- \"gợi ý\" — đề xuất việc cần làm",
                     q -> {
                         String lower = com.lifedesk.common.TextSearch.normalize(q);
                         return lower.contains("goi y") || lower.contains("suggest") || lower.contains("nen lam gi");
                     },
                     q -> suggestions()),
-            new Intent("• \"sức khỏe\" — trung bình giấc ngủ/vận động/cân nặng",
+            new Intent("- \"sức khỏe\" — trung bình giấc ngủ/vận động/cân nặng",
                     q -> {
                         String lower = com.lifedesk.common.TextSearch.normalize(q);
                         return lower.contains("suc khoe") || lower.contains("health") || lower.contains("can nang");
@@ -218,19 +268,45 @@ public class RuleBasedEngine implements AiProvider {
 
     private String help() {
         StringBuilder sb = new StringBuilder(
-                "Tôi là engine quy tắc chạy hoàn toàn offline (không phải LLM). Các lệnh tôi hiểu:\n");
+                "## Tôi hiểu những lệnh này\n\n"
+                        + "_Engine quy tắc chạy hoàn toàn offline — không phải LLM._\n\n");
         for (Intent intent : intents) {
             if (intent.helpLine() != null) {
                 sb.append(intent.helpLine()).append('\n');
             }
         }
-        sb.append("Muốn hỏi đáp ngôn ngữ tự nhiên? Bật provider Ollama hoặc Kilo trong Cài đặt → AI.");
+        sb.append("\nMuốn hỏi đáp ngôn ngữ tự nhiên? Bật provider Ollama hoặc Kilo trong Cài đặt → AI.");
         return sb.toString();
     }
 
+    /**
+     * Honest failure, but not a dead end: the offline engine cannot reason about
+     * arbitrary language, so instead of just refusing it looks the words up across
+     * the user's own data and offers the commands closest to what was asked.
+     */
     private String unknown(String q) {
-        return "Câu hỏi \"" + q + "\" nằm ngoài khả năng của engine quy tắc (tôi không đoán hay suy luận ngôn ngữ tự nhiên).\n"
-                + "Gõ \"help\" để xem các lệnh hỗ trợ, hoặc bật Ollama/Kilo trong Cài đặt → AI để dùng LLM.";
+        StringBuilder sb = new StringBuilder();
+        sb.append("Câu hỏi \"").append(q)
+                .append("\" nằm ngoài khả năng của engine quy tắc (tôi không đoán hay suy luận ngôn ngữ tự nhiên).\n");
+        var groups = searchService.query(q, null, 3);
+        if (!groups.isEmpty()) {
+            sb.append("\n**Có thể bạn đang tìm trong dữ liệu của mình:**\n");
+            int shown = 0;
+            for (SearchGroup g : groups) {
+                for (var r : g.results()) {
+                    if (shown++ >= 4) {
+                        break;
+                    }
+                    sb.append("- ").append(r.doc().title())
+                            .append(" _(").append(g.displayType()).append(")_\n");
+                }
+                if (shown >= 4) {
+                    break;
+                }
+            }
+        }
+        sb.append("\nGõ \"help\" để xem các lệnh hỗ trợ, hoặc bật Ollama/Kilo trong Cài đặt → AI để dùng LLM.");
+        return sb.toString();
     }
 
     private String createTask(String rest) {
@@ -276,95 +352,176 @@ public class RuleBasedEngine implements AiProvider {
         return null;
     }
 
+    /** Việt hoá mức ưu tiên cho câu trả lời (chat hiển thị thẳng chuỗi này). */
+    private static String priorityLabel(Priority p) {
+        return switch (p) {
+            case URGENT -> "Khẩn";
+            case HIGH -> "Ưu tiên cao";
+            case MEDIUM -> "Trung bình";
+            case LOW -> "Thấp";
+        };
+    }
+
+    /** Most urgent first: priority, then due time, then creation order. */
+    private static int byUrgency(Task a, Task b) {
+        int p = Integer.compare(b.priority.ordinal(), a.priority.ordinal());
+        if (p != 0) {
+            return p;
+        }
+        java.time.LocalTime ta = a.dueTime;
+        java.time.LocalTime tb = b.dueTime;
+        if (ta != null && tb != null) {
+            int t = ta.compareTo(tb);
+            if (t != 0) {
+                return t;
+            }
+        } else if (ta != null) {
+            return -1;
+        } else if (tb != null) {
+            return 1;
+        }
+        return a.title.compareToIgnoreCase(b.title);
+    }
+
+    private static String vnd(java.math.BigDecimal amount) {
+        return String.format("%,d", amount.longValue()).replace(',', '.') + " ₫";
+    }
+
     private String tasksDueToday() {
         List<Task> list = new ArrayList<>(taskService.dueToday());
         if (list.isEmpty()) {
-            return "Hôm nay không có công việc nào đến hạn. 🎉";
+            return "## Hôm nay không có việc đến hạn\n\n"
+                    + "Không có gì gấp trong hôm nay. Nếu muốn đi trước, hỏi tôi \"sắp tới\" "
+                    + "để xem 7 ngày tới.";
         }
-        StringBuilder sb = new StringBuilder("Công việc đến hạn hôm nay (" + list.size() + "):\n");
+        list.sort(RuleBasedEngine::byUrgency);
+        StringBuilder sb = new StringBuilder("## Việc đến hạn hôm nay\n\n")
+                .append("**").append(list.size()).append(" việc**, xếp theo mức độ gấp:\n\n");
+        int index = 1;
         for (Task t : list) {
-            sb.append("• [").append(t.priority).append("] ").append(t.title);
+            sb.append(index++).append(". ").append(t.title)
+                    .append(" — _").append(priorityLabel(t.priority)).append('_');
             if (t.dueTime != null) {
-                sb.append(" lúc ").append(t.dueTime);
+                sb.append(", ").append(t.dueTime);
+            }
+            if (!t.group.isBlank()) {
+                sb.append(" · ").append(t.group);
             }
             sb.append('\n');
         }
+        Task first = list.get(0);
+        sb.append("\n**Bắt đầu với:** ").append(first.title)
+                .append(" (_").append(priorityLabel(first.priority)).append("_) — xong việc khó nhất trước.");
         return sb.toString();
     }
 
     private String tasksOverdue() {
         List<Task> list = new ArrayList<>(taskService.overdue());
         if (list.isEmpty()) {
-            return "Không có công việc nào quá hạn. 👍";
+            return "## Không có việc quá hạn\n\nSạch nợ công việc. Giữ nguyên đà này nhé.";
         }
-        StringBuilder sb = new StringBuilder("Công việc quá hạn (" + list.size() + "):\n");
+        list.sort(java.util.Comparator.comparing(t -> t.dueDate));
+        LocalDate today = LocalDate.now();
+        StringBuilder sb = new StringBuilder("## Việc quá hạn\n\n**" + list.size() + " việc** cần xử lý:\n\n");
         for (Task t : list) {
-            sb.append("• ").append(t.title).append(" (hạn ").append(t.dueDate).append(")\n");
+            long days = t.dueDate == null ? 0 : java.time.temporal.ChronoUnit.DAYS.between(t.dueDate, today);
+            sb.append("- ").append(t.title).append(" — hạn ").append(t.dueDate)
+                    .append(" (_").append(days).append(" ngày_)")
+                    .append(" · ").append(priorityLabel(t.priority)).append('\n');
         }
+        sb.append("\nNếu việc nào không còn cần nữa, hãy đóng nó lại thay vì để nó tiếp tục đè nặng danh sách.");
         return sb.toString();
     }
 
     private String upcoming() {
         List<Task> list = new ArrayList<>(taskService.upcoming(7));
         if (list.isEmpty()) {
-            return "Không có lịch nào trong 7 ngày tới.";
+            return "## 7 ngày tới trống lịch\n\nChưa có công việc nào được đặt hạn trong tuần tới.";
         }
-        StringBuilder sb = new StringBuilder("Lịch 7 ngày tới:\n");
+        list.sort(java.util.Comparator.comparing((Task t) -> t.dueDate).thenComparing(RuleBasedEngine::byUrgency));
+        StringBuilder sb = new StringBuilder("## Lịch 7 ngày tới\n\n");
+        LocalDate lastDate = null;
         for (Task t : list) {
-            sb.append("• ").append(t.dueDate).append(": ").append(t.title).append('\n');
+            if (!t.dueDate.equals(lastDate)) {
+                lastDate = t.dueDate;
+                sb.append("\n### ").append(lastDate)
+                        .append(" (_").append(lastDate.getDayOfWeek().getDisplayName(
+                                java.time.format.TextStyle.SHORT, java.util.Locale.forLanguageTag("vi-VN")))
+                        .append("_)\n\n");
+            }
+            sb.append("- ").append(t.title);
+            if (t.dueTime != null) {
+                sb.append(", ").append(t.dueTime);
+            }
+            sb.append(" · ").append(priorityLabel(t.priority)).append('\n');
         }
-        return sb.toString();
+        return sb.toString().stripTrailing();
     }
 
     private String financeSummary() {
         var now = java.time.YearMonth.now();
         var s = financeService.monthSummary(now);
-        return "Tổng hợp " + now + "\n"
-                + "• Thu nhập: " + s.income().toPlainString() + " VND\n"
-                + "• Chi tiêu: " + s.expense().toPlainString() + " VND\n"
-                + "• Ròng: " + s.net().toPlainString() + " VND";
+        String verdict = s.net().signum() >= 0
+                ? "Tháng này bạn đang giữ lại được **" + vnd(s.net()) + "**."
+                : "Tháng này chi đang vượt thu **" + vnd(s.net().abs()) + "** — nên siết lại các khoản lớn.";
+        return "## Tài chính tháng " + now.getMonthValue() + "/" + now.getYear() + "\n\n"
+                + "| Khoản | Số tiền |\n"
+                + "|---|---:|\n"
+                + "| Thu nhập | " + vnd(s.income()) + " |\n"
+                + "| Chi tiêu | " + vnd(s.expense()) + " |\n"
+                + "| **Ròng** | **" + vnd(s.net()) + "** |\n\n"
+                + verdict;
     }
 
     private String habitStatus() {
         List<Habit> habits = habitService.habits(false);
         if (habits.isEmpty()) {
-            return "Chưa có thói quen nào.";
+            return "## Chưa có thói quen nào\n\nTạo một thói quen nhỏ trong mục Thói quen & Mục tiêu "
+                    + "để tôi theo dõi chuỗi ngày giúp bạn.";
         }
-        StringBuilder sb = new StringBuilder("Thói quen hiện tại:\n");
+        StringBuilder sb = new StringBuilder("## Thói quen hiện tại\n\n")
+                .append("| Thói quen | Chuỗi | 30 ngày |\n")
+                .append("|---|---:|---:|\n");
         for (Habit h : habits) {
-            sb.append("• ").append(h.name)
-                    .append(" — chuỗi hiện tại: ").append(habitService.currentStreak(h))
-                    .append(" ngày, tỷ lệ 30 ngày: ")
-                    .append(Math.round(habitService.completionRate(h, 30) * 100)).append("%\n");
+            sb.append("| ").append(h.name).append(" | ").append(habitService.currentStreak(h))
+                    .append(" ngày | ").append(Math.round(habitService.completionRate(h, 30) * 100))
+                    .append("% |\n");
         }
-        return sb.toString();
+        return sb.toString().stripTrailing();
     }
 
     private String goalStatus() {
         var goals = habitService.goals();
         var active = goals.stream().filter(g -> g.status() == com.lifedesk.habits.GoalStatus.ACTIVE).toList();
         if (active.isEmpty()) {
-            return "Không có mục tiêu đang hoạt động.";
+            return "## Không có mục tiêu đang hoạt động\n\nĐặt một mục tiêu trong Thói quen & Mục tiêu "
+                    + "để tôi báo tiến độ mỗi khi bạn hỏi.";
         }
-        StringBuilder sb = new StringBuilder("Mục tiêu đang hoạt động:\n");
+        StringBuilder sb = new StringBuilder("## Mục tiêu đang hoạt động\n\n");
         for (var g : active) {
-            sb.append("• ").append(g.title()).append(" — tiến độ ").append(g.progressMode() == com.lifedesk.habits.ProgressMode.MANUAL
-                    ? g.manualProgress() + "%" : "tự động từ task liên kết").append('\n');
+            sb.append("- **").append(g.title()).append("** — ").append(
+                    g.progressMode() == com.lifedesk.habits.ProgressMode.MANUAL
+                            ? g.manualProgress() + "% (tự đặt)"
+                            : "tự động từ công việc liên kết")
+                    .append('\n');
         }
-        return sb.toString();
+        return sb.toString().stripTrailing();
     }
 
     private String learningStatus() {
         int due = learningService.dueCount();
         var courses = learningService.courses().stream()
                 .filter(c -> c.status() == com.lifedesk.learning.CourseStatus.IN_PROGRESS).toList();
-        StringBuilder sb = new StringBuilder();
-        sb.append("• Flashcard đến hạn ôn tập: ").append(due).append('\n');
-        sb.append("• Khóa học đang học: ").append(courses.size());
+        StringBuilder sb = new StringBuilder("## Học tập\n\n");
+        sb.append("- Flashcard đến hạn ôn: **").append(due).append("**\n");
+        sb.append("- Khóa học đang học: **").append(courses.size()).append("**\n");
         for (var c : courses) {
-            sb.append("\n  - ").append(c.title()).append(" (").append(c.progressPercent()).append("%)");
+            sb.append("  - ").append(c.title()).append(" (_").append(c.progressPercent()).append("%_)\n");
         }
-        return sb.toString();
+        if (due == 0 && courses.isEmpty()) {
+            sb.append("\nHiện không có gì để ôn — thêm thẻ hoặc khóa học mới trong mục Học tập.");
+        }
+        return sb.toString().stripTrailing();
     }
 
     private String healthStatus() {
@@ -372,19 +529,21 @@ public class RuleBasedEngine implements AiProvider {
         Double weight = healthService.averageDays(com.lifedesk.health.HealthService.HealthField.WEIGHT, 30);
         Double exercise = healthService.averageDays(com.lifedesk.health.HealthService.HealthField.EXERCISE, 30);
         if (sleep == null && weight == null && exercise == null) {
-            return "Chưa có dữ liệu sức khỏe nào trong 30 ngày qua.";
+            return "## Chưa có dữ liệu sức khỏe\n\n30 ngày qua chưa có bản ghi nào. "
+                    + "Ghi giấc ngủ/vận động/cân nặng trong mục Sức khỏe để tôi tổng hợp.";
         }
-        StringBuilder sb = new StringBuilder("Trung bình 30 ngày gần nhất:\n");
+        StringBuilder sb = new StringBuilder("## Trung bình 30 ngày gần nhất\n\n").append("| Chỉ số | Trung bình |\n")
+                .append("|---|---:|\n");
         if (sleep != null) {
-            sb.append("• Giấc ngủ: ").append(sleep).append(" giờ/đêm\n");
+            sb.append("| Giấc ngủ | ").append(String.format("%.1f", sleep)).append(" giờ/đêm |\n");
         }
         if (exercise != null) {
-            sb.append("• Vận động: ").append(Math.round(exercise)).append(" phút/ngày\n");
+            sb.append("| Vận động | ").append(Math.round(exercise)).append(" phút/ngày |\n");
         }
         if (weight != null) {
-            sb.append("• Cân nặng: ").append(weight).append(" kg\n");
+            sb.append("| Cân nặng | ").append(String.format("%.1f", weight)).append(" kg |\n");
         }
-        sb.append("(Chỉ là số liệu bạn ghi nhận, không phải khuyến nghị y tế.)");
+        sb.append("\n_Đây là số liệu bạn tự ghi nhận, không phải khuyến nghị y tế._");
         return sb.toString();
     }
 
@@ -393,16 +552,17 @@ public class RuleBasedEngine implements AiProvider {
         if (groups.isEmpty()) {
             return "Không tìm thấy kết quả nào cho \"" + query + "\".";
         }
-        StringBuilder sb = new StringBuilder("Kết quả cho \"" + query + "\":\n");
+        StringBuilder sb = new StringBuilder("## Kết quả cho \"" + query + "\"\n");
         int total = 0;
         for (SearchGroup g : groups) {
-            sb.append("\n[").append(g.displayType()).append("]\n");
+            sb.append("\n### ").append(g.displayType()).append('\n');
             for (var r : g.results()) {
-                sb.append("• ").append(r.doc().title()).append('\n');
+                sb.append("- ").append(r.doc().title()).append('\n');
                 total++;
             }
         }
-        return sb.toString().stripTrailing() + "\n(" + total + " kết quả — mở tab Tìm kiếm để xem chi tiết)";
+        return sb.toString().stripTrailing() + "\n\n_" + total
+                + " kết quả — mở tab Tìm kiếm để xem chi tiết._";
     }
 
     /** Extractive summarizer: honest about being rule-based (no LLM). */
@@ -470,6 +630,97 @@ public class RuleBasedEngine implements AiProvider {
         return score;
     }
 
+    /**
+     * The one answer a personal assistant must get right: what deserves
+     * attention today across every module, ranked, in one screen.
+     * Every line comes from stored data — nothing here is inferred or invented.
+     */
+    private String briefing() {
+        LocalDate today = LocalDate.now();
+        List<Task> overdue = new ArrayList<>(taskService.overdue());
+        List<Task> due = new ArrayList<>(taskService.dueToday());
+        overdue.sort(java.util.Comparator.comparing((Task t) -> t.dueDate == null ? today : t.dueDate));
+        due.sort(RuleBasedEngine::byUrgency);
+
+        StringBuilder sb = new StringBuilder("## Tổng quan ").append(today.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")))
+                .append(" — ").append(today.getDayOfWeek().getDisplayName(
+                        java.time.format.TextStyle.FULL, java.util.Locale.forLanguageTag("vi-VN")))
+                .append("\n\n");
+
+        if (overdue.isEmpty() && due.isEmpty()) {
+            sb.append("**Không có việc nào quá hạn hay đến hạn hôm nay.** Ngày sạch việc.\n\n");
+        } else {
+            sb.append("### Ưu tiên ngay\n\n");
+            int shown = 0;
+            for (Task t : overdue) {
+                if (shown++ >= 3) {
+                    break;
+                }
+                long days = java.time.temporal.ChronoUnit.DAYS.between(t.dueDate == null ? today : t.dueDate, today);
+                sb.append("- ").append(t.title).append(" — _quá hạn ").append(days).append(" ngày_")
+                        .append(" · ").append(priorityLabel(t.priority)).append('\n');
+            }
+            for (Task t : due) {
+                if (shown++ >= 5) {
+                    break;
+                }
+                sb.append("- ").append(t.title).append(" — _hôm nay")
+                        .append(t.dueTime != null ? ", " + t.dueTime : "")
+                        .append(" · ").append(priorityLabel(t.priority)).append("_\n");
+            }
+            if (shown < overdue.size() + due.size()) {
+                sb.append("- …và ").append(overdue.size() + due.size() - shown).append(" việc nữa\n");
+            }
+            sb.append('\n');
+        }
+
+        List<String> watch = new ArrayList<>();
+        int cards = learningService.dueCount();
+        if (cards > 0) {
+            watch.add("**" + cards + " flashcard** đến hạn ôn — khoảng " + Math.max(5, cards * 2) + " phút.");
+        }
+        LocalDate yesterday = today.minusDays(1);
+        List<String> missed = new ArrayList<>();
+        for (Habit h : habitService.habits(false)) {
+            if (h.scheduledOn(yesterday.getDayOfWeek()) && !habitService.isCompleted(h.id, yesterday)) {
+                missed.add(h.name);
+            }
+        }
+        if (!missed.isEmpty()) {
+            watch.add("Hôm qua lỡ **" + String.join(", ", missed.subList(0, Math.min(3, missed.size())))
+                    + "** — hôm nay làm lại là chuỗi vẫn tiếp.");
+        }
+        var month = financeService.monthSummary(java.time.YearMonth.now());
+        if (month.expense().signum() > 0) {
+            watch.add(month.net().signum() < 0
+                    ? "Chi đang vượt thu **" + vnd(month.net().abs()) + "** trong tháng này."
+                    : "Tháng này còn dư **" + vnd(month.net()) + "**.");
+        }
+        if (!watch.isEmpty()) {
+            sb.append("### Cần chú ý\n\n");
+            for (String w : watch) {
+                sb.append("- ").append(w).append('\n');
+            }
+            sb.append('\n');
+        }
+
+        sb.append("### Bước tiếp theo\n\n");
+        if (!overdue.isEmpty()) {
+            sb.append("Xử lý \"").append(overdue.get(0).title).append("\" trước — nó đã trễ ")
+                    .append(java.time.temporal.ChronoUnit.DAYS.between(
+                            overdue.get(0).dueDate == null ? today : overdue.get(0).dueDate, today))
+                    .append(" ngày. Hỏi tôi \"quá hạn\" để xem toàn bộ.");
+        } else if (!due.isEmpty()) {
+            sb.append("Bắt đầu với \"").append(due.get(0).title).append("\" (_")
+                    .append(priorityLabel(due.get(0).priority)).append("_) — hỏi tôi \"việc hôm nay\" để xem cả danh sách.");
+        } else if (cards > 0) {
+            sb.append("Không có việc gấp — dồn 15 phút cho ").append(cards).append(" flashcard đang đến hạn.");
+        } else {
+            sb.append("Không có gì gấp. Dùng thời gian này để lên kế hoạch tuần: hỏi tôi \"sắp tới\".");
+        }
+        return sb.toString().stripTrailing();
+    }
+
     private String suggestions() {
         List<String> out = new ArrayList<>();
         var overdue = taskService.overdue();
@@ -495,11 +746,13 @@ public class RuleBasedEngine implements AiProvider {
             out.add("Tháng này chi đang vượt thu — xem lại các danh mục chi lớn.");
         }
         if (out.isEmpty()) {
-            return "Hiện không có gợi ý nào — mọi thứ đang ổn! 🎉";
+            return "## Không có gì cần xử lý\n\nMọi thứ đang ổn: không việc quá hạn, không thẻ đến hạn, "
+                    + "thói quen đều đặn. Đây là lúc tốt để nghĩ về việc dài hạn.";
         }
-        StringBuilder sb = new StringBuilder("Gợi ý cho bạn:\n");
+        StringBuilder sb = new StringBuilder("## Gợi ý cho bạn\n\n");
+        int i = 1;
         for (String s : out) {
-            sb.append("• ").append(s).append('\n');
+            sb.append(i++).append(". ").append(s).append('\n');
         }
         return sb.toString().stripTrailing();
     }

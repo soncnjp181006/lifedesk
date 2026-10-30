@@ -37,6 +37,8 @@ import java.util.function.Supplier;
  * between module views.
  */
 public class MainWindow {
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(MainWindow.class);
+
     public enum ViewId {
         DASHBOARD("Dashboard", "layout-dashboard", null, null),
         TASKS("Công việc", "list-checks", "tasks", "TASK"),
@@ -108,6 +110,11 @@ public class MainWindow {
     private final VBox sidebarBox = new VBox(4);
     private final Map<ViewId, View> views = new HashMap<>();
     private final Map<ViewId, Supplier<View>> viewFactories = new HashMap<>();
+    /** Sidebar buttons, kept so navigation only re-tints a class instead of rebuilding. */
+    private final Map<ViewId, Button> navButtons = new HashMap<>();
+    /** Scroll offset per view, restored when the view is shown again. */
+    private final Map<ViewId, Double> scrollPositions = new HashMap<>();
+    private ScrollPane centerScroll;
     private ViewId current = null;
 
     private Label statusLabel;
@@ -155,7 +162,7 @@ public class MainWindow {
         root.setTop(buildTopBar());
         root.setLeft(buildSidebar());
         content.getStyleClass().add("content-area");
-        ScrollPane centerScroll = new ScrollPane(content);
+        centerScroll = new ScrollPane(content);
         centerScroll.setFitToWidth(true);
         // Fill the window when the view is short, but scroll instead of squeezing
         // when it is tall (fitToHeight would compress the dashboard charts).
@@ -252,6 +259,7 @@ public class MainWindow {
         if (sidebarBox.getChildren().size() > 2) {
             sidebarBox.getChildren().remove(2, sidebarBox.getChildren().size());
         }
+        navButtons.clear();
         // Collapsed rail shows icons only; the brand block disappears instead of
         // shrinking to a lone "L" that reads like a stray character.
         brandBox.setVisible(!sidebarCollapsed);
@@ -279,8 +287,24 @@ public class MainWindow {
             btn.setTooltip(new Tooltip(hint == null ? id.label : id.label + "  (" + hint + ")"
                     + "  ·  chuột phải để đổi icon"));
             attachIconMenu(btn, id.name(), () -> rebuildSidebarButtons());
+            navButtons.put(id, btn);
             sidebarBox.getChildren().add(btn);
         }
+    }
+
+    /**
+     * Mark the active entry without touching the rest: creating ~13 buttons and
+     * icon shape copies on every navigation was a measurable part of the switch lag.
+     */
+    private void updateNavSelection() {
+        navButtons.forEach((id, btn) -> {
+            boolean active = id == current;
+            if (active && !btn.getStyleClass().contains("active")) {
+                btn.getStyleClass().add("active");
+            } else if (!active) {
+                btn.getStyleClass().remove("active");
+            }
+        });
     }
 
     /**
@@ -414,13 +438,62 @@ public class MainWindow {
         View old = views.get(current);
         if (old != null) {
             old.onHide();
+            if (centerScroll != null) {
+                scrollPositions.put(current, centerScroll.getVvalue());
+            }
         }
         current = id;
         view.ensureBuilt();
         content.getChildren().setAll(view);
         VBox.setVgrow(view, Priority.ALWAYS);
-        rebuildSidebarButtons();
+        updateNavSelection();
         view.onShow();
+        if (centerScroll != null) {
+            double v = scrollPositions.getOrDefault(id, 0.0);
+            if (v > 0) {
+                javafx.application.Platform.runLater(() -> centerScroll.setVvalue(v));
+            }
+        }
+    }
+
+    /**
+     * Build views ahead of the first click so navigation is instant.
+     *
+     * <p>Runs one view per pulse after startup instead of one big blocking burst,
+     * and skips views whose whole surface is a WebView (Notes, RSS): those allocate
+     * a WebKit page per visit, and paying that at startup would raise peak memory
+     * for no benefit. Learning is warmed last because its review tab does create a
+     * WebView — cheap once, but not something to pay for before the user asks.
+     */
+    private void prewarmViews() {
+        List<ViewId> warm = List.of(ViewId.TASKS, ViewId.FINANCE, ViewId.HABITS, ViewId.HEALTH,
+                ViewId.FILES, ViewId.AI, ViewId.AGENT, ViewId.SETTINGS,
+                ViewId.LIBRARY, ViewId.DASHBOARD, ViewId.LEARNING);
+        warmOne(warm, 0);
+    }
+
+    private void warmOne(List<ViewId> ids, int index) {
+        if (index >= ids.size()) {
+            return;
+        }
+        ViewId id = ids.get(index);
+        javafx.animation.PauseTransition delay = new javafx.animation.PauseTransition(
+                javafx.util.Duration.millis(index == 0 ? 700 : 90));
+        delay.setOnFinished(e -> {
+            try {
+                View v = views.computeIfAbsent(id, k -> viewFactories.get(k).get());
+                v.ensureBuilt();
+            } catch (Throwable ex) {
+                // Speculative work must never reach the global crash handler: a broken
+                // optional native (WebKit) or a fragile view would otherwise pop an
+                // error dialog about a screen the user never asked to open. Drop the
+                // half-built view so the real click retries it with a clean slate.
+                views.remove(id);
+                LOG.warn("Không dựng trước được view {}", id, ex);
+            }
+            warmOne(ids, index + 1);
+        });
+        delay.play();
     }
 
     public void showSearch(String query) {
@@ -551,6 +624,7 @@ public class MainWindow {
     public void onReady() {
         ctx.notifications().push("Chào mừng", "LifeDesk đã sẵn sàng. Dữ liệu: " + ctx.dataDir(), "INFO", "", "");
         refreshNotifBadge();
+        prewarmViews();
         ctx.issueLog().addListener(() -> {
             var issues = ctx.issueLog().issues();
             if (!issues.isEmpty()) {

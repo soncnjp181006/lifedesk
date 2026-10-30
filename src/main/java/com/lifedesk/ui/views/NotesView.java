@@ -344,6 +344,11 @@ public class NotesView extends View {
                 });
 
         editorPane.setBottom(statusHint);
+        // Preview gets the same surface treatment as the editor so the two panes
+        // read as one split editor instead of two mismatched boxes.
+        preview.getStyleClass().add("md-preview-wrap");
+        preview.setPadding(new javafx.geometry.Insets(1));
+        preview.setMinHeight(0);
         // Pre-render an empty themed page so the preview never flashes white.
         preview.render("", ctx.themeManager().previewPalette(ctx.config().theme));
 
@@ -536,7 +541,6 @@ public class NotesView extends View {
             String path = currentFolder.isEmpty() ? name.trim() : currentFolder + "/" + name.trim();
             currentFolder = ctx.notes().createFolder(path);
             refreshNoteList();
-            refreshNoteList();
             main.status("Đã tạo thư mục " + currentFolder);
         } catch (RuntimeException e) {
             Dialogs.error("Không tạo được thư mục", e.getMessage());
@@ -555,7 +559,6 @@ public class NotesView extends View {
         }
         try {
             currentFolder = ctx.notes().renameFolder(currentFolder, name.trim());
-            refreshNoteList();
             refreshNoteList();
             main.status("Đã đổi tên thành " + currentFolder);
         } catch (RuntimeException e) {
@@ -582,7 +585,6 @@ public class NotesView extends View {
             ctx.notes().deleteFolder(target);
             currentFolder = target.contains("/")
                     ? target.substring(0, target.lastIndexOf('/')) : "";
-            refreshNoteList();
             refreshNoteList();
             main.status("Đã xoá thư mục " + target);
         } catch (RuntimeException e) {
@@ -925,12 +927,16 @@ public class NotesView extends View {
                         .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")));
                 loadedHash = com.lifedesk.common.Fingerprint.sha256(editor.getText());
             }
+            // Only a title/tag change alters the explorer tree; a plain content
+            // save used to rebuild every tree item on each autosave tick.
+            if (metaChanged) {
+                refreshNoteList();
+            }
         } catch (RuntimeException e) {
             statusHint.setText("LƯU THẤT BẠI: " + e.getMessage());
             Dialogs.error("Lưu ghi chú thất bại", e.getMessage()
                     + "\nNội dung vẫn còn trong trình soạn thảo — thử lại hoặc chép ra nơi khác.");
         }
-        refreshNoteList();
     }
 
     
@@ -996,7 +1002,8 @@ public class NotesView extends View {
 
     @Override
     public void onShow() {
-        refreshNoteList();
+        // One rebuild is enough: this used to run twice per visit, which is the
+        // main reason switching to Notes felt sluggish.
         refreshNoteList();
     }
 

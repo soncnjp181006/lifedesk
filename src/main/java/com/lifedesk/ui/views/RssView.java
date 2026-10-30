@@ -14,7 +14,6 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
-import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -25,14 +24,21 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
 /**
- * RSS dashboard (rss-dashboard study): feed sidebar with folders → article
- * list with unread markers → distraction-free reader. Save-to-note turns an
- * article into a permanent markdown note; OPML keeps subscriptions portable.
+ * RSS dashboard: feed sidebar with folders → article list with unread markers →
+ * distraction-free reader. Save-to-note turns an article into a permanent
+ * markdown note; OPML keeps subscriptions portable.
+ *
+ * <p>Layout: three equal-baseline panels in an HBox. The SplitPane this used to
+ * be drew separators that stopped short of the panel edges and let each column's
+ * height drift, which is why the reader column looked misaligned.
  */
 public class RssView extends View {
     private final ListView<RssService.Feed> feedList = new ListView<>();
     private final ListView<RssService.Article> articleList = new ListView<>();
-    private final com.lifedesk.markdown.MarkdownPreviewPane reader = new com.lifedesk.markdown.MarkdownPreviewPane();
+    private final com.lifedesk.markdown.MarkdownPreviewPane reader =
+            new com.lifedesk.markdown.MarkdownPreviewPane();
+    private final Label articleCount = new Label();
+    private final Label feedCount = new Label();
     private static final DateTimeFormatter DATE_FMT =
             DateTimeFormatter.ofPattern("dd/MM HH:mm").withZone(ZoneId.systemDefault());
 
@@ -56,7 +62,7 @@ public class RssView extends View {
         refresh.setOnAction(e -> refreshAll());
         Button addFeed = new Button("Thêm feed", new IconView("plus", 15));
         addFeed.setOnAction(e -> addFeed());
-        Button opmlExport = new Button("Xuất OPML");
+        Button opmlExport = new Button("Xuất OPML", new IconView("download", 15));
         opmlExport.setOnAction(e -> exportOpml());
         Button opmlImport = new Button("Nhập OPML");
         opmlImport.setOnAction(e -> importOpml());
@@ -64,22 +70,31 @@ public class RssView extends View {
         header.setAlignment(Pos.CENTER_LEFT);
 
         // ---- left: feeds
-        feedList.setPrefWidth(240);
-        feedList.setMinWidth(180);
+        feedList.getStyleClass().add("note-list");
+        feedList.setMinWidth(0);
         feedList.setCellFactory(v -> new ListCell<>() {
             @Override
             protected void updateItem(RssService.Feed item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty || item == null) {
                     setText(null);
-                } else {
-                    setText(item.title + (item.folder.isEmpty() ? "" : "  (" + item.folder + ")"));
+                    setGraphic(null);
+                    return;
                 }
+                Label name = new Label(item.title);
+                name.getStyleClass().add("section-label");
+                name.setWrapText(true);
+                int unread = unreadFor(item);
+                Label meta = new Label((item.folder.isEmpty() ? "Không thư mục" : item.folder)
+                        + (unread > 0 ? "  ·  " + unread + " chưa đọc" : ""));
+                meta.getStyleClass().add("chat-hint");
+                setGraphic(new VBox(2, name, meta));
+                setText(null);
             }
         });
         feedList.getItems().setAll(ctx.rss().feeds());
         feedList.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> filterArticles());
-        Button delFeed = new Button("", new IconView("trash", 15));
+        Button delFeed = new Button("", new IconView("trash", 14));
         delFeed.getStyleClass().add("icon-btn");
         delFeed.setTooltip(new Tooltip("Xóa feed đang chọn"));
         delFeed.setOnAction(e -> {
@@ -90,15 +105,15 @@ public class RssView extends View {
                 refreshArticleList();
             }
         });
-        VBox feedPane = new VBox(8, new HBox(8, new Label("Feeds"), new Region(), delFeed), feedList);
-        ((HBox) feedPane.getChildren().get(0)).getChildren().stream()
-                .filter(n -> n instanceof Region).findFirst()
-                .ifPresent(n -> HBox.setHgrow(n, Priority.ALWAYS));
-        VBox.setVgrow(feedList, Priority.ALWAYS);
+        feedCount.getStyleClass().add("chip");
+        VBox feedPanel = panel("Feeds", feedCount, delFeed, feedList);
+        feedPanel.setMinWidth(190);
+        feedPanel.setPrefWidth(230);
+        feedPanel.setMaxWidth(300);
 
         // ---- middle: articles
-        articleList.setPrefWidth(360);
-        articleList.setMinWidth(280);
+        articleList.getStyleClass().add("note-list");
+        articleList.setMinWidth(0);
         articleList.setCellFactory(v -> new ListCell<>() {
             @Override
             protected void updateItem(RssService.Article item, boolean empty) {
@@ -109,37 +124,80 @@ public class RssView extends View {
                     return;
                 }
                 boolean read = ctx.rss().isRead(item.url());
-                Label title = new Label((read ? "" : "● ") + item.title());
-                title.getStyleClass().add(read ? "dim-label" : "section-label");
-                title.setWrapText(true);
-                Label meta = new Label(item.feedTitle() + " — " + DATE_FMT.format(item.published()));
-                meta.getStyleClass().add("dim-label");
-                setGraphic(new VBox(2, title, meta));
+                Label head = new Label(item.title());
+                head.getStyleClass().add(read ? "dim-label" : "section-label");
+                head.setWrapText(true);
+                Label meta = new Label((read ? "" : "● ") + item.feedTitle() + " — "
+                        + DATE_FMT.format(item.published()));
+                meta.getStyleClass().add("chat-hint");
+                setGraphic(new VBox(3, head, meta));
                 setText(null);
             }
         });
         articleList.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> openArticle(b));
-        VBox articlePane = new VBox(8, new Label("Bài viết"), articleList);
-        VBox.setVgrow(articleList, Priority.ALWAYS);
+        articleCount.getStyleClass().add("chip");
+        VBox articlePanel = panel("Bài viết", articleCount, null, articleList);
+        articlePanel.setMinWidth(250);
+        articlePanel.setPrefWidth(330);
+        articlePanel.setMaxWidth(420);
 
         // ---- right: reader
-        reader.render("Chọn một bài viết để đọc tại đây.", ctx.themeManager().previewPalette(ctx.config().theme));
-        HBox readerBar = new HBox(8, saveButton(), new Region());
-        HBox.setHgrow(readerBar.getChildren().get(1), Priority.ALWAYS);
-        VBox readerPane = new VBox(8, readerBar, reader);
+        reader.setMinHeight(0);
         VBox.setVgrow(reader, Priority.ALWAYS);
+        reader.render("Chọn một bài viết để đọc tại đây.",
+                ctx.themeManager().previewPalette(ctx.config().theme));
+        VBox readerPanel = panel("Đọc bài", null, saveButton(), reader);
+        HBox.setHgrow(readerPanel, Priority.ALWAYS);
 
-        SplitPane split = new SplitPane(feedPane, articlePane, readerPane);
-        split.setDividerPositions(0.18, 0.42);
-        VBox.setVgrow(split, Priority.ALWAYS);
+        HBox columns = new HBox(12, feedPanel, articlePanel, readerPanel);
+        columns.setFillHeight(true);
+        VBox.setVgrow(columns, Priority.ALWAYS);
 
         ctx.rss().changes().addListener(this::scheduleRefresh);
         refreshArticleList();
-        return new VBox(12, header, split);
+        return new VBox(12, header, columns);
+    }
+
+    /**
+     * One dashboard column. Panels are built by the same helper so their header
+     * row, padding and baseline are identical — mismatched columns were the
+     * "UI lệch" complaint on this screen.
+     */
+    private VBox panel(String title, Label badge, Node action, Node body) {
+        Label heading = new Label(title);
+        heading.getStyleClass().add("panel-title");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox head = new HBox(8, heading);
+        if (badge != null) {
+            head.getChildren().add(badge);
+        }
+        head.getChildren().add(spacer);
+        head.setAlignment(Pos.CENTER_LEFT);
+        head.getStyleClass().add("panel-head");
+        if (action != null) {
+            head.getChildren().add(action);
+        }
+        VBox.setVgrow(body, Priority.ALWAYS);
+        VBox box = new VBox(8, head, body);
+        box.getStyleClass().add("panel");
+        box.setMaxHeight(Double.MAX_VALUE);
+        return box;
+    }
+
+    private int unreadFor(RssService.Feed feed) {
+        int unread = 0;
+        for (RssService.Article a : ctx.rss().articles()) {
+            if (a.feedId().equals(feed.id) && !ctx.rss().isRead(a.url())) {
+                unread++;
+            }
+        }
+        return unread;
     }
 
     private void addFeed() {
-        String url = Dialogs.prompt("Thêm feed", "URL RSS/Atom (vd: https://blog.example/feed.xml):", "").orElse(null);
+        String url = Dialogs.prompt("Thêm feed", "URL RSS/Atom (vd: https://blog.example/feed.xml):", "")
+                .orElse(null);
         if (url == null || url.isBlank()) {
             return;
         }
@@ -165,7 +223,8 @@ public class RssView extends View {
                             + (errors.isEmpty() ? "" : " — " + errors.size() + " feed lỗi"));
                     if (!errors.isEmpty()) {
                         Dialogs.warn("Một số feed lỗi", String.join("\n",
-                                errors.entrySet().stream().map(e -> e.getKey() + ": " + e.getValue()).toList()));
+                                errors.entrySet().stream()
+                                        .map(e -> e.getKey() + ": " + e.getValue()).toList()));
                     }
                 },
                 err -> Dialogs.error("Làm mới thất bại", err.getMessage()));
@@ -177,6 +236,8 @@ public class RssView extends View {
                 .filter(a -> selected == null || a.feedId().equals(selected.id))
                 .toList();
         articleList.getItems().setAll(articles);
+        articleCount.setText(articles.size() + "");
+        feedCount.setText(ctx.rss().feeds().size() + "");
         if (articles.isEmpty()) {
             articleList.setPlaceholder(new EmptyState("scroll-text",
                     "Chưa có bài viết. Thêm feed rồi bấm \"Làm mới tất cả\"."));
@@ -205,10 +266,13 @@ public class RssView extends View {
 
     /** Save the selected article into Notes as a markdown note (rss→note conversion). */
     private Button saveButton() {
-        Button b = new Button("Lưu thành ghi chú", new IconView("sticky-note", 15));
+        Button b = new Button("", new IconView("sticky-note", 14));
+        b.getStyleClass().add("icon-btn");
+        b.setTooltip(new Tooltip("Lưu bài đang đọc thành ghi chú"));
         b.setOnAction(e -> {
             RssService.Article a = articleList.getSelectionModel().getSelectedItem();
             if (a == null) {
+                main.status("Chọn một bài viết trước khi lưu.");
                 return;
             }
             ctx.notes().create(a.title(), "rss",

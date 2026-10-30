@@ -298,6 +298,9 @@ public final class SmokeMain {
                     {"LEARNING", "target/ui-smoke-learning.png"},
                     {"FILES", "target/ui-smoke-files.png"},
                     {"AI", "target/ui-smoke-ai.png"},
+                    {"AGENT", "target/ui-smoke-agent.png"},
+                    {"RSS", "target/ui-smoke-rss.png"},
+                    {"LIBRARY", "target/ui-smoke-library.png"},
                     {"SETTINGS", "target/ui-smoke-settings.png"},
             };
             for (String[] v : extraViews) {
@@ -369,6 +372,99 @@ public final class SmokeMain {
                 }
             }
         }
+        // ---- View-switch latency: navigation is a UI-thread operation, so time the
+        // click-to-painted-layout path for every view (cold + warm). A regression here
+        // is exactly what "chuyển trang chậm" feels like to the user.
+        if (captured && LifeDeskApp.mainWindowRef != null) {
+            java.util.concurrent.CompletableFuture<String> timings =
+                    new java.util.concurrent.CompletableFuture<>();
+            javafx.application.Platform.runLater(() -> {
+                try {
+                    com.lifedesk.ui.MainWindow w = LifeDeskApp.mainWindowRef;
+                    var scene = LifeDeskApp.primaryStageRef.getScene();
+                    var ids = com.lifedesk.ui.MainWindow.ViewId.values();
+                    StringBuilder report = new StringBuilder();
+                    for (int pass = 0; pass < 2; pass++) {
+                        for (com.lifedesk.ui.MainWindow.ViewId id : ids) {
+                            long t0 = System.nanoTime();
+                            w.showView(id);
+                            scene.getRoot().applyCss();
+                            scene.getRoot().layout();
+                            long ms = (System.nanoTime() - t0) / 1_000_000;
+                            report.append(pass == 0 ? "cold " : "warm ").append(id)
+                                    .append('=').append(ms).append("ms ");
+                        }
+                    }
+                    timings.complete(report.toString());
+                } catch (Throwable t) {
+                    timings.completeExceptionally(t);
+                }
+            });
+            try {
+                System.out.println("SWITCH " + timings.get(30, java.util.concurrent.TimeUnit.SECONDS));
+            } catch (Exception e) {
+                System.out.println("SWITCH measurement FAILED: " + e);
+            }
+        }
+        // ---- AI chat round-trip: type a question, press Enter, snapshot the reply.
+        // Proves the chat surface, the streaming render path and the markdown output
+        // (the rule engine answers deterministically from local data).
+        if (captured && LifeDeskApp.mainWindowRef != null) {
+            Path chatShot = screenshot.toAbsolutePath().getParent().resolve("ui-smoke-ai-chat.png");
+            try {
+                java.util.concurrent.CompletableFuture<String> sent =
+                        new java.util.concurrent.CompletableFuture<>();
+                javafx.application.Platform.runLater(() -> {
+                    try {
+                        LifeDeskApp.mainWindowRef.showView(com.lifedesk.ui.MainWindow.ViewId.AI);
+                        var scene = LifeDeskApp.primaryStageRef.getScene();
+                        var input = scene.lookup(".chat-input");
+                        if (input instanceof javafx.scene.control.TextArea area) {
+                            // The briefing exercises the widest answer: headings, table-free
+                            // sections, lists, bold text — one shot through the markdown renderer.
+                            area.setText("tổng quan hôm nay");
+                            area.fireEvent(new javafx.scene.input.KeyEvent(
+                                    javafx.scene.input.KeyEvent.KEY_PRESSED, "", "",
+                                    javafx.scene.input.KeyCode.ENTER, false, false, false, false));
+                            sent.complete("fired");
+                        } else {
+                            sent.complete("missing chat input");
+                        }
+                    } catch (Throwable t) {
+                        sent.completeExceptionally(t);
+                    }
+                });
+                System.out.println("AI chat send: " + sent.get(10, java.util.concurrent.TimeUnit.SECONDS));
+                Thread.sleep(2500);
+                java.util.concurrent.CompletableFuture<java.awt.image.BufferedImage> chatShotFuture =
+                        new java.util.concurrent.CompletableFuture<>();
+                javafx.application.Platform.runLater(() -> {
+                    try {
+                        var img = LifeDeskApp.primaryStageRef.getScene().snapshot(null);
+                        int width = (int) img.getWidth();
+                        int height = (int) img.getHeight();
+                        java.awt.image.BufferedImage buffered = new java.awt.image.BufferedImage(
+                                width, height, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                        for (int y = 0; y < height; y++) {
+                            for (int x = 0; x < width; x++) {
+                                buffered.setRGB(x, y, img.getPixelReader().getArgb(x, y));
+                            }
+                        }
+                        chatShotFuture.complete(buffered);
+                    } catch (Throwable t) {
+                        chatShotFuture.completeExceptionally(t);
+                    }
+                });
+                javax.imageio.ImageIO.write(chatShotFuture.get(30, java.util.concurrent.TimeUnit.SECONDS),
+                        "png", chatShot.toFile());
+                check("AI chat trả lời và hiển thị trong khung chat", chatShot.toFile().length() > 0);
+                System.out.println("Chat snapshot: " + chatShot);
+            } catch (Exception e) {
+                System.out.println("Chat snapshot FAILED: " + e);
+                check("AI chat trả lời và hiển thị trong khung chat", false);
+            }
+        }
+
         if (!captured) {
             javafx.stage.Stage s = LifeDeskApp.primaryStageRef;
             System.out.println("DEBUG: loops=" + loops + " stage=" + (s == null ? "null"

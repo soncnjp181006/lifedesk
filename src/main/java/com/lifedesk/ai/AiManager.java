@@ -109,9 +109,7 @@ public class AiManager {
         List<ChatMessage> messages = new ArrayList<>();
         boolean llm = config.providerId.equals(OllamaProvider.ID) || config.providerId.equals(OpenAiCompatibleProvider.ID);
         if (llm) {
-            messages.add(ChatMessage.system(
-                    "Bạn là trợ lý năng suất cá nhân của ứng dụng LifeDesk. Trả lời ngắn gọn, tiếng Việt. "
-                            + "Khi được cung cấp dữ liệu người dùng, hãy dựa vào đó để trả lời."));
+            messages.add(ChatMessage.system(systemPrompt()));
             if (config.includeUserData) {
                 messages.add(ChatMessage.system(ruleEngine.contextSnapshot()));
             }
@@ -123,6 +121,27 @@ public class AiManager {
         }
         messages.add(ChatMessage.user(userMessage));
         return messages;
+    }
+
+    /**
+     * Persona + answer contract. Kept explicit about markdown and about not
+     * inventing numbers: the reply is rendered as a document in the chat, so a
+     * well-structured answer is directly readable, and a confident-but-made-up
+     * total is the worst thing a personal assistant can do.
+     */
+    private String systemPrompt() {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        String weekday = today.getDayOfWeek().getDisplayName(
+                java.time.format.TextStyle.FULL, java.util.Locale.forLanguageTag("vi-VN"));
+        return "Bạn là trợ lý năng suất cá nhân trong ứng dụng LifeDesk của người dùng Việt Nam.\n"
+                + "- Trả lời bằng tiếng Việt, ngắn gọn nhưng cụ thể; tối đa 3 gợi ý hành động mỗi lần.\n"
+                + "- Luôn định dạng bằng Markdown: ## cho đề mục, - cho gạch đầu dòng, **đậm** cho ý chính,"
+                + " bảng khi so sánh số liệu, ``` khi viết code.\n"
+                + "- Chỉ dùng số liệu có trong dữ liệu được cung cấp. Nếu thiếu dữ liệu, nói rõ là chưa ghi nhận,"
+                + " tuyệt đối không bịa con số.\n"
+                + "- Hôm nay là " + weekday + ", " + today.format(
+                        java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) + ".\n"
+                + "- Khi được hỏi nên làm gì, hãy xếp hạng việc theo mức độ gấp và nêu lý do trong một dòng.";
     }
 
     /** Model configured for the active provider (empty string lets the provider default). */

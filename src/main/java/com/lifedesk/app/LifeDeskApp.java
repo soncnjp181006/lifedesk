@@ -28,12 +28,80 @@ public class LifeDeskApp extends Application {
     /** Set in start(); used by the UI smoke test to navigate between views. */
     public static volatile com.lifedesk.ui.MainWindow mainWindowRef;
 
+    /** Set once so a repeating failure cannot stack dialogs on top of each other. */
+    private static final java.util.concurrent.atomic.AtomicBoolean CRASH_REPORTED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
     public static void main(String[] args) {
         launch(args);
     }
 
+    /**
+     * Never disappear silently: an exception in a UI callback used to end the
+     * process with nothing but a console stack trace (which a windowed launch
+     * does not even show). Now the error is logged and surfaced once.
+     */
+    private static void installCrashHandler() {
+        Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
+            LOG.error("Uncaught exception on thread {}", thread.getName(), error);
+            reportCrash(error);
+        });
+    }
+
+    private static void reportCrash(Throwable error) {
+        if (!CRASH_REPORTED.compareAndSet(false, true)) {
+            return;
+        }
+        Runnable show = () -> {
+            try {
+                javafx.scene.control.Alert alert =
+                        new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.ERROR);
+                alert.setTitle("LifeDesk gặp lỗi");
+                alert.setHeaderText("Một thao tác vừa gây lỗi — ứng dụng vẫn tiếp tục chạy");
+                String detail = error.getMessage() == null ? error.toString() : error.getMessage();
+                alert.setContentText(detail
+                        + "\n\nDữ liệu của bạn vẫn được lưu. Chi tiết kỹ thuật nằm trong thư mục logs.");
+                com.lifedesk.ui.Dialogs.style(alert);
+                alert.show();
+            } catch (RuntimeException ignored) {
+                // UI not ready — the log entry is the record of the failure.
+            }
+        };
+        try {
+            if (Platform.isFxApplicationThread()) {
+                show.run();
+            } else {
+                Platform.runLater(show);
+            }
+        } catch (IllegalStateException toolkitNotStarted) {
+            LOG.warn("Crash before the JavaFX toolkit started: {}", error.toString());
+        }
+    }
+
+    /** Startup failure dialog: must not depend on the JavaFX toolkit being alive. */
+    private static void showStartupFailure(Throwable error) {
+        String message = error.getMessage() == null || error.getMessage().isBlank()
+                ? error.toString() : error.getMessage();
+        try {
+            javax.swing.UIManager.setLookAndFeel(javax.swing.UIManager.getSystemLookAndFeelClassName());
+        } catch (Exception ignored) {
+            // default look and feel is fine
+        }
+        try {
+            String logDir = System.getProperty("lifedesk.log.dir", "");
+            javax.swing.JOptionPane.showMessageDialog(null,
+                    "LifeDesk không khởi động được.\n\n" + message
+                            + (logDir.isBlank() ? "" : "\n\nChi tiết kỹ thuật: " + logDir),
+                    "LifeDesk — không thể khởi động",
+                    javax.swing.JOptionPane.ERROR_MESSAGE);
+        } catch (Throwable ignored) {
+            // no display at all; the log entry is the record
+        }
+    }
+
     @Override
     public void init() {
+        installCrashHandler();
         try {
             // The UI is Vietnamese throughout; without this DatePicker renders
             // US-style mm/dd/yyyy next to labels that say dd/MM.
@@ -52,13 +120,27 @@ public class LifeDeskApp extends Application {
             LOG.info("LifeDesk starting; data dir: {}", dataDir);
         } catch (Exception e) {
             LOG.error("Startup failed", e);
-            // rethrow so JavaFX reports the failure and exits
+            // A windowed launch (javaw / packaged exe) has no console: throwing here
+            // makes the app vanish with nothing on screen — the classic "tự thoát app".
+            // Show the reason with Swing (the JavaFX toolkit is not up yet), then exit
+            // through JavaFX's normal failure path.
+            showStartupFailure(e);
             throw new RuntimeException(e.getMessage(), e);
         }
     }
 
     @Override
     public void start(Stage stage) {
+        try {
+            startUi(stage);
+        } catch (Throwable error) {
+            LOG.error("UI start failed", error);
+            showStartupFailure(error);
+            Platform.exit();
+        }
+    }
+
+    private void startUi(Stage stage) {
         primaryStageRef = stage;
         Scene scene = new Scene(new javafx.scene.layout.StackPane(), context.config().windowWidth,
                 context.config().windowHeight);
@@ -72,6 +154,11 @@ public class LifeDeskApp extends Application {
         stage.setMinHeight(680);
         stage.setOnCloseRequest(e -> saveWindowSettings(stage));
         stage.show();
+        // Surface failures instead of a silent exit (the crash dialog re-arms per session).
+        Thread.currentThread().setUncaughtExceptionHandler((t, e) -> {
+            LOG.error("Uncaught exception on the JavaFX thread", e);
+            reportCrash(e);
+        });
         context.startBackgroundServices();
         mainWindow.onReady();
     }

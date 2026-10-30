@@ -2,15 +2,14 @@ package com.lifedesk.ui.views;
 
 import com.lifedesk.ai.AiProvider;
 import com.lifedesk.app.AppContext;
-import com.lifedesk.markdown.MarkdownPreviewPane;
 import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.Fx;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
-import com.lifedesk.ui.components.EmptyState;
 import com.lifedesk.ui.components.IconView;
-import javafx.application.Platform;
+import com.lifedesk.ui.components.MarkdownFlow;
 import javafx.animation.PauseTransition;
+import javafx.application.Platform;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -21,50 +20,94 @@ import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Popup;
 import javafx.util.Duration;
 
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * AI chat with realtime streaming: the assistant reply streams token-by-token
- * and renders live as markdown + LaTeX (no chat-bubble wrapper — output is a
- * proper rendered document). Supports Smart-Composer-style context: "@"
- * attaches notes/app data as context chips, "/" opens prompt templates.
+ * AI chat.
+ *
+ * <p>Structure: a bordered conversation surface ("khung chat") with its own
+ * header, a scrolling message column and a composer pinned at the bottom. The
+ * assistant turn is rendered as markdown with {@link MarkdownFlow} and re-rendered
+ * on a short throttle while the provider streams, so text appears as it is
+ * generated. No WebView is involved: the previous implementation created one per
+ * reply and reloaded its HTML on every tick, which is what exhausted native
+ * memory and killed the process.
+ *
+ * <p>Smart composer: "@" attaches app data or a note as context and "/" inserts a
+ * prompt template.
  */
 public class AiChatView extends View {
+    private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm");
+
     private final List<com.lifedesk.ai.ChatMessage> history = new ArrayList<>();
-    /** Context items attached via "@" (smart-composer style). */
+    /** Context items attached via "@". */
     private final List<ContextItem> contextItems = new ArrayList<>();
-    private final VBox chatBox = new VBox(10);
+
+    private final VBox messages = new VBox(16);
+    private final ScrollPane chatScroll = new ScrollPane(messages);
     private final HBox contextBar = new HBox(6);
     private final TextArea input = new TextArea();
     private final Label providerStatus = new Label();
-    private final PauseTransition renderThrottle = new PauseTransition(Duration.millis(200));
+    private final Label modelChip = new Label();
+    private final Label countChip = new Label();
+    private final Button sendBtn = new Button();
+    private final Button stopBtn = new Button();
+    private final VBox composer = new VBox(8);
+
+    /** Throttled re-render of the in-flight reply. */
+    private final PauseTransition streamTick = new PauseTransition(Duration.millis(70));
+    private final StringBuilder streamBuffer = new StringBuilder();
+
     private Node emptyState;
-    private Button sendBtn;
-    private Button stopBtn;
+    private Exchange active;
     /** Bumps on stop/new-chat so a late provider reply cannot touch the UI. */
     private int chatGen = 0;
     private volatile boolean busy = false;
     /** Guards against a slow probe from an earlier refresh overwriting a newer one. */
     private int statusTicket = 0;
+    private boolean stickToBottom = true;
     private Popup picker;
     /** Start index of the @-token being typed (for replacing it on selection). */
     private int atTokenStart = -1;
+    private String lastQuestion = "";
 
     /** One attached context: an app-data summary or a full note. */
     private record ContextItem(String label, String content) {
     }
 
+    /** The UI pieces of one assistant turn. */
+    private static final class Exchange {
+        final VBox bubble;
+        final MarkdownFlow flow;
+        final HBox assistantRow;
+        final HBox userRow;
+        final String question;
+
+        Exchange(VBox bubble, MarkdownFlow flow, HBox assistantRow, HBox userRow, String question) {
+            this.bubble = bubble;
+            this.flow = flow;
+            this.assistantRow = assistantRow;
+            this.userRow = userRow;
+            this.question = question;
+        }
+    }
+
     public AiChatView(AppContext ctx, MainWindow main) {
         super(ctx, main);
+        setSpacing(12);
     }
 
     @Override
@@ -72,8 +115,11 @@ public class AiChatView extends View {
         return "AI";
     }
 
+    // ------------------------------------------------------------------ layout
+
     @Override
     protected Node build() {
+        // ---- page header
         Label title = new Label("Trợ lý AI");
         title.getStyleClass().add("title-label");
         Region spacer = new Region();
@@ -82,49 +128,53 @@ public class AiChatView extends View {
         newChatBtn.setOnAction(e -> startNewChat());
         Button settingsBtn = new Button("Cài đặt AI", new IconView("settings", 15));
         settingsBtn.setOnAction(e -> main.showView(MainWindow.ViewId.SETTINGS));
+        providerStatus.getStyleClass().add("dim-label");
         HBox header = new HBox(10, title, spacer, providerStatus, newChatBtn, settingsBtn);
         header.setAlignment(Pos.CENTER_LEFT);
 
-        HBox quickRow = new HBox(8);
-        for (String quick : List.of("việc hôm nay", "quá hạn", "gợi ý", "chi tiêu tháng này",
-                "thói quen", "ôn tập", "sức khỏe")) {
-            Button b = new Button(capitalizeFirst(quick));
-            b.getStyleClass().add("ghost-btn");
-            b.setOnAction(e -> {
-                input.setText(quick);
-                send();
-            });
-            quickRow.getChildren().add(b);
-        }
+        // ---- conversation surface ("khung chat")
+        Label chatTitle = new Label("Hội thoại");
+        chatTitle.getStyleClass().add("section-label");
+        modelChip.getStyleClass().addAll("chip", "chip-info");
+        modelChip.setVisible(false);
+        modelChip.setManaged(false);
+        countChip.getStyleClass().add("chip");
+        countChip.setVisible(false);
+        countChip.setManaged(false);
+        Region headSpacer = new Region();
+        HBox.setHgrow(headSpacer, Priority.ALWAYS);
+        Button clearBtn = new Button("", new IconView("trash", 14));
+        clearBtn.getStyleClass().add("icon-btn");
+        clearBtn.setTooltip(new Tooltip("Xóa toàn bộ hội thoại"));
+        clearBtn.setOnAction(e -> {
+            if (messages.getChildren().stream().anyMatch(n -> n != emptyState)) {
+                startNewChat();
+            }
+        });
+        HBox frameHead = new HBox(8, new IconView("bot", 15, "icon-accent"), chatTitle,
+                modelChip, countChip, headSpacer, clearBtn);
+        frameHead.setAlignment(Pos.CENTER_LEFT);
+        frameHead.getStyleClass().add("chat-head");
 
-        // ---- context chips (@-mentions)
+        // ---- message column
+        messages.setFillWidth(true);
+        messages.getStyleClass().add("chat-messages");
+        chatScroll.setFitToWidth(true);
+        chatScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        chatScroll.setMinHeight(0);
+        chatScroll.getStyleClass().add("chat-scroll");
+        VBox.setVgrow(chatScroll, Priority.ALWAYS);
+        chatScroll.vvalueProperty().addListener((o, a, b) ->
+                stickToBottom = b.doubleValue() > 0.92);
+
+        // ---- composer
         contextBar.setVisible(false);
         contextBar.setManaged(false);
-        Label contextHint = new Label("Ngữ cảnh đính kèm:");
-        contextHint.getStyleClass().add("dim-label");
-        Button clearContext = new Button("Gỡ hết", new IconView("circle-x", 13));
-        clearContext.getStyleClass().add("ghost-btn");
-        clearContext.setOnAction(e -> {
-            contextItems.clear();
-            refreshContextBar();
-        });
-        HBox contextHeader = new HBox(8, contextHint, new Region(), clearContext);
-        HBox.setHgrow(contextHeader.getChildren().get(1), Priority.ALWAYS);
-        VBox contextArea = new VBox(4, contextHeader, contextBar);
-
-        // ---- chat area
-        chatBox.setFillWidth(true);
-        ScrollPane chatScroll = new ScrollPane(chatBox);
-        chatScroll.setFitToWidth(true);
-        chatScroll.setStyle("-fx-background-color: transparent;");
-        VBox.setVgrow(chatScroll, Priority.ALWAYS);
-        chatScroll.setPrefHeight(1000);
-
-        // ---- input
-        input.setPromptText("Hỏi AI… (@ gắn ngữ cảnh, / dùng mẫu lệnh, Enter để gửi, Shift+Enter xuống dòng)");
-        input.getStyleClass().add("notes-editor");
-        input.setPrefRowCount(3);
+        input.setPromptText("Hỏi AI…  @ gắn ngữ cảnh · / mẫu lệnh · Enter để gửi");
+        input.getStyleClass().add("chat-input");
         input.setWrapText(true);
+        input.setPrefRowCount(2);
+        input.setMinHeight(58);
         input.setOnKeyPressed(e -> {
             if (e.getCode() == KeyCode.ENTER && !e.isShiftDown()) {
                 e.consume();
@@ -133,36 +183,116 @@ public class AiChatView extends View {
                 hidePicker();
             }
         });
-        input.textProperty().addListener((o, old, now) -> onInputChanged(now));
-        sendBtn = new Button("Gửi", new IconView("send", 15));
-        sendBtn.getStyleClass().add("primary-btn");
-        sendBtn.setOnAction(e -> send());
-        stopBtn = new Button("Dừng", new IconView("circle-x", 15));
-        stopBtn.getStyleClass().add("danger-btn");
-        stopBtn.setOnAction(e -> stopChat());
-        HBox inputRow = new HBox(8, input, new VBox(6, sendBtn, stopBtn));
-        inputRow.setAlignment(Pos.BOTTOM_LEFT);
-        HBox.setHgrow(input, Priority.ALWAYS);
+        input.textProperty().addListener((o, old, now) -> {
+            onInputChanged(now);
+            growInput();
+        });
+        input.focusedProperty().addListener((o, was, is) -> composer.pseudoClassStateChanged(
+                javafx.css.PseudoClass.getPseudoClass("focused"), is));
 
-        // Throttled live re-render while streaming.
-        renderThrottle.setOnFinished(e -> {
-            // no-op; render target is captured per-exchange
+        sendBtn.setGraphic(new IconView("send", 15));
+        sendBtn.setText("Gửi");
+        sendBtn.getStyleClass().add("primary-btn");
+        sendBtn.setMaxWidth(Double.MAX_VALUE);
+        sendBtn.setOnAction(e -> send());
+        stopBtn.setGraphic(new IconView("circle-x", 15));
+        stopBtn.setText("Dừng");
+        stopBtn.getStyleClass().add("danger-btn");
+        stopBtn.setMaxWidth(Double.MAX_VALUE);
+        stopBtn.setOnAction(e -> stopChat());
+        VBox sendColumn = new VBox(6, sendBtn, stopBtn);
+        sendColumn.setAlignment(Pos.BOTTOM_RIGHT);
+        HBox.setHgrow(input, Priority.ALWAYS);
+        HBox inputRow = new HBox(8, input, sendColumn);
+        inputRow.setAlignment(Pos.BOTTOM_LEFT);
+
+        Label hint = new Label("Enter gửi · Shift+Enter xuống dòng · @ dữ liệu · / mẫu lệnh");
+        hint.getStyleClass().add("chat-hint");
+        Region hintSpacer = new Region();
+        HBox.setHgrow(hintSpacer, Priority.ALWAYS);
+        Label privacy = new Label("Chỉ gửi dữ liệu khi bạn bật \"đọc dữ liệu\" trong Cài đặt → AI");
+        privacy.getStyleClass().add("chat-hint");
+        privacy.setWrapText(false);
+        HBox hintRow = new HBox(10, hint, hintSpacer, privacy);
+        hintRow.setAlignment(Pos.CENTER_LEFT);
+
+        composer.getStyleClass().add("chat-composer");
+        composer.getChildren().addAll(contextBar, inputRow, hintRow);
+
+        streamTick.setOnFinished(e -> {
+            if (active != null && busy) {
+                active.flow.render(streamBuffer.toString(), true);
+                scrollToEnd();
+            }
         });
 
-        Label disclaimer = new Label("AI chạy theo provider bạn cấu hình (offline hoặc cloud). "
-                + "Câu trả lời hiển thị dạng markdown + LaTeX; bật \"đọc dữ liệu\" trong Cài đặt để AI dựa trên dữ liệu thật.");
-        disclaimer.getStyleClass().add("dim-label");
-        disclaimer.setWrapText(true);
+        VBox frame = new VBox(0, frameHead, chatScroll, composer);
+        frame.getStyleClass().add("chat-surface");
+        VBox.setVgrow(frame, Priority.ALWAYS);
 
-        VBox root = new VBox(10, header, quickRow, chatScroll, contextArea, inputRow, disclaimer);
-        if (history.isEmpty()) {
-            emptyState = new EmptyState("bot",
-                    "Chưa có hội thoại. @ để gắn ghi chú/dữ liệu, / để dùng mẫu lệnh.");
-            chatBox.getChildren().add(emptyState);
-        }
+        showEmptyState();
         refreshStatus();
         setBusy(false);
+
+        VBox root = new VBox(12, header, frame);
+        VBox.setVgrow(frame, Priority.ALWAYS);
         return root;
+    }
+
+    private void growInput() {
+        int lines = Math.min(6, Math.max(2, 1 + (int) input.getText().chars().filter(c -> c == '\n').count()));
+        input.setPrefRowCount(lines);
+    }
+
+    private void scrollToEnd() {
+        if (!stickToBottom) {
+            return;
+        }
+        Platform.runLater(() -> {
+            chatScroll.applyCss();
+            chatScroll.layout();
+            chatScroll.setVvalue(1.0);
+        });
+    }
+
+    // ------------------------------------------------------------------ empty state
+
+    private void showEmptyState() {
+        VBox card = new VBox(14);
+        card.getStyleClass().add("chat-empty");
+        card.setAlignment(Pos.CENTER);
+        StackPane avatar = new StackPane(new IconView("bot", 26, "icon-accent"));
+        avatar.getStyleClass().add("chat-avatar-large");
+        Label headline = new Label("Bắt đầu một cuộc trò chuyện");
+        headline.getStyleClass().add("card-headline");
+        Label sub = new Label("Hỏi về công việc, chi tiêu, thói quen hay ghi chú của bạn. "
+                + "Gõ @ để đính kèm dữ liệu, / để dùng mẫu lệnh.");
+        sub.getStyleClass().add("page-subtitle");
+        sub.setWrapText(true);
+        sub.setMaxWidth(560);
+        sub.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+
+        FlowPane suggestions = new FlowPane(8, 8);
+        suggestions.setAlignment(Pos.CENTER);
+        suggestions.setMaxWidth(640);
+        for (String prompt : List.of(
+                "Hôm nay tôi cần làm gì?",
+                "Tháng này tôi chi bao nhiêu?",
+                "Tôi nên ưu tiên việc gì trước?",
+                "Tóm tắt tình hình thói quen của tôi",
+                "Có flashcard nào cần ôn không?")) {
+            Button chip = new Button(prompt);
+            chip.getStyleClass().add("suggestion-chip");
+            chip.setOnAction(e -> {
+                input.setText(prompt);
+                send();
+            });
+            suggestions.getChildren().add(chip);
+        }
+        card.getChildren().addAll(avatar, headline, sub, suggestions);
+        emptyState = card;
+        messages.getChildren().setAll(card);
+        updateCount();
     }
 
     // ------------------------------------------------------------------ input helpers
@@ -188,7 +318,7 @@ public class AiChatView extends View {
         }
     }
 
-    /** Context picker: app data summaries + every note (smart-composer "@"). */
+    /** Context picker: app data summaries + every note. */
     private void showContextPicker() {
         List<ContextItem> options = new ArrayList<>();
         options.add(new ContextItem("⌘ Tổng quan công việc", taskOverview()));
@@ -248,7 +378,10 @@ public class AiChatView extends View {
         picker = new Popup();
         picker.setAutoHide(true);
         picker.getContent().setAll(pane);
-        picker.show(input, input.localToScreen(0, 0).getX(), input.localToScreen(0, 0).getY() - pickerHeight(options));
+        var screen = input.localToScreen(0, 0);
+        if (screen != null) {
+            picker.show(input, screen.getX(), Math.max(0, screen.getY() - pickerHeight(options)));
+        }
     }
 
     private double pickerHeight(List<ContextItem> options) {
@@ -267,12 +400,25 @@ public class AiChatView extends View {
         boolean any = !contextItems.isEmpty();
         contextBar.setVisible(any);
         contextBar.setManaged(any);
+        if (!any) {
+            return;
+        }
+        Label hint = new Label("Ngữ cảnh:");
+        hint.getStyleClass().add("chat-hint");
+        contextBar.getChildren().add(hint);
         for (ContextItem item : contextItems) {
             Label chip = new Label(item.label());
             chip.getStyleClass().add("chip");
             chip.setMaxWidth(260);
             contextBar.getChildren().add(chip);
         }
+        Button clear = new Button("Gỡ hết", new IconView("circle-x", 12));
+        clear.getStyleClass().add("ghost-btn");
+        clear.setOnAction(e -> {
+            contextItems.clear();
+            refreshContextBar();
+        });
+        contextBar.getChildren().add(clear);
     }
 
     private String taskOverview() {
@@ -286,7 +432,8 @@ public class AiChatView extends View {
         }
         StringBuilder sb = new StringBuilder();
         for (var t : tasks) {
-            sb.append("- ").append(t.title).append(t.dueDate != null ? " (hạn " + t.dueDate + ")" : "").append('\n');
+            sb.append("- ").append(t.title)
+                    .append(t.dueDate != null ? " (hạn " + t.dueDate + ")" : "").append('\n');
         }
         return sb.toString();
     }
@@ -300,7 +447,8 @@ public class AiChatView extends View {
     private String habitOverview() {
         StringBuilder sb = new StringBuilder();
         for (var h : ctx.habits().habits(false)) {
-            sb.append("- ").append(h.name).append(" (chuỗi ").append(ctx.habits().currentStreak(h)).append(" ngày)\n");
+            sb.append("- ").append(h.name).append(" (chuỗi ")
+                    .append(ctx.habits().currentStreak(h)).append(" ngày)\n");
         }
         for (var g : ctx.habits().goals()) {
             sb.append("- [Mục tiêu] ").append(g.title()).append(" — ").append(g.status()).append('\n');
@@ -308,24 +456,28 @@ public class AiChatView extends View {
         return sb.isEmpty() ? "(không có)" : sb.toString();
     }
 
-    // ------------------------------------------------------------------ chat flow
+    // ------------------------------------------------------------------ status
 
     private void refreshStatus() {
+        String model = ctx.ai().activeModel();
+        modelChip.setText(model == null || model.isBlank() ? "mặc định" : model);
+        modelChip.setVisible(!model.isBlank());
+        modelChip.setManaged(!model.isBlank());
         if (!ctx.ai().enabled()) {
-            providerStatus.setText("AI: ĐANG TẮT (bật trong Cài đặt)");
-            providerStatus.setGraphic(null);
-            chatBox.getChildren().setAll(new EmptyState("bot",
-                    "Tính năng AI đang tắt trong Cài đặt → AI. Các module khác vẫn hoạt động bình thường.",
-                    settingsButton()));
+            providerStatus.setText("AI đang tắt");
+            providerStatus.setGraphic(new IconView("triangle-alert", 13, "icon-warn"));
+            setComposerEnabled(false, "Bật AI trong Cài đặt → AI để trò chuyện.");
             return;
         }
         var provider = ctx.ai().currentProvider();
         if (provider.isEmpty()) {
             providerStatus.setGraphic(null);
             providerStatus.setText("AI: tắt");
+            setComposerEnabled(false, "Chưa có provider nào đang bật.");
             return;
         }
         AiProvider p = provider.get();
+        setComposerEnabled(true, "");
         renderStatus(p, null);
         final int ticket = ++statusTicket;
         Thread probe = new Thread(() -> {
@@ -347,31 +499,36 @@ public class AiChatView extends View {
     }
 
     private void renderStatus(AiProvider p, Boolean online) {
-        providerStatus.getStyleClass().add("dim-label");
-        providerStatus.setText("Provider: " + p.displayName()
-                + (online == null ? "  (đang kiểm tra)" : online ? "  sẵn sàng" : "  không kết nối được"));
+        providerStatus.setText(p.displayName()
+                + (online == null ? "  ·  đang kiểm tra" : online ? "" : "  ·  không kết nối được"));
         providerStatus.setGraphic(online == null
                 ? new IconView("hourglass", 13, "icon-dim")
                 : new IconView(online ? "circle-check" : "triangle-alert", 13,
                         online ? "icon-ok" : "icon-danger"));
     }
 
-    private Button settingsButton() {
-        Button b = new Button("Mở Cài đặt AI");
-        b.getStyleClass().add("primary-btn");
-        b.setOnAction(e -> main.showView(MainWindow.ViewId.SETTINGS));
-        return b;
+    private void setComposerEnabled(boolean enabled, String note) {
+        input.setDisable(!enabled);
+        sendBtn.setDisable(!enabled || busy);
+        input.setPromptText(enabled ? "Hỏi AI…  @ gắn ngữ cảnh · / mẫu lệnh · Enter để gửi"
+                : note);
     }
 
     private void setBusy(boolean running) {
         busy = running;
-        if (sendBtn != null) {
-            sendBtn.setDisable(running);
-        }
-        if (stopBtn != null) {
-            stopBtn.setDisable(!running);
-        }
+        sendBtn.setDisable(running || !ctx.ai().enabled());
+        stopBtn.setVisible(running);
+        stopBtn.setManaged(running);
     }
+
+    private void updateCount() {
+        int turns = (int) history.stream().filter(m -> m.role().equals("assistant")).count();
+        countChip.setVisible(turns > 0);
+        countChip.setManaged(turns > 0);
+        countChip.setText(turns + " lượt");
+    }
+
+    // ------------------------------------------------------------------ chat flow
 
     private void send() {
         String text = input.getText();
@@ -389,96 +546,189 @@ public class AiChatView extends View {
         }
         final int gen = ++chatGen;
         final String question = text.trim();
+        lastQuestion = question;
         setBusy(true);
         input.clear();
         hidePicker();
 
-        addUserRow(question);
-        // Rendered streaming reply (no bubble — output is a live markdown doc).
-        StringBuilder streaming = new StringBuilder();
-        MarkdownPreviewPane replyPane = new MarkdownPreviewPane();
-        replyPane.render("", ctx.themeManager().previewPalette(ctx.config().theme));
-        VBox replyCard = new VBox(replyPane);
-        replyCard.getStyleClass().add("card");
-        replyCard.setMaxWidth(Double.MAX_VALUE);
-        chatBox.getChildren().remove(emptyState);
-        chatBox.getChildren().add(replyCard);
-        Label liveLabel = new Label("…");
-        liveLabel.getStyleClass().add("dim-label");
-        replyCard.getChildren().add(liveLabel);
+        HBox userRow = addUserMessage(question);
+        Exchange exchange = addAssistantMessage(userRow, question);
+        active = exchange;
+        streamBuffer.setLength(0);
+        stickToBottom = true;
+        scrollToEnd();
 
         List<com.lifedesk.ai.ChatMessage> historyWith = new ArrayList<>(history);
         if (!contextItems.isEmpty()) {
             StringBuilder ctxText = new StringBuilder("Ngữ cảnh người dùng đính kèm:\n");
             for (ContextItem item : contextItems) {
-                ctxText.append("\n--- ").append(item.label()).append(" ---\n").append(item.content()).append('\n');
+                ctxText.append("\n--- ").append(item.label()).append(" ---\n")
+                        .append(item.content()).append('\n');
             }
             historyWith.add(com.lifedesk.ai.ChatMessage.system(ctxText.toString()));
         }
         contextItems.clear();
         refreshContextBar();
 
-        renderThrottle.setOnFinished(e -> {
-            if (gen == chatGen) {
-                liveLabel.setVisible(false);
-                replyPane.render(streaming + " ▍", ctx.themeManager().previewPalette(ctx.config().theme));
-            }
-        });
-
         ctx.ai().chatStreamAsync(ctx.executors().ai(), List.copyOf(historyWith), question,
                 delta -> {
-                    streaming.append(delta);
-                    // throttle renders from the background thread onto the FX thread
-                    Fx.runLater(renderThrottle::playFromStart);
+                    streamBuffer.append(delta);
+                    Fx.runLater(streamTick::playFromStart);
                 },
-                reply -> Fx.runLater(() -> {
-                    if (gen != chatGen) {
-                        return;
-                    }
-                    liveLabel.setVisible(false);
-                    replyPane.render(reply, ctx.themeManager().previewPalette(ctx.config().theme));
-                    history.add(com.lifedesk.ai.ChatMessage.user(question));
-                    history.add(com.lifedesk.ai.ChatMessage.assistant(reply));
-                    trimHistory();
-                    setBusy(false);
-                }),
-                err -> Fx.runLater(() -> {
-                    if (gen != chatGen) {
-                        return;
-                    }
-                    replyCard.getChildren().remove(liveLabel);
-                    Label errLabel = new Label("Lỗi provider: " + err.getMessage()
-                            + "\n(Thử lại, đổi provider trong Cài đặt → AI, hoặc dùng engine quy tắc offline.)");
-                    errLabel.getStyleClass().add("dim-label");
-                    errLabel.setWrapText(true);
-                    replyCard.getChildren().add(errLabel);
-                    setBusy(false);
-                }));
+                reply -> Fx.runLater(() -> finish(exchange, reply, gen)),
+                err -> Fx.runLater(() -> fail(exchange, err, gen)));
     }
 
-    /** "Bỏ bubble": user turn is a compact labeled row; the AI turn is the rendered card above. */
-    private void addUserRow(String text) {
-        chatBox.getChildren().remove(emptyState);
-        Label who = new Label("Bạn");
-        who.getStyleClass().add("overline");
-        Label msg = new Label(text);
-        msg.setWrapText(true);
-        msg.setMaxWidth(Double.MAX_VALUE);
-        msg.getStyleClass().add("chat-bubble-user");
-        VBox row = new VBox(2, who, msg);
-        row.setMaxWidth(620);
-        HBox wrap = new HBox(row);
-        wrap.setAlignment(Pos.CENTER_RIGHT);
-        wrap.setMaxWidth(Double.MAX_VALUE);
-        chatBox.getChildren().add(wrap);
+    private void finish(Exchange exchange, String reply, int gen) {
+        if (gen != chatGen) {
+            return;
+        }
+        String text = reply == null || reply.isBlank() ? streamBuffer.toString() : reply;
+        exchange.flow.render(text, false);
+        exchange.bubble.getChildren().remove(exchange.bubble.getChildren().size() - 1);
+        exchange.bubble.getChildren().add(assistantFooter(text));
+        history.add(com.lifedesk.ai.ChatMessage.user(exchange.question));
+        history.add(com.lifedesk.ai.ChatMessage.assistant(text));
+        trimHistory();
+        active = null;
+        setBusy(false);
+        updateCount();
+        scrollToEnd();
+        main.status("AI đã trả lời (" + text.length() + " ký tự)");
     }
 
-    /** Abandon the in-flight request: its result is ignored and the UI is usable again. */
+    private void fail(Exchange exchange, Throwable err, int gen) {
+        if (gen != chatGen) {
+            return;
+        }
+        exchange.bubble.getChildren().remove(exchange.bubble.getChildren().size() - 1);
+        String message = err.getMessage() == null ? err.toString() : err.getMessage();
+        Label error = new Label("Không nhận được câu trả lời: " + message
+                + "\nKiểm tra Cài đặt → AI (provider, model, API key) hoặc chuyển sang engine quy tắc offline.");
+        error.getStyleClass().add("chat-error");
+        error.setWrapText(true);
+        Button retry = new Button("Thử lại", new IconView("recycle", 14));
+        retry.setOnAction(e -> retry(exchange));
+        Button settings = new Button("Mở Cài đặt AI", new IconView("settings", 14));
+        settings.setOnAction(e -> main.showView(MainWindow.ViewId.SETTINGS));
+        HBox actions = new HBox(8, retry, settings);
+        exchange.bubble.getChildren().addAll(error, actions);
+        active = null;
+        setBusy(false);
+        scrollToEnd();
+        main.status("AI lỗi: " + message);
+    }
+
+    /** Drop the failed turn and ask the same question again. */
+    private void retry(Exchange exchange) {
+        messages.getChildren().removeAll(exchange.userRow, exchange.assistantRow);
+        if (messages.getChildren().isEmpty()) {
+            showEmptyState();
+        }
+        input.setText(exchange.question);
+        input.positionCaret(exchange.question.length());
+        send();
+    }
+
+    private HBox addUserMessage(String text) {
+        messages.getChildren().remove(emptyState);
+        Label body = new Label(text);
+        body.setWrapText(true);
+        body.getStyleClass().add("chat-bubble-user");
+        body.setMaxWidth(620);
+        Label meta = new Label("Bạn · " + LocalTime.now().format(CLOCK));
+        meta.getStyleClass().add("chat-meta");
+        VBox bubble = new VBox(3, body, meta);
+        bubble.setAlignment(Pos.TOP_RIGHT);
+        bubble.setMaxWidth(640);
+        HBox row = new HBox(bubble);
+        row.setAlignment(Pos.CENTER_RIGHT);
+        row.getStyleClass().add("chat-row");
+        messages.getChildren().add(row);
+        updateCount();
+        return row;
+    }
+
+    private Exchange addAssistantMessage(HBox userRow, String question) {
+        messages.getChildren().remove(emptyState);
+        MarkdownFlow flow = new MarkdownFlow();
+        flow.setLinkHandler(this::openLink);
+        flow.render("", false);
+        VBox bubble = new VBox(flow);
+        bubble.getStyleClass().add("chat-bubble-ai");
+        bubble.setMaxWidth(880);
+        Label thinking = new Label("▍ đang trả lời…");
+        thinking.getStyleClass().add("chat-thinking");
+        bubble.getChildren().add(thinking);
+
+        StackPane avatar = new StackPane(new IconView("bot", 16, "icon-accent"));
+        avatar.getStyleClass().add("chat-avatar");
+        VBox column = new VBox(4, new Label("LifeDesk AI"), bubble);
+        ((Label) column.getChildren().get(0)).getStyleClass().add("chat-author");
+        HBox.setHgrow(column, Priority.ALWAYS);
+        column.setMaxWidth(900);
+        StackPane avatarBox = new StackPane(avatar);
+        avatarBox.setAlignment(Pos.TOP_LEFT);
+        avatarBox.setMinWidth(34);
+        HBox row = new HBox(10, avatarBox, column);
+        row.setAlignment(Pos.TOP_LEFT);
+        row.getStyleClass().add("chat-row");
+        messages.getChildren().add(row);
+        scrollToEnd();
+        return new Exchange(bubble, flow, row, userRow, question);
+    }
+
+    private Node assistantFooter(String reply) {
+        Button copy = new Button("Sao chép", new IconView("clipboard-list", 13));
+        copy.getStyleClass().add("ghost-btn");
+        copy.setOnAction(e -> {
+            javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+            content.putString(reply);
+            javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
+            main.status("Đã sao chép câu trả lời dạng markdown");
+        });
+        Label stamp = new Label(LocalTime.now().format(CLOCK));
+        stamp.getStyleClass().add("chat-meta");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox footer = new HBox(8, copy, spacer, stamp);
+        footer.setAlignment(Pos.CENTER_LEFT);
+        footer.getStyleClass().add("chat-footer");
+        return footer;
+    }
+
+    private void openLink(String url) {
+        try {
+            java.awt.Desktop.getDesktop().browse(java.net.URI.create(url));
+        } catch (Exception e) {
+            main.status("Không mở được liên kết: " + url);
+        }
+    }
+
+    /** Abandon the in-flight request but keep whatever text already arrived. */
     private void stopChat() {
         if (!busy) {
             return;
         }
         chatGen++;
+        streamTick.stop();
+        String partial = streamBuffer.toString();
+        if (active != null) {
+            if (partial.isBlank()) {
+                messages.getChildren().removeAll(active.assistantRow, active.userRow);
+            } else {
+                active.flow.render(partial + "\n\n*— đã dừng —*", false);
+                active.bubble.getChildren().remove(active.bubble.getChildren().size() - 1);
+                history.add(com.lifedesk.ai.ChatMessage.user(active.question));
+                history.add(com.lifedesk.ai.ChatMessage.assistant(partial));
+                trimHistory();
+                updateCount();
+            }
+        }
+        if (messages.getChildren().isEmpty()) {
+            showEmptyState();
+        }
+        active = null;
         setBusy(false);
         main.status("Đã dừng yêu cầu AI");
     }
@@ -490,20 +740,11 @@ public class AiChatView extends View {
         chatGen++;
         history.clear();
         contextItems.clear();
+        active = null;
         refreshContextBar();
-        chatBox.getChildren().clear();
-        emptyState = new EmptyState("bot",
-                "Chưa có hội thoại. @ để gắn ghi chú/dữ liệu, / để dùng mẫu lệnh.");
-        chatBox.getChildren().add(emptyState);
+        showEmptyState();
         setBusy(false);
         main.status("Đã bắt đầu cuộc trò chuyện mới");
-    }
-
-    private static String capitalizeFirst(String text) {
-        if (text == null || text.isEmpty()) {
-            return text;
-        }
-        return Character.toUpperCase(text.charAt(0)) + text.substring(1);
     }
 
     private void trimHistory() {
@@ -516,5 +757,11 @@ public class AiChatView extends View {
     @Override
     public void onShow() {
         refreshStatus();
+        scrollToEnd();
+    }
+
+    @Override
+    public void onHide() {
+        streamTick.stop();
     }
 }
