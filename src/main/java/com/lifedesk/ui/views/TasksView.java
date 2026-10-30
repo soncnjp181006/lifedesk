@@ -44,7 +44,9 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** Tasks module: list + board views, full editor with checklist/recurrence/links. */
@@ -318,8 +320,13 @@ public class TasksView extends View {
         VBox.setVgrow(boardBox, javafx.scene.layout.Priority.ALWAYS);
     }
 
+    /** Highlighted card on the board; null when nothing is picked. */
+    private VBox selectedCardNode;
+
     private void refreshBoard(List<Task> tasks) {
         boardBox.getChildren().clear();
+        selectedCardNode = null;
+        Map<Task, VBox> cardNodes = new HashMap<>();
         for (TaskStatus status : List.of(TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.DONE)) {
             Label header = new Label(switch (status) {
                 case TODO -> "Cần làm";
@@ -335,20 +342,41 @@ public class TasksView extends View {
                 VBox cardNode = new VBox(4, new Label(t.title),
                         new HBox(4, Chips.priority(t.priority.name()),
                                 new Label(t.dueDate == null ? "" : t.dueDate.format(DF))));
-                cardNode.getStyleClass().add("card");
-                cardNode.setStyle("-fx-padding: 8; -fx-background-color: -ld-card;");
+                cardNode.getStyleClass().add("board-card");
+                // Click = select (visible highlight — the user must see WHAT they
+                // are about to edit/delete); double-click = edit.
                 cardNode.setOnMouseClicked(e -> {
-                    selected = t;
-                    if (deleteSelectedBtn != null) {
-                        deleteSelectedBtn.setDisable(false);
+                    if (e.getClickCount() == 2) {
+                        openEditor(t);
+                        return;
                     }
-                    openEditor(t);
+                    highlightBoardCard(cardNodes, cardNode, t);
                 });
                 cardNode.setCursor(javafx.scene.Cursor.HAND);
                 column.getChildren().add(cardNode);
+                cardNodes.put(t, cardNode);
             });
             boardBox.getChildren().add(column);
             HBox.setHgrow(column, javafx.scene.layout.Priority.SOMETIMES);
+        }
+        // A refresh (filter/search) must not silently drop the visible selection.
+        if (selected != null) {
+            VBox keep = cardNodes.get(selected);
+            if (keep != null) {
+                highlightBoardCard(cardNodes, keep, selected);
+            }
+        }
+    }
+
+    private void highlightBoardCard(Map<Task, VBox> cardNodes, VBox node, Task t) {
+        if (selectedCardNode != null) {
+            selectedCardNode.getStyleClass().remove("board-card-selected");
+        }
+        selectedCardNode = node;
+        node.getStyleClass().add("board-card-selected");
+        selected = t;
+        if (deleteSelectedBtn != null) {
+            deleteSelectedBtn.setDisable(false);
         }
     }
 

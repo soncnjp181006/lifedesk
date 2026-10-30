@@ -671,6 +671,62 @@ public final class SmokeMain {
                 System.out.println("Task dialog snapshot FAILED: " + e);
             }
         }
+        // ---- Flashcards tab regression (user report: deck/card panels misaligned,
+        // English "No content in table" placeholder). Open the tab, snapshot it.
+        if (captured && LifeDeskApp.mainWindowRef != null) {
+            java.util.concurrent.CompletableFuture<Boolean> fc = new java.util.concurrent.CompletableFuture<>();
+            javafx.application.Platform.runLater(() -> {
+                try {
+                    LifeDeskApp.mainWindowRef.showView(com.lifedesk.ui.MainWindow.ViewId.LEARNING);
+                    boolean opened = false;
+                    for (javafx.scene.Node n : LifeDeskApp.primaryStageRef.getScene().getRoot().lookupAll(".tab-pane")) {
+                        if (n instanceof javafx.scene.control.TabPane tp) {
+                            for (int i = 0; i < tp.getTabs().size(); i++) {
+                                if ("Flashcards".equals(tp.getTabs().get(i).getText())) {
+                                    tp.getSelectionModel().select(i);
+                                    opened = true;
+                                }
+                            }
+                        }
+                    }
+                    if (!opened) {
+                        throw new IllegalStateException("Không tìm thấy tab Flashcards");
+                    }
+                    fc.complete(true);
+                } catch (Throwable t) {
+                    fc.completeExceptionally(t);
+                }
+            });
+            try {
+                fc.get(10, java.util.concurrent.TimeUnit.SECONDS);
+                Thread.sleep(1200);
+                java.util.concurrent.CompletableFuture<java.awt.image.BufferedImage> capF =
+                        new java.util.concurrent.CompletableFuture<>();
+                javafx.application.Platform.runLater(() -> {
+                    try {
+                        var scene = LifeDeskApp.primaryStageRef.getScene();
+                        javafx.scene.image.WritableImage img = scene.snapshot(null);
+                        java.awt.image.BufferedImage buffered = new java.awt.image.BufferedImage(
+                                (int) img.getWidth(), (int) img.getHeight(),
+                                java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                        for (int y = 0; y < (int) img.getHeight(); y++) {
+                            for (int x = 0; x < (int) img.getWidth(); x++) {
+                                buffered.setRGB(x, y, img.getPixelReader().getArgb(x, y));
+                            }
+                        }
+                        capF.complete(buffered);
+                    } catch (Throwable t) {
+                        capF.completeExceptionally(t);
+                    }
+                });
+                Path fcShot = screenshot.toAbsolutePath().getParent().resolve("ui-smoke-learning-flashcards.png");
+                javax.imageio.ImageIO.write(capF.get(60, java.util.concurrent.TimeUnit.SECONDS), "png", fcShot.toFile());
+                System.out.println("Flashcards tab snapshot: " + fcShot);
+            } catch (Exception e) {
+                check("mở được tab Flashcards", false);
+                System.out.println("Flashcards snapshot FAILED: " + e);
+            }
+        }
         // ---- View-switch latency: navigation is a UI-thread operation, so time the
         // click-to-painted-layout path for every view (cold + warm). A regression here
         // is exactly what "chuyển trang chậm" feels like to the user.

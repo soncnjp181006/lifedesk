@@ -127,8 +127,9 @@ public class LearningView extends View {
         addCard.setOnAction(e -> addCard());
         javafx.scene.control.Button editCardBtn = new javafx.scene.control.Button("Sửa thẻ");
         editCardBtn.setOnAction(e -> editSelectedCard());
-        Button reviewDeckBtn = new Button("Ôn tập bộ đang chọn");
+        Button reviewDeckBtn = new Button("Ôn tập", new IconView("target", 15));
         reviewDeckBtn.getStyleClass().add("primary-btn");
+        reviewDeckBtn.setTooltip(new Tooltip("Ôn tập các thẻ đến hạn của bộ đang chọn"));
         reviewDeckBtn.setOnAction(e -> startReview());
         Button delCard = new Button("", new IconView("trash", 15));
         delCard.getStyleClass().add("icon-btn");
@@ -164,27 +165,40 @@ public class LearningView extends View {
         VBox.setVgrow(courseTable, Priority.ALWAYS);
         VBox.setVgrow(materialsPane, Priority.ALWAYS);
 
-        VBox deckPane = new VBox(10, deckList, deckStats);
-        deckPane.setMinWidth(260);
-        deckPane.setPrefWidth(260);
-        VBox cardPane = new VBox(10, new HBox(10, addCard, editCardBtn, delCard), cardTable);
+        // Both columns are structurally IDENTICAL (fixed-height toolbar + growing
+        // content), so their tops and bottoms always align. The deck-stats line
+        // used to sit under the left list, lifting that panel's bottom above the
+        // table's; it now runs full-width beneath both columns.
+        HBox deckToolbar = new HBox(8, addDeck, renameDeck, reviewDeckBtn);
+        deckToolbar.setAlignment(Pos.CENTER_LEFT);
+        deckToolbar.setMinHeight(34);
+        deckList.setPlaceholder(new Label("Chưa có bộ thẻ nào."));
+        VBox deckPane = new VBox(10, deckToolbar, deckList);
+        deckPane.setMinWidth(280);
+        deckPane.setPrefWidth(280);
+        HBox cardToolbar = new HBox(8, addCard, editCardBtn, delCard);
+        cardToolbar.setAlignment(Pos.CENTER_LEFT);
+        cardToolbar.setMinHeight(34);
+        cardTable.setPlaceholder(new EmptyState("list",
+                "Chọn một bộ thẻ bên trái — hoặc thêm thẻ mới."));
         cardTable.setPrefHeight(240);
+        VBox cardPane = new VBox(10, cardToolbar, cardTable);
         VBox.setVgrow(cardTable, Priority.ALWAYS);
         HBox.setHgrow(cardPane, Priority.ALWAYS);
         HBox flashcardsRow = new HBox(16, deckPane, cardPane);
         VBox.setVgrow(flashcardsRow, Priority.ALWAYS);
+        VBox flashcardsTab = new VBox(8, flashcardsRow, deckStats);
+        deckStats.setWrapText(false);
 
         HBox courseToolbar = new HBox(10, addCourse, editCourse, delCourse);
         courseToolbar.setAlignment(Pos.CENTER_LEFT);
-        HBox deckToolbar = new HBox(10, addDeck, renameDeck, reviewDeckBtn);
-        deckToolbar.setAlignment(Pos.CENTER_LEFT);
         // Review session tab first — it is the daily entry point of the module.
         reviewPane = new com.lifedesk.ui.panes.ReviewSessionPane(ctx);
         tabPane = tabs;
         tabs.getTabs().addAll(
                 new Tab("Ôn tập", reviewPane),
                 new Tab("Khóa học & tài liệu", new VBox(14, courseToolbar, courseTable, materialsPane)),
-                new Tab("Flashcards", new VBox(14, deckToolbar, flashcardsRow)));
+                new Tab("Flashcards", flashcardsTab));
 
         ctx.learning().changes().addListener(this::scheduleRefresh);
         return new VBox(10, header, tabs);

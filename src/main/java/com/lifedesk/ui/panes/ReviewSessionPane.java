@@ -25,8 +25,14 @@ import java.util.List;
  * markdown + LaTeX so math decks display properly.
  */
 public class ReviewSessionPane extends VBox {
+    private static final String MODE_ALL = "Tất cả thẻ — học ngay";
+    private static final String MODE_DUE = "Chỉ thẻ đến hạn";
+    private static final String ALL_DECKS = "(tất cả các bộ)";
+
     private final AppContext ctx;
     private final ComboBox<String> deckPick = new ComboBox<>();
+    private final ComboBox<String> modePick = new ComboBox<>();
+    private final javafx.scene.control.CheckBox shuffleBox = new javafx.scene.control.CheckBox("Trộn thẻ");
     private final MarkdownPreviewPane cardPane = new MarkdownPreviewPane();
     private final Label progressLabel = new Label();
     private final Label statsLabel = new Label();
@@ -48,12 +54,23 @@ public class ReviewSessionPane extends VBox {
         this.ctx = ctx;
         setSpacing(12);
 
-        deckPick.getItems().add("(tất cả các bộ)");
+        deckPick.getItems().add(ALL_DECKS);
         for (var d : ctx.learning().decks()) {
             deckPick.getItems().add(d.name);
         }
-        deckPick.setValue("(tất cả các bộ)");
+        deckPick.setValue(ALL_DECKS);
+        deckPick.setTooltip(new javafx.scene.control.Tooltip("Bộ thẻ muốn học"));
         deckPick.setOnAction(e -> startSession());
+
+        // Quizlet behavior: study ANY deck ANY time. Due-only is an opt-in mode —
+        // previously a deck with no due cards left the session pane dead, so the
+        // user's own cards were unstudiable.
+        modePick.getItems().addAll(MODE_ALL, MODE_DUE);
+        modePick.setValue(MODE_ALL);
+        modePick.setTooltip(new javafx.scene.control.Tooltip("Phạm vi thẻ trong phiên học"));
+        modePick.setOnAction(e -> startSession());
+        shuffleBox.setTooltip(new javafx.scene.control.Tooltip("Xáo trộn thứ tự thẻ"));
+        shuffleBox.setOnAction(e -> startSession());
 
         Button startBtn = new Button("Bắt đầu phiên ôn");
         startBtn.getStyleClass().add("primary-btn");
@@ -61,7 +78,8 @@ public class ReviewSessionPane extends VBox {
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox header = new HBox(10, new Label("Ôn tập spaced repetition"), spacer, deckPick, startBtn);
+        HBox header = new HBox(10, new Label("Ôn tập spaced repetition"), spacer,
+                modePick, deckPick, shuffleBox, startBtn);
         header.setAlignment(Pos.CENTER_LEFT);
 
         cardPane.setMinHeight(220);
@@ -121,7 +139,26 @@ public class ReviewSessionPane extends VBox {
                 }
             }
         }
-        queue = ctx.learning().dueCards(deckId);
+        // Quizlet-style pool: "Tất cả thẻ" studies the whole deck selection any
+        // time (answers still feed the Leitner boxes); "Chỉ thẻ đến hạn" is the
+        // classic spaced-repetition queue.
+        boolean dueOnly = MODE_DUE.equals(modePick.getValue());
+        if (dueOnly) {
+            queue = ctx.learning().dueCards(deckId);
+        } else {
+            List<Flashcard> pool = new java.util.ArrayList<>();
+            if (deckId != null) {
+                pool.addAll(ctx.learning().cardsInDeck(deckId));
+            } else {
+                for (var d : ctx.learning().decks()) {
+                    pool.addAll(ctx.learning().cardsInDeck(d.id));
+                }
+            }
+            if (shuffleBox.isSelected()) {
+                java.util.Collections.shuffle(pool);
+            }
+            queue = pool;
+        }
         index = 0;
         correct = 0;
         reviewed = 0;
@@ -132,8 +169,11 @@ public class ReviewSessionPane extends VBox {
 
     private void showCurrent() {
         if (queue.isEmpty()) {
-            renderCard("**Không có thẻ nào đến hạn ôn.**\n\nHãy quay lại khi có thẻ đến hạn — "
-                    + "hoặc thêm thẻ mới ở tab Flashcards.");
+            boolean dueOnly = MODE_DUE.equals(modePick.getValue());
+            renderCard(dueOnly
+                    ? "**Không có thẻ nào đến hạn ôn.**\n\nChọn chế độ **Tất cả thẻ — học ngay** "
+                            + "để học mọi thẻ, bất kể đến hạn."
+                    : "**Bộ này chưa có thẻ nào.**\n\nThêm thẻ mới ở tab Flashcards.");
             progressLabel.setText("0 thẻ");
             statsLabel.setText("");
             flipBtn.setDisable(true);

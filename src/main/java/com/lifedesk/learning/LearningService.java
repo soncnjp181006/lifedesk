@@ -155,7 +155,12 @@ public class LearningService {
     }
 
     public void addSession(String courseId, LocalDate date, int minutes, String topic) {
-        course(courseId);
+        // Deck-based flashcard review is not tied to a course — courseId may be
+        // null (it used to throw "Không tìm thấy khóa học: null" and crash the
+        // review session the moment a study session was logged).
+        if (courseId != null) {
+            course(courseId);
+        }
         if (minutes <= 0 || minutes > 24 * 60) {
             throw new ValidationException("Thời lượng học phải từ 1 đến 1440 phút");
         }

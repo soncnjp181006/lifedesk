@@ -196,6 +196,25 @@
     -fx-cursor: default;
 }
 
+/* Board cards (Tasks kanban). The selected card MUST stand out from its
+   siblings — the user looks at the highlight before deleting or editing. */
+.board-card {
+    -fx-background-color: -ld-card;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 1;
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-padding: 8;
+}
+
+.board-card:hover { -fx-border-color: -ld-accent; }
+
+.board-card-selected {
+    -fx-border-color: -ld-accent;
+    -fx-border-width: 2;
+    -fx-background-color: -ld-accent-soft;
+}
+
 .primary-btn {
     /* a 6% vertical gradient reads as a lit surface instead of a flat blue slab;
        it is a gradient, not a dropshadow, so it costs nothing on repaint */
@@ -369,6 +388,17 @@
     -fx-border-width: 0;
     -fx-background-color: transparent;
     -fx-padding: 4 6 4 6;
+}
+
+/* The DatePicker's inner text-field carries the full .text-field box (34px +
+   its own border), which made every date picker taller than the combo next to
+   it. The outer .date-picker already draws border/background — flatten the
+   inner field so the whole control lands on the shared 34px height. */
+.date-picker > .text-field {
+    -fx-border-width: 0;
+    -fx-background-color: transparent;
+    -fx-padding: 4 8 4 8;
+    -fx-min-height: 30;
 }
 
 .check-box, .radio-button, .toggle-button {
