@@ -43,6 +43,8 @@ public class LearningView extends View {
     private final TableView<Flashcard> cardTable = new TableView<>();
     private final ListView<Deck> deckList = new ListView<>();
     private final Label dueLabel = new Label();
+    /** Reference for jumping to the review tab from header buttons. */
+    private javafx.scene.control.TabPane tabPane;
 
     public LearningView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -175,7 +177,12 @@ public class LearningView extends View {
         courseToolbar.setAlignment(Pos.CENTER_LEFT);
         HBox deckToolbar = new HBox(10, addDeck, renameDeck, reviewDeckBtn);
         deckToolbar.setAlignment(Pos.CENTER_LEFT);
+        // Review session tab first — it is the daily entry point of the module.
+        com.lifedesk.ui.panes.ReviewSessionPane reviewPane =
+                new com.lifedesk.ui.panes.ReviewSessionPane(ctx);
+        tabPane = tabs;
         tabs.getTabs().addAll(
+                new Tab("Ôn tập", reviewPane),
                 new Tab("Khóa học & tài liệu", new VBox(14, courseToolbar, courseTable, materialsPane)),
                 new Tab("Flashcards", new VBox(14, deckToolbar, flashcardsRow)));
 
@@ -420,68 +427,11 @@ public class LearningView extends View {
     }
 
     private void startReview() {
-        Deck selectedDeck = deckList.getSelectionModel().getSelectedItem();
-        var due = ctx.learning().dueCards(selectedDeck == null ? null : selectedDeck.id);
-        if (due.isEmpty()) {
-            Dialogs.info("Ôn tập", "Không có thẻ nào đến hạn hôm nay.");
-            return;
+        // The review session lives in its own tab (card flip + LaTeX rendering);
+        // jump there instead of the old modal dialog.
+        if (tabPane != null) {
+            tabPane.getSelectionModel().select(0);
         }
-        int total = due.size();
-        int[] index = {0};
-        boolean[] cancelled = {false};
-
-        Label progressLabel = new Label();
-        Label frontLabel = new Label();
-        frontLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-wrap-text: true;");
-        Label backLabel = new Label();
-        backLabel.setStyle("-fx-wrap-text: true; -fx-opacity: 0.15;");
-
-        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dialog = Dialogs.newDialog();
-        dialog.setTitle("Ôn tập");
-        dialog.setHeaderText(null);
-        javafx.scene.control.ButtonType wrong = new javafx.scene.control.ButtonType("Sai",
-                javafx.scene.control.ButtonBar.ButtonData.NO);
-        javafx.scene.control.ButtonType right = new javafx.scene.control.ButtonType("Đúng",
-                javafx.scene.control.ButtonBar.ButtonData.YES);
-        dialog.getDialogPane().getButtonTypes().setAll(wrong, right, javafx.scene.control.ButtonType.CANCEL);
-        VBox content = new VBox(12, progressLabel, frontLabel, backLabel);
-        content.setPadding(new javafx.geometry.Insets(14));
-        dialog.getDialogPane().setContent(content);
-        // The bundled JavaFX ButtonType has no graphic-aware constructor, so attach the
-        // icons to the real dialog buttons once the pane has laid them out.
-        dialog.getDialogPane().applyCss();
-        dialog.getDialogPane().layout();
-        if (dialog.getDialogPane().lookupButton(wrong) instanceof Button wrongBtn) {
-            wrongBtn.setGraphic(new IconView("circle-x", 15));
-        }
-        if (dialog.getDialogPane().lookupButton(right) instanceof Button rightBtn) {
-            rightBtn.setGraphic(new IconView("circle-check", 15));
-        }
-
-        while (index[0] < total && !cancelled[0]) {
-            Flashcard card = due.get(index[0]);
-            progressLabel.setText("Thẻ " + (index[0] + 1) + "/" + total + " — box hiện tại: " + card.box
-                    + " (đáp án mờ ở dưới; tự trả lời trước rồi chọn Đúng/Sai)");
-            frontLabel.setText(card.front);
-            backLabel.setText("Đáp án: " + card.back);
-            var pressedOpt = dialog.showAndWait();
-            if (pressedOpt.isEmpty()) {
-                cancelled[0] = true;
-                break;
-            }
-            var pressed = pressedOpt.get();
-            if (pressed.getButtonData() == javafx.scene.control.ButtonBar.ButtonData.CANCEL_CLOSE) {
-                cancelled[0] = true;
-                break;
-            }
-            boolean correct = pressed.getButtonData() == javafx.scene.control.ButtonBar.ButtonData.YES;
-            ctx.learning().review(card.id, correct);
-            index[0]++;
-        }
-        if (!cancelled[0]) {
-            Dialogs.info("Ôn tập xong", "Bạn đã ôn " + total + " thẻ. Lịch ôn tập tiếp theo đã được cập nhật.");
-        }
-        refresh();
     }
 
     @Override
@@ -520,7 +470,7 @@ public class LearningView extends View {
         Deck deck = deckList.getSelectionModel().getSelectedItem();
         cardTable.getItems().setAll(deck == null ? java.util.List.of() : ctx.learning().cardsInDeck(deck.id));
         if (deck == null) {
-            deckStats.setText("Chọn hoặc tạo một bộ thẻ để bắt đầu.");
+            deckStats.setText("");
         } else {
             int total = ctx.learning().cardsInDeck(deck.id).size();
             int due = ctx.learning().dueCountForDeck(deck.id);

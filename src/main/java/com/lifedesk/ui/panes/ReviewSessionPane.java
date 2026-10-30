@@ -1,0 +1,206 @@
+package com.lifedesk.ui.panes;
+
+import com.lifedesk.app.AppContext;
+import com.lifedesk.learning.Flashcard;
+import com.lifedesk.markdown.MarkdownPreviewPane;
+import com.lifedesk.theme.ThemeManager;
+import javafx.animation.PauseTransition;
+import javafx.geometry.Pos;
+import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.Label;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.VBox;
+import javafx.util.Duration;
+
+import java.time.LocalDate;
+import java.util.List;
+
+/**
+ * Flashcard review session (the missing flow over the Leitner engine):
+ * deck picker → card front → flip → rate (remembered / forgotten) → next,
+ * with a session timer and end-of-session stats. Card content renders as
+ * markdown + LaTeX so math decks display properly.
+ */
+public class ReviewSessionPane extends VBox {
+    private final AppContext ctx;
+    private final ComboBox<String> deckPick = new ComboBox<>();
+    private final MarkdownPreviewPane cardPane = new MarkdownPreviewPane();
+    private final Label progressLabel = new Label();
+    private final Label statsLabel = new Label();
+    private final Button flipBtn = new Button("Lật thẻ (Space)");
+    private final Button correctBtn = new Button("Nhớ ✓");
+    private final Button wrongBtn = new Button("Quên ✗");
+    private final PauseTransition timer = new PauseTransition(Duration.seconds(1));
+
+    private List<Flashcard> queue = List.of();
+    private int index = 0;
+    private boolean showingBack;
+    private int correct = 0;
+    private int reviewed = 0;
+    private long elapsedSeconds = 0;
+
+    public ReviewSessionPane(AppContext ctx) {
+        this.ctx = ctx;
+        setSpacing(12);
+
+        deckPick.getItems().add("(tất cả các bộ)");
+        for (var d : ctx.learning().decks()) {
+            deckPick.getItems().add(d.name);
+        }
+        deckPick.setValue("(tất cả các bộ)");
+        deckPick.setOnAction(e -> startSession());
+
+        Button startBtn = new Button("Bắt đầu phiên ôn");
+        startBtn.getStyleClass().add("primary-btn");
+        startBtn.setOnAction(e -> startSession());
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox header = new HBox(10, new Label("Ôn tập spaced repetition"), spacer, deckPick, startBtn);
+        header.setAlignment(Pos.CENTER_LEFT);
+
+        cardPane.setMinHeight(220);
+        cardPane.getStyleClass().add("card");
+
+        flipBtn.getStyleClass().add("primary-btn");
+        flipBtn.setOnAction(e -> flip());
+        correctBtn.getStyleClass().add("primary-btn");
+        correctBtn.setDisable(true);
+        correctBtn.setOnAction(e -> answer(true));
+        wrongBtn.getStyleClass().add("danger-btn");
+        wrongBtn.setDisable(true);
+        wrongBtn.setOnAction(e -> answer(false));
+        HBox answerRow = new HBox(10, flipBtn, correctBtn, wrongBtn);
+        answerRow.setAlignment(Pos.CENTER);
+        progressLabel.getStyleClass().add("dim-label");
+        statsLabel.getStyleClass().add("dim-label");
+
+        timer.setOnFinished(e -> {
+            elapsedSeconds++;
+            updateStats();
+            timer.playFromStart();
+        });
+
+        HBox statsRow = new HBox(10, progressLabel, new Region(), statsLabel);
+        HBox.setHgrow(statsRow.getChildren().get(1), Priority.ALWAYS);
+
+        getChildren().addAll(header, cardPane, answerRow, statsRow);
+        startSession();
+    }
+
+    /** Space = flip, 1 = forgotten, 2 = remembered (study hotkeys without focus change). */
+    public boolean handleKey(javafx.scene.input.KeyEvent e) {
+        if (e.getCode() == javafx.scene.input.KeyCode.SPACE) {
+            flip();
+            return true;
+        }
+        if (e.getCode() == javafx.scene.input.KeyCode.DIGIT1 && showingBack) {
+            answer(false);
+            return true;
+        }
+        if (e.getCode() == javafx.scene.input.KeyCode.DIGIT2 && showingBack) {
+            answer(true);
+            return true;
+        }
+        return false;
+    }
+
+    private void startSession() {
+        String deckName = deckPick.getValue();
+        String deckId = null;
+        if (deckName != null && !deckName.startsWith("(")) {
+            for (var d : ctx.learning().decks()) {
+                if (d.name.equals(deckName)) {
+                    deckId = d.id;
+                    break;
+                }
+            }
+        }
+        queue = ctx.learning().dueCards(deckId);
+        index = 0;
+        correct = 0;
+        reviewed = 0;
+        elapsedSeconds = 0;
+        timer.playFromStart();
+        showCurrent();
+    }
+
+    private void showCurrent() {
+        if (queue.isEmpty()) {
+            cardPane.render("**Không có thẻ nào đến hạn ôn.** 🎉\n\nHãy quay lại khi có thẻ đến hạn — "
+                    + "hoặc thêm thẻ mới ở tab Flashcards.", palette());
+            progressLabel.setText("0 thẻ");
+            statsLabel.setText("");
+            flipBtn.setDisable(true);
+            correctBtn.setDisable(true);
+            wrongBtn.setDisable(true);
+            return;
+        }
+        flipBtn.setDisable(index >= queue.size());
+        Flashcard card = index < queue.size() ? queue.get(index) : null;
+        if (card == null) {
+            finishSession();
+            return;
+        }
+        showingBack = false;
+        correctBtn.setDisable(true);
+        wrongBtn.setDisable(true);
+        cardPane.render(card.front, palette());
+        progressLabel.setText("Thẻ " + (index + 1) + "/" + queue.size()
+                + "  —  box " + card.box);
+        updateStats();
+    }
+
+    private void flip() {
+        if (index >= queue.size()) {
+            return;
+        }
+        showingBack = true;
+        Flashcard card = queue.get(index);
+        cardPane.render("---\n\n" + card.back, palette());
+        correctBtn.setDisable(false);
+        wrongBtn.setDisable(false);
+        flipBtn.setDisable(true);
+    }
+
+    private void answer(boolean remembered) {
+        if (index >= queue.size()) {
+            return;
+        }
+        Flashcard card = queue.get(index);
+        ctx.learning().review(card.id, remembered);
+        reviewed++;
+        if (remembered) {
+            correct++;
+        }
+        index++;
+        showCurrent();
+    }
+
+    private void finishSession() {
+        timer.stop();
+        int minutes = (int) Math.max(1, elapsedSeconds / 60);
+        cardPane.render("**Hoàn tất phiên ôn!**\n\n"
+                + "• Đã ôn " + reviewed + " thẻ\n"
+                + "• Nhớ: " + correct + " — Quên: " + (reviewed - correct) + "\n"
+                + "• Thời gian: " + minutes + " phút", palette());
+        progressLabel.setText("Phiên kết thúc");
+        String topic = "Ôn tập " + LocalDate.now() + " (" + reviewed + " thẻ)";
+        ctx.learning().addSession(null, LocalDate.now(), minutes, topic);
+        flipBtn.setDisable(true);
+        correctBtn.setDisable(true);
+        wrongBtn.setDisable(true);
+    }
+
+    private void updateStats() {
+        statsLabel.setText("Nhớ " + correct + "/" + reviewed
+                + (elapsedSeconds > 0 ? "  —  " + (elapsedSeconds / 60) + " phút" : ""));
+    }
+
+    private ThemeManager.PreviewPalette palette() {
+        return ctx.themeManager().previewPalette(ctx.config().theme);
+    }
+}

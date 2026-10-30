@@ -47,6 +47,9 @@ public class MainWindow {
         LEARNING("Học tập", "book-open", "learning", "COURSE", "FLASHCARD"),
         FILES("Tệp", "folder", null, null),
         AI("Trợ lý AI", "bot", null, null),
+        AGENT("Agent", "clipboard-list", null, null),
+        RSS("RSS", "scroll-text", null, null),
+        LIBRARY("Thư viện", "library-big", null, null),
         SEARCH("Kết quả tìm kiếm", "search", null, null),
         SETTINGS("Cài đặt", "settings", null, null);
 
@@ -99,7 +102,7 @@ public class MainWindow {
     /** Sidebar order; position in this list is the Ctrl+n shortcut digit (10th = Ctrl+0). */
     private static final List<ViewId> NAV_ORDER = List.of(ViewId.DASHBOARD, ViewId.TASKS, ViewId.NOTES,
             ViewId.FINANCE, ViewId.HABITS, ViewId.HEALTH, ViewId.LEARNING, ViewId.FILES,
-            ViewId.AI);
+            ViewId.AI, ViewId.AGENT);
     private final BorderPane root = new BorderPane();
     private final StackPane content = new StackPane();
     private final VBox sidebarBox = new VBox(4);
@@ -134,6 +137,9 @@ public class MainWindow {
         viewFactories.put(ViewId.LEARNING, () -> new com.lifedesk.ui.views.LearningView(ctx, this));
         viewFactories.put(ViewId.FILES, () -> new com.lifedesk.ui.views.FilesView(ctx, this));
         viewFactories.put(ViewId.AI, () -> new com.lifedesk.ui.views.AiChatView(ctx, this));
+        viewFactories.put(ViewId.AGENT, () -> new com.lifedesk.ui.views.AgentView(ctx, this));
+        viewFactories.put(ViewId.RSS, () -> new com.lifedesk.ui.views.RssView(ctx, this));
+        viewFactories.put(ViewId.LIBRARY, () -> new com.lifedesk.ui.views.LibraryView(ctx, this));
         viewFactories.put(ViewId.SEARCH, () -> new com.lifedesk.ui.views.SearchResultsView(ctx, this));
         viewFactories.put(ViewId.SETTINGS, () -> new com.lifedesk.ui.views.SettingsView(ctx, this));
     }
@@ -259,7 +265,9 @@ public class MainWindow {
             if (id == ViewId.SEARCH) {
                 continue; // opened via search action only
             }
-            Button btn = new Button(sidebarCollapsed ? "" : id.label, new IconView(id.icon, 16));
+            // Iconic pattern: a user-picked icon (config) replaces the default.
+            String icon = ctx.config().iconOverrides.getOrDefault(id.name(), id.icon);
+            Button btn = new Button(sidebarCollapsed ? "" : id.label, new IconView(icon, 16));
             btn.getStyleClass().add("nav-item");
             btn.setMaxWidth(Double.MAX_VALUE);
             btn.setAlignment(sidebarCollapsed ? Pos.CENTER : Pos.CENTER_LEFT);
@@ -268,9 +276,35 @@ public class MainWindow {
             }
             btn.setOnAction(e -> showView(id));
             String hint = shortcutHint(id);
-            btn.setTooltip(new Tooltip(hint == null ? id.label : id.label + "  (" + hint + ")"));
+            btn.setTooltip(new Tooltip(hint == null ? id.label : id.label + "  (" + hint + ")"
+                    + "  ·  chuột phải để đổi icon"));
+            attachIconMenu(btn, id.name(), () -> rebuildSidebarButtons());
             sidebarBox.getChildren().add(btn);
         }
+    }
+
+    /**
+     * Iconic interaction: right-click an icon slot → searchable picker;
+     * picking applies immediately and persists in config.
+     */
+    private void attachIconMenu(javafx.scene.control.Button btn, String configKey, Runnable onRebuilt) {
+        javafx.scene.control.ContextMenu menu = new javafx.scene.control.ContextMenu();
+        javafx.scene.control.MenuItem change = new javafx.scene.control.MenuItem("Đổi icon…");
+        change.setOnAction(e -> com.lifedesk.ui.panes.IconPicker.show(btn, icon -> {
+            ctx.config().iconOverrides.put(configKey, icon);
+            saveConfig();
+            status("Đã đổi icon: " + icon);
+            onRebuilt.run();
+        }));
+        javafx.scene.control.MenuItem reset = new javafx.scene.control.MenuItem("Khôi phục icon mặc định");
+        reset.setOnAction(e -> {
+            if (ctx.config().iconOverrides.remove(configKey) != null) {
+                saveConfig();
+                onRebuilt.run();
+            }
+        });
+        menu.getItems().addAll(change, reset);
+        btn.setContextMenu(menu);
     }
 
     private void toggleSidebar() {
@@ -286,7 +320,8 @@ public class MainWindow {
      * module, and start typing a search.
      */
     private void installShortcuts() {
-        for (int i = 0; i < NAV_ORDER.size(); i++) {
+        // Only the first 10 sidebar entries get Ctrl+1..Ctrl+0 (digit limit).
+        for (int i = 0; i < Math.min(NAV_ORDER.size(), 10); i++) {
             ViewId id = NAV_ORDER.get(i);
             KeyCodeCombination key = new KeyCodeCombination(navDigit(i), KeyCombination.CONTROL_DOWN);
             scene.getAccelerators().put(key, () -> showView(id));
@@ -318,7 +353,7 @@ public class MainWindow {
     /** "Ctrl+4" for FINANCE, or null for a view with no shortcut. */
     private static String shortcutHint(ViewId id) {
         int i = NAV_ORDER.indexOf(id);
-        if (i < 0) {
+        if (i < 0 || i > 9) {
             return null;
         }
         return "Ctrl+" + (i == 9 ? 0 : i + 1);

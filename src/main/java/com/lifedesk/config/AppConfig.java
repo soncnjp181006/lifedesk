@@ -16,6 +16,11 @@ public class AppConfig {
     public boolean remindersEnabled = true;
     public int reminderMinutesBefore = 15;
 
+    /** LaTeX typing assistant in the notes editor (shorthand, auto-fraction, auto-$). */
+    public boolean latexAssist = true;
+    /** Shorthand table, one {@code trigger:::replacement} per line (#cursor marks the caret). */
+    public String latexShorthands = "";
+
     /** File manager + agent file tools: user-granted root folders. */
     public List<String> allowedRoots = new ArrayList<>();
 
@@ -25,6 +30,9 @@ public class AppConfig {
     /** Dashboard widget enable flags, ordered by dashboardWidgetOrder. */
     public Map<String, Boolean> dashboardWidgets = new LinkedHashMap<>();
     public List<String> dashboardWidgetOrder = new ArrayList<>();
+
+    /** Iconic-style icon overrides: ViewId name (or widget id) → /icons/<name>.svg. */
+    public Map<String, String> iconOverrides = new LinkedHashMap<>();
 
     public int windowWidth = 1360;
     public int windowHeight = 860;

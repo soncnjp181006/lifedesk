@@ -121,7 +121,7 @@ public class TasksView extends View {
         HBox.setHgrow(r, javafx.scene.layout.Priority.NEVER);
 
         buildTable();
-        table.setPlaceholder(new EmptyState("clipboard-list", "Chưa có công việc nào. Bấm \"Công việc mới\" để bắt đầu."));
+        table.setPlaceholder(new EmptyState("clipboard-list", "Chưa có công việc nào."));
 
         buildBoard();
 

@@ -88,7 +88,9 @@ public class MarkdownService {
         }
         String prepared = rewriteWikiLinks(markdown, linkResolver);
         Node document = parser.parse(prepared);
-        return renderer.render(document);
+        // Math pass runs on rendered HTML: $/$$ spans become offline-rendered
+        // images (code regions are protected inside MathRenderer).
+        return MathRenderer.mathToHtml(renderer.render(document));
     }
 
     /** Plain text extraction (used for extractive summaries and search previews). */
@@ -144,6 +146,9 @@ public class MarkdownService {
                   blockquote { border-left: 3px solid %s; margin-left: 0; padding-left: 12px; color: %s; }
                   input[type=checkbox] { margin-right: 6px; }
                   hr { border: 0; border-top: 1px solid %s; }
+                  img.math-inline { vertical-align: middle; margin: 0 1px; }
+                  img.math-display { display: block; margin: 8px auto; }
+                  img { max-width: 100%%; }
                 </style>
                 </head>
                 <body>

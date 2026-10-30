@@ -367,6 +367,23 @@ public class NotesService {
         change.fire();
     }
 
+    /**
+     * Attach/detach a media link (obsidian-media-notes convention: one field
+     * turns any note into a media note — local audio/video plays in the
+     * pinned player, remote URLs open externally). Null/blank clears it.
+     */
+    public synchronized void setMediaLink(String id, String url) {
+        NoteMeta meta = get(id);
+        String normalized = url == null ? "" : url.trim();
+        if (normalized.equals(meta.mediaLink)) {
+            return;
+        }
+        meta.mediaLink = normalized;
+        meta.updatedAt = Instant.now();
+        persistIndex();
+        change.fire();
+    }
+
     public synchronized List<NoteMeta> search(String query) {
         List<NoteMeta> out = new ArrayList<>();
         for (NoteMeta n : notes) {

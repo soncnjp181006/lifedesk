@@ -53,6 +53,9 @@ public class AppContext {
     private final SearchService searchService;
     private final BackupService backupService = new BackupService();
     private final AiManager aiManager;
+    private final com.lifedesk.agent.AgentService agentService;
+    private final com.lifedesk.rss.RssService rssService;
+    private final com.lifedesk.library.LibraryService libraryService;
     private final ReminderScheduler reminderScheduler;
     private final java.util.concurrent.ScheduledExecutorService debounceScheduler;
 
@@ -80,6 +83,9 @@ public class AppContext {
         this.ruleBasedEngine = new RuleBasedEngine(taskService, notesService, financeService,
                 habitService, learningService, searchService, markdownService, healthService);
         this.aiManager = new AiManager(config.ai, ruleBasedEngine);
+        this.agentService = new com.lifedesk.agent.AgentService(this);
+        this.rssService = new com.lifedesk.rss.RssService(store);
+        this.libraryService = new com.lifedesk.library.LibraryService(store);
 
         // Reminders
         this.reminderScheduler = new ReminderScheduler(store, taskService, habitService,
@@ -232,6 +238,21 @@ public class AppContext {
 
     public AiManager ai() {
         return aiManager;
+    }
+
+    /** Agent that operates the app through tools (Agent Workflow). */
+    public com.lifedesk.agent.AgentService agent() {
+        return agentService;
+    }
+
+    /** RSS/Atom feed dashboard. */
+    public com.lifedesk.rss.RssService rss() {
+        return rssService;
+    }
+
+    /** Personal library (books/movies/series/games...). */
+    public com.lifedesk.library.LibraryService library() {
+        return libraryService;
     }
 
     public ReminderScheduler reminders() {

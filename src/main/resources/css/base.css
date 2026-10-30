@@ -512,8 +512,12 @@
 
 /* Note list: a divider per row keeps two-line cells readable. */
 .note-list .list-cell {
-    -fx-padding: 9 12 9 12;
+    -fx-padding: 6 10 6 10;
     -fx-background-insets: 0;
+}
+
+.note-cell-title {
+    -fx-text-fill: -ld-text;
 }
 
 .note-list {
@@ -570,9 +574,26 @@
     -fx-border-color: transparent;
     -fx-text-fill: -ld-text;
     -fx-prompt-text-fill: -ld-text-dim;
-    -fx-font-size: 18px;
+    -fx-font-size: 14px;
     -fx-font-weight: bold;
-    -fx-padding: 8 10 8 10;
+    -fx-padding: 4 8 4 8;
+}
+
+.notes-tab-row {
+    -fx-background-color: -ld-surface;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 6 12 6 12;
+}
+
+.icon-tile {
+    -fx-background-color: transparent;
+    -fx-background-radius: 6;
+    -fx-cursor: hand;
+}
+
+.icon-tile:hover {
+    -fx-background-color: -ld-elev;
 }
 
 .notes-tag-field {
@@ -584,13 +605,14 @@
 .notes-editor {
     -fx-font-family: "Cascadia Code", "Consolas", "Segoe UI Mono", monospace;
     -fx-font-size: 13.5px;
-    -fx-background-color: -ld-card;
+    -fx-background-color: -ld-bg;
     -fx-text-fill: -ld-text;
     -fx-prompt-text-fill: -ld-text-dim;
 }
 
 .notes-editor .content {
-    -fx-background-color: -ld-card;
+    -fx-background-color: -ld-bg;
+    -fx-padding: 18 26 18 26;
 }
 
 /* ======================================================================
@@ -868,8 +890,10 @@
 
 /* Markdown formatting toolbar above the note editor */
 .md-toolbar {
-    -fx-background-color: transparent;
-    -fx-padding: 0 0 2 0;
+    -fx-background-color: -ld-surface;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 4 10 4 10;
 }
 
 .md-toolbar-btn {

@@ -240,6 +240,73 @@ public class FinanceService {
     }
 
     /**
+     * Tolerant amount parsing for CSV import (personal-finance study):
+     * strips currency symbols, accepts both thousand-separator styles —
+     * "1.234.567 đ", "1,234,567.89", "1,5" (decimal comma), "1.5" (decimal dot).
+     * Returns null when nothing numeric remains.
+     */
+    public static BigDecimal parseTolerantAmount(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String s = raw.trim().replaceAll("[^0-9.,\\-]", "");
+        if (s.isEmpty() || "-".equals(s)) {
+            return null;
+        }
+        boolean negative = s.contains("-");
+        s = s.replace("-", "");
+        if (s.contains(",") && s.contains(".")) {
+            if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+                s = s.replace(".", "").replace(',', '.'); // 1.234.567,89 (EU)
+            } else {
+                s = s.replace(",", ""); // 1,234,567.89 (US)
+            }
+        } else if (s.contains(",")) {
+            s = thousandsAwareStrip(s, ',');
+        } else if (s.contains(".")) {
+            s = thousandsAwareStrip(s, '.');
+        }
+        try {
+            BigDecimal v = new BigDecimal(s);
+            return negative ? v.negate() : v;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** "1,234,567" → "1234567" (groups of 3); "1,5" → "1.5" (decimal). */
+    private static String thousandsAwareStrip(String s, char sep) {
+        String[] clean = s.split(sep == '.' ? "\\." : String.valueOf(sep));
+        boolean thousands = clean.length >= 2 && clean[0].length() <= 3
+                && java.util.Arrays.stream(clean).skip(1).allMatch(p -> p.length() == 3);
+        return thousands ? s.replace(String.valueOf(sep), "")
+                : s.replace(sep, '.');
+    }
+
+    /**
+     * Apply a natural-language quick-add line (finance-tracker capture):
+     * the description resolves to an existing category when one matches by
+     * name (either direction contains, case-insensitive); otherwise the first
+     * category of the transaction type is used and the text stays in the
+     * description — quick capture never silently creates categories.
+     */
+    public Transaction applyQuickAdd(QuickAddParser.Parsed parsed) {
+        Validators.requireNonNull(parsed, "Cú pháp quick-add");
+        String query = parsed.description() == null ? "" : parsed.description().trim().toLowerCase();
+        Category match = categories.stream()
+                .filter(c -> !c.archived && c.type == parsed.type())
+                .filter(c -> !query.isEmpty()
+                        && (c.name.toLowerCase().contains(query) || query.contains(c.name.toLowerCase())))
+                .findFirst()
+                .orElseGet(() -> categories.stream()
+                        .filter(c -> !c.archived && c.type == parsed.type())
+                        .findFirst()
+                        .orElseThrow(() -> new ValidationException("Chưa có danh mục nào cho " + parsed.type())));
+        return addTransaction(parsed.date(), parsed.type(), parsed.amount(), match.id,
+                PaymentMethod.CASH, parsed.description(), null, null, false);
+    }
+
+    /**
      * Add a transaction with validation. Throws {@link ValidationException} on
      * invalid amount/category or when an identical transaction already exists
      * (duplicate protection) unless {@code allowDuplicate} is set.
@@ -570,8 +637,8 @@ public class FinanceService {
         for (int i = 0; i < header.length; i++) {
             col.put(header[i].trim().toLowerCase(), i);
         }
-        if (!col.containsKey("date") || !col.containsKey("type") || !col.containsKey("amount")) {
-            report.addError(1, "Thiếu cột bắt buộc (date, type, amount)");
+        if (!col.containsKey("date") || !col.containsKey("amount")) {
+            report.addError(1, "Thiếu cột bắt buộc (date, amount)");
             return report;
         }
         int startRow = col.containsKey("id") && col.containsKey("category") ? 1 : 0;
@@ -581,8 +648,20 @@ public class FinanceService {
             int lineNo = r + 1;
             try {
                 LocalDate date = LocalDate.parse(get(col, row, "date").trim(), CSV_DATE);
-                TxType type = TxType.valueOf(get(col, row, "type").trim().toUpperCase());
-                BigDecimal amount = new BigDecimal(get(col, row, "amount").trim());
+                // Amounts tolerate currency symbols and both separator styles.
+                BigDecimal amount = parseTolerantAmount(get(col, row, "amount"));
+                if (amount == null) {
+                    throw new IllegalArgumentException("Số tiền không đọc được: " + get(col, row, "amount"));
+                }
+                // When the CSV has no type column, the sign decides (lberts convention).
+                String typeRaw = col.containsKey("type") ? get(col, row, "type").trim() : "";
+                TxType type;
+                if (typeRaw.isEmpty()) {
+                    type = amount.signum() >= 0 ? TxType.INCOME : TxType.EXPENSE;
+                    amount = amount.abs();
+                } else {
+                    type = TxType.valueOf(typeRaw.toUpperCase());
+                }
                 String desc = col.containsKey("description") ? get(col, row, "description") : "";
                 String extId = col.containsKey("externalid") ? get(col, row, "externalid") : "";
                 String catName = col.containsKey("category") ? get(col, row, "category").trim() : "";

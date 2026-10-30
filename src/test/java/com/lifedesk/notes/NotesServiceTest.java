@@ -40,6 +40,22 @@ class NotesServiceTest {
     }
 
     @Test
+    void mediaLinkPersistsAcrossReload() {
+        NotesService svc = service();
+        NoteMeta n = svc.create("Media note", "", "nội dung", Set.of());
+        svc.setMediaLink(n.id, "C:/video/lecture.mp4");
+        assertEquals("C:/video/lecture.mp4", svc.get(n.id).mediaLink);
+
+        // A fresh service over the same store must still see the link.
+        NotesService reloaded = service();
+        assertEquals("C:/video/lecture.mp4", reloaded.get(n.id).mediaLink);
+
+        // Clearing works too.
+        reloaded.setMediaLink(n.id, "");
+        assertEquals("", reloaded.get(n.id).mediaLink);
+    }
+
+    @Test
     void externalModificationProducesConflictCopyInsteadOfOverwrite() throws Exception {
         NotesService svc = service();
         NoteMeta n = svc.create("Xung đột", "", "bản gốc", Set.of());

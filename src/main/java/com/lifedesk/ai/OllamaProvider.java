@@ -112,6 +112,68 @@ public class OllamaProvider implements AiProvider {
     }
 
     /**
+     * Streaming chat: /api/chat with stream=true produces NDJSON lines
+     * {"message":{"content":"chunk"},"done":bool}. Each chunk is emitted to
+     * {@code onDelta} as it arrives; returns the assembled reply.
+     */
+    @Override
+    public String chatStream(List<ChatMessage> messages, String model, java.util.function.Consumer<String> onDelta) {
+        String modelId = model == null || model.isBlank() ? settings.model : model;
+        if (modelId == null || modelId.isBlank()) {
+            throw new AiException("Chưa chọn model Ollama trong Cài đặt → AI");
+        }
+        JsonObject body = new JsonObject();
+        body.addProperty("model", modelId);
+        body.addProperty("stream", true);
+        JsonArray msgs = new JsonArray();
+        for (ChatMessage m : messages) {
+            JsonObject jm = new JsonObject();
+            jm.addProperty("role", m.role());
+            jm.addProperty("content", m.content());
+            msgs.add(jm);
+        }
+        body.add("messages", msgs);
+        try {
+            var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(base() + "/api/chat"))
+                    .timeout(java.time.Duration.ofSeconds(Math.max(30, settings.timeoutSeconds)))
+                    .header("Content-Type", "application/json")
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body.toString()))
+                    .build();
+            var httpResponse = java.net.http.HttpClient.newHttpClient().send(request,
+                    java.net.http.HttpResponse.BodyHandlers.ofLines());
+            if (httpResponse.statusCode() != 200) {
+                throw new AiException("Ollama trả về HTTP " + httpResponse.statusCode());
+            }
+            StringBuilder full = new StringBuilder();
+            try (var lines = httpResponse.body()) {
+                for (java.util.Iterator<String> it = lines.iterator(); it.hasNext(); ) {
+                    String line = it.next();
+                    if (line.isBlank()) {
+                        continue;
+                    }
+                    JsonObject o = JsonParser.parseString(line).getAsJsonObject();
+                    if (o.has("error")) {
+                        throw new AiException("Ollama lỗi: " + o.get("error").getAsString());
+                    }
+                    if (o.has("message") && o.getAsJsonObject("message").has("content")) {
+                        String delta = o.getAsJsonObject("message").get("content").getAsString();
+                        if (!delta.isEmpty()) {
+                            full.append(delta);
+                            onDelta.accept(delta);
+                        }
+                    }
+                }
+            }
+            return full.toString();
+        } catch (java.io.IOException e) {
+            throw new AiException("Lỗi kết nối Ollama: " + e.getMessage(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AiException("Streaming bị hủy");
+        }
+    }
+
+    /**
      * Explicit model pull with streaming progress. Called only from a user
      * action (button) — the app never pulls models automatically.
      *

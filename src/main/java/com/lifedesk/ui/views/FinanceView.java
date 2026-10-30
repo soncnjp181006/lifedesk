@@ -14,6 +14,7 @@ import com.lifedesk.finance.TxType;
 import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
+import com.lifedesk.ui.components.Card;
 import com.lifedesk.ui.components.EmptyState;
 import com.lifedesk.ui.components.IconView;
 import com.lifedesk.ui.editors.FinanceDialogs;
@@ -24,9 +25,11 @@ import javafx.scene.Node;
 import javafx.scene.chart.BarChart;
 import javafx.scene.chart.CategoryAxis;
 import javafx.scene.chart.NumberAxis;
+import javafx.scene.chart.LineChart;
 import javafx.scene.chart.PieChart;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ProgressBar;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
 import javafx.scene.control.Tab;
@@ -133,6 +136,13 @@ public class FinanceView extends View {
 
         TabPane tabs = new TabPane();
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        tabs.getSelectionModel().selectedIndexProperty().addListener((o, a, b) -> {
+            if (b.intValue() == 3 && reportsDirty) {
+                refreshReports();
+                reportsDirty = false;
+            }
+        });
+        this.tabPane = tabs;
         tabs.getTabs().addAll(
                 new Tab("Giao dịch", buildTransactionsTab()),
                 new Tab("Ngân sách", buildBudgetsTab()),
@@ -243,7 +253,7 @@ public class FinanceView extends View {
 
         buildTxTable();
         txTable.setPlaceholder(new EmptyState("coins",
-                "Chưa có giao dịch trong tháng này.\nNhập thu/chi bằng thanh bên trên — Enter là lưu."));
+                "Chưa có giao dịch trong tháng này."));
 
         reloadQuickCategories();
         return new VBox(12, monthNav, summary, quickBar, toolbar, txTable);
@@ -332,7 +342,17 @@ public class FinanceView extends View {
         try {
             String raw = quickAmount.getText().trim().replace(',', '.');
             if (raw.isEmpty()) {
-                main.status("Nhập số tiền trước đã.");
+                // Natural-language capture: "35k cà phê @mai" typed in the description box.
+                var parsed = com.lifedesk.finance.QuickAddParser.parse(quickDesc.getText());
+                if (parsed != null) {
+                    var t = ctx.finance().applyQuickAdd(parsed);
+                    main.status("Đã lưu nhanh: " + VND.format(t.amount) + " đ — "
+                            + parsed.description() + " (" + parsed.date() + ")");
+                    quickDesc.clear();
+                    refresh();
+                    return;
+                }
+                main.status("Nhập số tiền trước.");
                 quickAmount.requestFocus();
                 return;
             }
@@ -465,8 +485,43 @@ public class FinanceView extends View {
         spentCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(VND.format(spentOf(p.getValue())) + " đ"));
         TableColumn<Budget, String> remainCol = new TableColumn<>("Còn lại");
         remainCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(VND.format(remainingOf(p.getValue())) + " đ"));
-        budgetTable.getColumns().setAll(List.of(monthCol, catCol, limitCol, spentCol, remainCol));
+        TableColumn<Budget, String> paceCol = new TableColumn<>("Nhịp chi");
+        paceCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(paceText(p.getValue())));
+        budgetTable.getColumns().setAll(List.of(monthCol, catCol, limitCol, spentCol, remainCol, paceCol));
         budgetTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+    }
+
+    /**
+     * Pace-aware budget line (finance-tracker study): "nhanh nhịp" when spend
+     * is ahead of the linear expectation for the month, plus the safe-to-spend
+     * Left/Day figure for the current month.
+     */
+    private String paceText(Budget b) {
+        FinanceService.BudgetStatus s = statusOf(b);
+        if (s == null || b.month == null) {
+            return "—";
+        }
+        YearMonth m = b.month;
+        int days = m.lengthOfMonth();
+        int elapsed;
+        if (m.equals(YearMonth.now())) {
+            elapsed = LocalDate.now().getDayOfMonth();
+        } else if (m.isBefore(YearMonth.now())) {
+            elapsed = days;
+        } else {
+            elapsed = 0;
+        }
+        BigDecimal expected = b.limitAmount.multiply(BigDecimal.valueOf(elapsed))
+                .divide(BigDecimal.valueOf(days), 0, RoundingMode.HALF_UP);
+        String status = s.spent().compareTo(expected) > 0 ? "⚡ nhanh nhịp" : "đúng nhịp";
+        if (!m.equals(YearMonth.now())) {
+            return status;
+        }
+        int remainingDays = Math.max(1, days - elapsed + 1);
+        BigDecimal left = b.limitAmount.subtract(s.spent());
+        String perDay = left.signum() <= 0 ? "vượt hạn mức"
+                : VND.format(left.divide(BigDecimal.valueOf(remainingDays), 0, RoundingMode.HALF_UP)) + "/ngày";
+        return status + " — còn " + perDay;
     }
 
     private FinanceService.BudgetStatus statusOf(Budget b) {
@@ -543,7 +598,22 @@ public class FinanceView extends View {
 
     // ------------------------------------------------------------------ reports
 
+    private final VBox reportsHost = new VBox(14);
+    private TabPane tabPane;
+    private boolean reportsDirty;
+
     private Node buildReportsTab() {
+        reportsHost.getChildren().clear();
+        VBox.setVgrow(reportsHost, Priority.ALWAYS);
+        refreshReports();
+        return reportsHost;
+    }
+
+    /** Reports rebuild on every refresh — they used to render once and go stale. */
+    private void refreshReports() {
+        reportsHost.getChildren().clear();
+
+        // ---- 6-month income/expense bars
         CategoryAxis x = new CategoryAxis();
         NumberAxis y = new NumberAxis();
         y.setLabel("VND");
@@ -566,6 +636,7 @@ public class FinanceView extends View {
         }
         monthly.getData().addAll(incomeSeries, expenseSeries);
 
+        // ---- category pie (this month)
         PieChart categoryPie = new PieChart();
         categoryPie.setTitle("Chi tiêu theo danh mục (tháng này)");
         Map<String, BigDecimal> totals = ctx.finance().categoryTotals(
@@ -582,7 +653,70 @@ public class FinanceView extends View {
 
         HBox charts = new HBox(20, monthly, categoryPie);
         HBox.setHgrow(monthly, Priority.ALWAYS);
-        return new VBox(12, charts);
+        reportsHost.getChildren().add(charts);
+        reportsHost.getChildren().add(buildCumulativeCard(now));
+        reportsHost.getChildren().add(buildBreakdownCard(totals, now));
+    }
+
+    /** Cumulative daily balance line (green when ahead of zero, red below) — lberts study. */
+    private Node buildCumulativeCard(YearMonth month) {
+        LocalDate from = month.atDay(1);
+        LocalDate to = month.atEndOfMonth();
+        var transactions = ctx.finance().inRange(from, to);
+        var daily = new java.util.TreeMap<LocalDate, BigDecimal>();
+        for (var t : transactions) {
+            BigDecimal signed = t.type == TxType.INCOME ? t.amount : t.amount.negate();
+            daily.merge(t.date, signed, BigDecimal::add);
+        }
+        NumberAxis x = com.lifedesk.ui.components.DateAxes.epochDay("Ngày", from, to, 3);
+        NumberAxis y = new NumberAxis();
+        y.setLabel("VND tích lũy");
+        LineChart<Number, Number> chart = new LineChart<>(x, y);
+        chart.setTitle("Dòng tiền tích lũy trong tháng");
+        chart.setCreateSymbols(false);
+        chart.setPrefHeight(240);
+        chart.setLegendVisible(false);
+        var series = new javafx.scene.chart.XYChart.Series<Number, Number>();
+        BigDecimal running = BigDecimal.ZERO;
+        long start = from.toEpochDay();
+        for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+            running = running.add(daily.getOrDefault(d, BigDecimal.ZERO));
+            series.getData().add(new javafx.scene.chart.XYChart.Data<>(d.toEpochDay() - start, running.doubleValue()));
+        }
+        chart.getData().add(series);
+        Card card = new Card("Dòng tiền tích lũy");
+        card.content(chart);
+        return card;
+    }
+
+    /** Category breakdown table with proportional bars (lberts study). */
+    private Node buildBreakdownCard(Map<String, BigDecimal> totals, YearMonth month) {
+        Card card = new Card("Phân bổ danh mục (tháng " + month.format(MONTH_FMT) + ")");
+        TableView<Map.Entry<String, BigDecimal>> table = new TableView<>();
+        BigDecimal totalSum = totals.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        TableColumn<Map.Entry<String, BigDecimal>, String> nameCol = new TableColumn<>("Danh mục");
+        nameCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(safeCategoryName(p.getValue().getKey())));
+        TableColumn<Map.Entry<String, BigDecimal>, String> amountCol = new TableColumn<>("Số tiền");
+        amountCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(VND.format(p.getValue().getValue()) + " đ"));
+        TableColumn<Map.Entry<String, BigDecimal>, Node> shareCol = new TableColumn<>("Tỷ trọng");
+        shareCol.setCellValueFactory(p -> {
+            double share = totalSum.signum() == 0 ? 0 : p.getValue().getValue().doubleValue() / totalSum.doubleValue();
+            ProgressBar bar = new ProgressBar(share);
+            bar.setMaxWidth(Double.MAX_VALUE);
+            bar.getStyleClass().add(share > 0.5 ? "danger" : share > 0.25 ? "warn" : "ok");
+            return new ReadOnlyObjectWrapper<>(bar);
+        });
+        table.getColumns().setAll(List.of(nameCol, amountCol, shareCol));
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPrefHeight(220);
+        table.getItems().setAll(totals.entrySet().stream()
+                .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
+                .toList());
+        if (totals.isEmpty()) {
+            table.setPlaceholder(new Label("Chưa có giao dịch chi tiêu trong tháng này."));
+        }
+        card.content(table);
+        return card;
     }
 
     private String safeCategoryName(String id) {
@@ -645,6 +779,12 @@ public class FinanceView extends View {
         budgetStatusById = statuses;
         budgetTable.getItems().setAll(ctx.finance().budgetsFor(YearMonth.now()));
         debtTable.getItems().setAll(ctx.finance().debts(null, null));
+        if (tabPane != null && tabPane.getSelectionModel().getSelectedIndex() == 3) {
+            refreshReports();
+            reportsDirty = false;
+        } else {
+            reportsDirty = true;
+        }
     }
 
     @Override

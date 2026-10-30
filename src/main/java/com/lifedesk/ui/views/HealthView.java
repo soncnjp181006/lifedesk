@@ -57,6 +57,14 @@ public class HealthView extends View {
     private final TableView<HealthEntry> historyTable = new TableView<>();
     private final ComboBox<String> trendField = new ComboBox<>();
     private final VBox chartHost = new VBox();
+    private final com.lifedesk.ui.components.ActivityRing sleepRing =
+            new com.lifedesk.ui.components.ActivityRing("Giấc ngủ / mục tiêu 8h", "#5b8def");
+    private final com.lifedesk.ui.components.ActivityRing exerciseRing =
+            new com.lifedesk.ui.components.ActivityRing("Vận động / mục tiêu 30'", "#4caf7d");
+    private final com.lifedesk.ui.components.ActivityRing logRing =
+            new com.lifedesk.ui.components.ActivityRing("Ghi nhận 30 ngày", "#e0a13d");
+    private final com.lifedesk.ui.components.CalendarHeatmap heatmap =
+            new com.lifedesk.ui.components.CalendarHeatmap();
     private com.lifedesk.ui.components.NoteLinkPicker dayNoteLinks;
 
     public HealthView(AppContext ctx, MainWindow main) {
@@ -78,6 +86,14 @@ public class HealthView extends View {
         manageMetrics.setOnAction(e -> showMetricManager());
         HBox header = new HBox(10, title, spacer, manageMetrics);
         header.setAlignment(Pos.CENTER_LEFT);
+
+        // ---- vitals row: Apple-Health-style rings + consistency heatmap
+        HBox rings = new HBox(24, sleepRing, exerciseRing, logRing);
+        rings.setAlignment(Pos.CENTER);
+        Card vitalsCard = new Card("Hôm nay");
+        vitalsCard.content(rings);
+        Card heatmapCard = new Card("Tần suất vận động — 26 tuần gần nhất");
+        heatmapCard.content(heatmap);
 
         // ---- entry form
         entryDate.setOnAction(e -> {
@@ -129,10 +145,11 @@ public class HealthView extends View {
         disclaimer.getStyleClass().add("dim-label");
         disclaimer.setWrapText(true);
 
-        VBox root = new VBox(12, header, formCard, historyCard, trendCard, disclaimer);
+        VBox root = new VBox(12, header, vitalsCard, formCard, heatmapCard, historyCard, trendCard, disclaimer);
         loadEntry();
         refreshHistory();
         renderTrend();
+        renderRings();
         return root;
     }
 
@@ -193,6 +210,7 @@ public class HealthView extends View {
             ctx.health().upsert(entryDate.getValue(), sleep, exercise, weight, custom, noteField.getText());
             refreshHistory();
             renderTrend();
+            renderRings();
         } catch (NumberFormatException e) {
             Dialogs.error("Giá trị không hợp lệ", "Chỉ nhập số cho các trường số liệu.");
         } catch (RuntimeException e) {
@@ -283,6 +301,34 @@ public class HealthView extends View {
         }
     }
 
+    /** Rings + heatmap recompute from entries (Apple-Health-style daily closure). */
+    private void renderRings() {
+        LocalDate today = LocalDate.now();
+        var entryOpt = ctx.health().byDate(today);
+        Double sleep = entryOpt.map(e -> e.sleepHours).map(BigDecimal::doubleValue).orElse(null);
+        Integer exercise = entryOpt.map(e -> e.exerciseMinutes).orElse(null);
+        sleepRing.update(sleep == null ? 0 : sleep / 8.0,
+                sleep == null ? "—" : String.format(java.util.Locale.ROOT, "%.1fh", sleep), "mục tiêu 8h");
+        exerciseRing.update(exercise == null ? 0 : exercise / 30.0,
+                exercise == null ? "—" : exercise + "'", "mục tiêu 30'");
+
+        LocalDate from = today.minusDays(29);
+        var entries = ctx.health().entries();
+        long logged = entries.stream().filter(e -> !e.date.isBefore(from) && !e.date.isAfter(today)).count();
+        logRing.update(logged / 30.0, logged + "/30", "ngày đã ghi");
+
+        // 26-week exercise heatmap (missing days stay dark).
+        LocalDate hmFrom = today.minusWeeks(25).with(java.time.DayOfWeek.MONDAY);
+        java.util.Map<LocalDate, Double> values = new java.util.HashMap<>();
+        for (HealthEntry e : entries) {
+            if (!e.date.isBefore(hmFrom) && e.exerciseMinutes != null) {
+                values.put(e.date, (double) e.exerciseMinutes);
+            }
+        }
+        heatmap.render(hmFrom, today, values, "#4caf7d");
+        heatmap.installHoverTracking(values::get, hmFrom);
+    }
+
     private void showMetricManager() {
         VBox list = new VBox(6);
         for (MetricDef m : ctx.health().metrics()) {
@@ -326,6 +372,7 @@ public class HealthView extends View {
         loadEntry();
         refreshHistory();
         renderTrend();
+        renderRings();
     }
 
     /** A health record is addressed by its date, so deep links jump the date picker to it. */

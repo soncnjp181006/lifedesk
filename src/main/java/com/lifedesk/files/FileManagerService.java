@@ -21,6 +21,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -220,5 +221,62 @@ public class FileManagerService {
         JsonObject data = new JsonObject();
         data.add("favorites", GsonFactory.create().toJsonTree(favorites));
         store.write("files/favorites.json", 1, data);
+    }
+
+    // ------------------------------------------------------------------ data health audit
+
+    /** One finding of the data-health scan (obsidian-vault-plus, adapted to files). */
+    public record AuditFinding(String kind, Path path, String detail) {
+    }
+
+    /**
+     * Scan every allowed root for: duplicate files (same name + size in
+     * different folders), oversized files and empty files. Read-only —
+     * findings are suggestions, the app never deletes anything on its own.
+     *
+     * @param oversizeThresholdMb files above this size are flagged
+     * @param maxFiles            safety cap on scanned files
+     */
+    public List<AuditFinding> audit(long oversizeThresholdMb, int maxFiles) {
+        List<AuditFinding> out = new ArrayList<>();
+        Map<String, List<Path>> byNameSize = new java.util.LinkedHashMap<>();
+        long threshold = oversizeThresholdMb * 1024L * 1024L;
+        int scanned = 0;
+        for (Path root : allowedRoots()) {
+            if (scanned >= maxFiles) {
+                break;
+            }
+            try (var stream = Files.walk(root)) {
+                var it = stream.filter(Files::isRegularFile).iterator();
+                while (it.hasNext() && scanned < maxFiles) {
+                    Path p = it.next();
+                    scanned++;
+                    try {
+                        BasicFileAttributes attrs = Files.readAttributes(p, BasicFileAttributes.class);
+                        String key = p.getFileName().toString().toLowerCase() + "|" + attrs.size();
+                        byNameSize.computeIfAbsent(key, k -> new ArrayList<>()).add(p);
+                        if (attrs.size() >= threshold) {
+                            out.add(new AuditFinding("oversize", p,
+                                    (attrs.size() / 1024 / 1024) + " MB — cân nhắc dọn hoặc nén"));
+                        } else if (attrs.size() == 0) {
+                            out.add(new AuditFinding("empty", p, "File rỗng 0 byte"));
+                        }
+                    } catch (IOException e) {
+                        // unreadable file: skip silently, audit must not fail wholesale
+                    }
+                }
+            } catch (IOException e) {
+                LOG.warn("Audit could not walk {}: {}", root, e.toString());
+            }
+        }
+        for (List<Path> group : byNameSize.values()) {
+            if (group.size() > 1) {
+                for (Path p : group) {
+                    out.add(new AuditFinding("duplicate", p,
+                            "Trùng tên+kích thước với " + (group.size() - 1) + " file khác"));
+                }
+            }
+        }
+        return out;
     }
 }

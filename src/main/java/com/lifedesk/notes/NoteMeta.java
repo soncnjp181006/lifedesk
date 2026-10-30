@@ -18,6 +18,8 @@ public class NoteMeta {
     public Instant updatedAt = Instant.now();
     /** SHA-256 of the content at the last successful save (conflict detection). */
     public String lastSavedHash = "";
+    /** Media link (obsidian-media-notes): local file path or http(s) URL; "" = none. */
+    public String mediaLink = "";
     /** Cross-module links: module name ("finance","habits","health","learning") -> record ids. */
     public java.util.Map<String, java.util.Set<String>> links = new java.util.LinkedHashMap<>();
 

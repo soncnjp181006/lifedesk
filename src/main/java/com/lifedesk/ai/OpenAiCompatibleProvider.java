@@ -127,6 +127,81 @@ public class OpenAiCompatibleProvider implements AiProvider {
         throw new AiException("Phản hồi Kilo không đúng định dạng");
     }
 
+    /**
+     * Streaming chat: OpenAI SSE protocol — lines "data: {json}" carrying
+     * choices[0].delta.content, terminated by "data: [DONE]".
+     */
+    @Override
+    public String chatStream(List<ChatMessage> messages, String model, java.util.function.Consumer<String> onDelta) {
+        String modelId = model == null || model.isBlank() ? settings.model : model;
+        if (modelId == null || modelId.isBlank()) {
+            throw new AiException("Chưa chọn model Kilo trong Cài đặt → AI");
+        }
+        JsonObject body = new JsonObject();
+        body.addProperty("model", modelId);
+        body.addProperty("stream", true);
+        JsonArray msgs = new JsonArray();
+        for (ChatMessage m : messages) {
+            JsonObject jm = new JsonObject();
+            jm.addProperty("role", m.role());
+            jm.addProperty("content", m.content());
+            msgs.add(jm);
+        }
+        body.add("messages", msgs);
+        try {
+            var request = java.net.http.HttpRequest.newBuilder(
+                            java.net.URI.create(base() + path(settings.chatPath, "/chat/completions")))
+                    .timeout(java.time.Duration.ofSeconds(Math.max(30, settings.timeoutSeconds)))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", auth())
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body.toString()))
+                    .build();
+            var httpResponse = java.net.http.HttpClient.newHttpClient().send(request,
+                    java.net.http.HttpResponse.BodyHandlers.ofLines());
+            if (httpResponse.statusCode() == 401 || httpResponse.statusCode() == 403) {
+                throw new AiException("API key không hợp lệ (HTTP " + httpResponse.statusCode() + ")");
+            }
+            if (httpResponse.statusCode() != 200) {
+                throw new AiException("Kilo trả về HTTP " + httpResponse.statusCode());
+            }
+            StringBuilder full = new StringBuilder();
+            try (var lines = httpResponse.body()) {
+                for (java.util.Iterator<String> it = lines.iterator(); it.hasNext(); ) {
+                    String line = it.next().trim();
+                    if (line.isEmpty() || !line.startsWith("data:")) {
+                        continue;
+                    }
+                    String data = line.substring("data:".length()).trim();
+                    if ("[DONE]".equals(data)) {
+                        break;
+                    }
+                    JsonObject o = JsonParser.parseString(data).getAsJsonObject();
+                    if (o.has("error")) {
+                        JsonObject err = o.getAsJsonObject("error");
+                        throw new AiException("Kilo lỗi: " + (err.has("message")
+                                ? err.get("message").getAsString() : err.toString()));
+                    }
+                    if (o.has("choices") && o.getAsJsonArray("choices").size() > 0) {
+                        JsonObject choice = o.getAsJsonArray("choices").get(0).getAsJsonObject();
+                        if (choice.has("delta") && choice.getAsJsonObject("delta").has("content")) {
+                            String delta = choice.getAsJsonObject("delta").get("content").getAsString();
+                            if (!delta.isEmpty()) {
+                                full.append(delta);
+                                onDelta.accept(delta);
+                            }
+                        }
+                    }
+                }
+            }
+            return full.toString();
+        } catch (java.io.IOException e) {
+            throw new AiException("Lỗi kết nối Kilo: " + e.getMessage(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AiException("Streaming bị hủy");
+        }
+    }
+
     @Override
     public boolean supportsModelListing() {
         return true;

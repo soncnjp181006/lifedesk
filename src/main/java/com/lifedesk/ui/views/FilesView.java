@@ -72,7 +72,10 @@ public class FilesView extends View {
         HBox.setHgrow(spacer, Priority.ALWAYS);
         Button addRoot = new Button("Cấp quyền thư mục", new IconView("plus", 15));
         addRoot.setOnAction(e -> addAllowedRoot());
-        HBox header = new HBox(10, title, spacer, addRoot);
+        Button auditBtn = new Button("Kiểm tra dữ liệu", new IconView("flask-conical", 15));
+        auditBtn.setTooltip(new Tooltip("Quét trùng lặp / file quá lớn / file rỗng (chỉ đọc)"));
+        auditBtn.setOnAction(e -> runAudit());
+        HBox header = new HBox(10, title, spacer, auditBtn, addRoot);
         header.setAlignment(Pos.CENTER_LEFT);
 
         scopeNote.getStyleClass().add("dim-label");
@@ -230,6 +233,50 @@ public class FilesView extends View {
         boolean none = rootCombo.getItems().isEmpty();
         rootCombo.setDisable(none);
         rootCombo.setPromptText(none ? "Chưa cấp quyền thư mục nào" : "Thư mục đã cấp quyền");
+    }
+
+    /** Data-health audit (vault-plus adapted): duplicates / oversize / empty, read-only. */
+    private void runAudit() {
+        if (ctx.files().allowedRoots().isEmpty()) {
+            Dialogs.info("Chưa có thư mục", "Cấp quyền ít nhất một thư mục trước khi quét.");
+            return;
+        }
+        javafx.scene.control.Dialog<Void> dialog = Dialogs.newDialog();
+        dialog.setTitle("Kiểm tra dữ liệu");
+        dialog.setHeaderText("Kết quả quét (chỉ đọc — app không tự xóa gì)");
+        dialog.getDialogPane().getButtonTypes().add(javafx.scene.control.ButtonType.CLOSE);
+        VBox list = new VBox(4);
+        javafx.scene.control.ProgressIndicator progress = new javafx.scene.control.ProgressIndicator();
+        HBox loading = new HBox(10, new Label("Đang quét…"), progress);
+        dialog.getDialogPane().setContent(new VBox(8, loading));
+        dialog.setResizable(true);
+        com.lifedesk.ui.Fx.async(ctx.executors().io(),
+                () -> ctx.files().audit(100, 20000),
+                findings -> javafx.application.Platform.runLater(() -> {
+                    loading.setVisible(false);
+                    loading.setManaged(false);
+                    if (findings.isEmpty()) {
+                        list.getChildren().add(new Label("Không phát hiện vấn đề nào. ✔"));
+                    }
+                    java.util.Map<String, String> kindLabel = java.util.Map.of(
+                            "duplicate", "Trùng lặp", "oversize", "Quá lớn", "empty", "Rỗng");
+                    for (var f : findings) {
+                        Label row = new Label("[" + kindLabel.getOrDefault(f.kind(), f.kind()) + "] "
+                                + f.path().getFileName() + " — " + f.detail());
+                        row.setWrapText(true);
+                        row.getStyleClass().add("dim-label");
+                        list.getChildren().add(row);
+                    }
+                    if (findings.size() >= 200) {
+                        list.getChildren().add(new Label("(dừng ở giới hạn 20000 file — kết quả có thể chưa đầy đủ)"));
+                    }
+                }),
+                err -> javafx.application.Platform.runLater(() -> {
+                    loading.setVisible(false);
+                    list.getChildren().add(new Label("Lỗi quét: " + err.getMessage()));
+                }));
+        dialog.getDialogPane().setContent(new VBox(8, loading, list));
+        dialog.showAndWait();
     }
 
     private void addAllowedRoot() {

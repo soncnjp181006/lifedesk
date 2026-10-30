@@ -138,7 +138,7 @@ public class DashboardView extends View {
         Map<String, Boolean> enabled = ctx.config().dashboardWidgets;
         List<String> order = ctx.config().dashboardWidgetOrder;
         List<String> all = List.of("w_today", "w_overdue", "w_upcoming", "w_finance", "w_budget",
-                "w_habits", "w_goals", "w_learning", "w_health");
+                "w_habits", "w_goals", "w_learning", "w_health", "w_notes");
         if (order.isEmpty() || !order.containsAll(all)) {
             order.clear();
             order.addAll(all);
@@ -165,6 +165,7 @@ public class DashboardView extends View {
         widgets.put("w_goals", goalsWidget());
         widgets.put("w_learning", learningWidget());
         widgets.put("w_health", healthWidget());
+        widgets.put("w_notes", notesWidget());
 
         widgetGrid.getChildren().clear();
         int col = 0;
@@ -386,6 +387,32 @@ public class DashboardView extends View {
         return card;
     }
 
+    /** Notes widget (aurora-dashboard essence): totals + 26-week writing heatmap. */
+    private Card notesWidget() {
+        Card card = new Card("Ghi chú");
+        var notes = ctx.notes().list();
+        long words = 0;
+        java.util.Map<java.time.LocalDate, Double> activity = new java.util.HashMap<>();
+        java.time.LocalDate today = java.time.LocalDate.now();
+        java.time.LocalDate from = today.minusWeeks(25).with(java.time.DayOfWeek.MONDAY);
+        for (var n : notes) {
+            words += ctx.notes().readContent(n.id).split("\\s+").length;
+            java.time.LocalDate day = n.updatedAt.atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+            if (!day.isBefore(from)) {
+                activity.merge(day, 1.0, Double::sum);
+            }
+        }
+        Label stats = new Label(notes.size() + " ghi chú — ~" + words + " từ");
+        stats.getStyleClass().add("dim-label");
+        var heatmap = new com.lifedesk.ui.components.CalendarHeatmap();
+        heatmap.setPrefHeight(150);
+        heatmap.render(from, today, activity,
+                ctx.themeManager().previewPalette(ctx.config().theme).accent());
+        heatmap.installHoverTracking(activity::get, from);
+        card.content(stats, heatmap);
+        return card;
+    }
+
     private Card healthWidget() {
         Card card = new Card("Sức khỏe 30 ngày");
         Double sleep = ctx.health().averageDays(com.lifedesk.health.HealthService.HealthField.SLEEP, 30);
@@ -407,11 +434,12 @@ public class DashboardView extends View {
         Map<String, Boolean> enabled = ctx.config().dashboardWidgets;
         List<String> order = ctx.config().dashboardWidgetOrder;
         List<String> labels = List.of("w_today", "w_overdue", "w_upcoming", "w_finance", "w_budget",
-                "w_habits", "w_goals", "w_learning", "w_health");
+                "w_habits", "w_goals", "w_learning", "w_health", "w_notes");
         Map<String, String> names = Map.of(
                 "w_today", "Việc hôm nay", "w_overdue", "Quá hạn", "w_upcoming", "Sắp tới",
                 "w_finance", "Biểu đồ thu chi", "w_budget", "Ngân sách", "w_habits", "Thói quen",
-                "w_goals", "Mục tiêu", "w_learning", "Học tập", "w_health", "Sức khỏe");
+                "w_goals", "Mục tiêu", "w_learning", "Học tập", "w_health", "Sức khỏe",
+                "w_notes", "Ghi chú");
 
         List<javafx.scene.control.CheckBox> checks = new ArrayList<>();
         for (String id : order) {
