@@ -81,6 +81,53 @@ public abstract class View extends VBox {
         return box;
     }
 
+    private javafx.beans.InvalidationListener viewportHeightPin;
+
+    /**
+     * Cap this page at the height the shell actually gives it, for the pages that own
+     * their own scrolling (a chat column, a review session): the page fills the window
+     * and never makes the window scroll.
+     *
+     * <p>The cap is the viewport height minus everything the scroll content spends on
+     * the way down. The content column has its own top and bottom padding
+     * (.content-area) and that padding lives inside the same viewport, so capping at
+     * the raw viewport height leaves the page a whole padding taller than the room it
+     * was given — the page then grows, the outer bar appears, and whatever is pinned to
+     * the bottom (for chat, the composer) sits below the fold. Summing the padding of
+     * every container between this view and the ScrollPane is what keeps the cap right
+     * when the shell's rhythm changes.
+     */
+    protected void pinHeightToViewport() {
+        javafx.scene.control.ScrollPane sp = null;
+        for (Node n = getParent(); n != null; n = n.getParent()) {
+            if (n instanceof javafx.scene.control.ScrollPane found) {
+                sp = found;
+                break;
+            }
+        }
+        if (sp == null || viewportHeightPin != null) {
+            return; // not attached yet (retry next show), or already pinned
+        }
+        final javafx.scene.control.ScrollPane scroll = sp;
+        javafx.beans.InvalidationListener pin = obs -> {
+            double reserved = 0;
+            for (Node n = getParent(); n != null && n != scroll; n = n.getParent()) {
+                if (n instanceof Region r && r.getPadding() != null) {
+                    reserved += r.getPadding().getTop() + r.getPadding().getBottom();
+                }
+            }
+            setMaxHeight(Math.max(0, scroll.getViewportBounds().getHeight() - reserved));
+        };
+        viewportHeightPin = pin;
+        scroll.viewportBoundsProperty().addListener(pin);
+        for (Node n = getParent(); n != null && n != scroll; n = n.getParent()) {
+            if (n instanceof Region r) {
+                r.paddingProperty().addListener(pin);
+            }
+        }
+        pin.invalidated(scroll.viewportBoundsProperty());
+    }
+
     /** Called every time the view becomes visible. */
     public void onShow() {
     }

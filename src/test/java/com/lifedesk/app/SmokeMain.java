@@ -494,6 +494,39 @@ public final class SmokeMain {
     }
 
     /**
+     * The rail must light up the row of the page that is actually on screen.
+     *
+     * <p>"Some row is highlighted and it is inside the rail's viewport" was the question
+     * asked so far, and it stayed true in a chat screenshot where the rail pointed at a
+     * different module. Since the page no longer paints its own title, a highlight on the
+     * wrong row is not a cosmetic slip — it is the app naming the wrong module.
+     */
+    private static String railMarksCurrentView() {
+        var shell = LifeDeskApp.mainWindowRef.currentView();
+        if (shell == null) {
+            return "shell chưa biết đang ở module nào";
+        }
+        if (shell == com.lifedesk.ui.MainWindow.ViewId.SEARCH
+                || shell == com.lifedesk.ui.MainWindow.ViewId.SETTINGS) {
+            return ""; // no rail row for those; railActiveVisible() reads their marker
+        }
+        var root = LifeDeskApp.primaryStageRef.getScene().getRoot();
+        var marks = root.lookupAll(".nav-item.active");
+        if (marks.isEmpty()) {
+            return "rail không tô mục nào (trang đang mở: " + shell.label + ")";
+        }
+        if (marks.size() > 1) {
+            // Two rows lit at once answers "where am I?" with "both", and the first match
+            // alone would still have read as correct.
+            return "rail tô " + marks.size() + " mục cùng lúc";
+        }
+        var active = marks.iterator().next();
+        String text = active instanceof javafx.scene.control.Button b ? b.getText() : "?";
+        return shell.label.equals(text) ? ""
+                : "rail đang tô \"" + text + "\" nhưng trang mở là \"" + shell.label + "\"";
+    }
+
+    /**
      * Where the vertical space actually went: follow the tallest child at every level
      * and print height / stated preference / minimum. A page that scrolls when it
      * should not is otherwise a guess between five containers.
@@ -527,6 +560,260 @@ public final class SmokeMain {
             cur = next;
         }
         return sb.toString();
+    }
+
+    /**
+     * What a container actually paints around itself: a visible border width and an
+     * opaque fill. Read from the node's computed CSS, not from the stylesheet — a rule
+     * deleted from base.css can come back through a theme, through a skin, or through a
+     * setStyle call, and only the node knows. "" means the container has no edges, so
+     * nothing wraps the content inside it.
+     */
+    private static String paintedEdges(javafx.scene.Node node) {
+        if (!(node instanceof javafx.scene.layout.Region r)) {
+            return "không tìm thấy vùng chứa";
+        }
+        double widest = 0;
+        javafx.scene.layout.Border border = r.getBorder();
+        if (border != null) {
+            for (javafx.scene.layout.BorderStroke s : border.getStrokes()) {
+                javafx.scene.layout.BorderWidths w = s.getWidths();
+                widest = Math.max(widest, paintedSide(s.getTopStyle(), s.getTopStroke(), w.getTop()));
+                widest = Math.max(widest, paintedSide(s.getRightStyle(), s.getRightStroke(), w.getRight()));
+                widest = Math.max(widest, paintedSide(s.getBottomStyle(), s.getBottomStroke(), w.getBottom()));
+                widest = Math.max(widest, paintedSide(s.getLeftStyle(), s.getLeftStroke(), w.getLeft()));
+            }
+        }
+        boolean opaqueFill = false;
+        javafx.scene.layout.Background background = r.getBackground();
+        if (background != null) {
+            for (javafx.scene.layout.BackgroundFill fill : background.getFills()) {
+                if (visible(fill.getFill())) {
+                    opaqueFill = true;
+                }
+            }
+        }
+        if (widest > 0.5 && opaqueFill) {
+            return "viền " + Math.round(widest) + "px + nền đặc";
+        }
+        if (widest > 0.5) {
+            return "viền " + Math.round(widest) + "px";
+        }
+        return opaqueFill ? "nền đặc" : "";
+    }
+
+    /**
+     * One side of a computed border, measured only if it is actually visible: a side
+     * with width 0, style NONE or a transparent paint draws nothing, so it cannot make
+     * the container read as a box.
+     */
+    private static double paintedSide(javafx.scene.layout.BorderStrokeStyle style,
+                                      javafx.scene.paint.Paint paint, double width) {
+        if (style == null || style == javafx.scene.layout.BorderStrokeStyle.NONE) {
+            return 0;
+        }
+        return visible(paint) ? width : 0;
+    }
+
+    /**
+     * CSS "transparent" arrives as Color.TRANSPARENT; anything else (a solid colour, a
+     * gradient) paints pixels. Paint itself only answers isOpaque(), which is false for
+     * every partly alpha'd colour too, so the alpha is read where the type allows it.
+     */
+    private static boolean visible(javafx.scene.paint.Paint paint) {
+        if (paint == null) {
+            return false;
+        }
+        if (paint instanceof javafx.scene.paint.Color c) {
+            return c.getOpacity() > 0.01;
+        }
+        return true;
+    }
+
+    /**
+     * Keep a hand off the windows being measured, and record what it tried to do.
+     *
+     * <p>The harness measures real, on-screen windows. A run that asked for HEALTH and
+     * then spent three seconds showing AGENT and AI was not a shell defect: somebody
+     * clicked the rail while the screenshots were being taken, and the identity checks
+     * then described a page nobody had asked for. The next run's log named the hand — ten
+     * real clicks, one on a chat suggestion, one on "Tệp" — and a dialog the harness had
+     * just opened was closed by the same mouse before it could be captured.
+     *
+     * <p>So pointer input is swallowed for the duration of the run, on every window: no
+     * test reaches the UI through the mouse, only through the API (showView, fire(), a
+     * key event dispatched at a node). Keys are recorded but never consumed, because two
+     * tests do dispatch them and a filter would blind the tests instead of the stranger.
+     */
+    private static void isolateFromHumanInput(java.util.List<String> seen) {
+        javafx.event.EventHandler<javafx.scene.input.MouseEvent> pointer = e -> {
+            synchronized (seen) {
+                seen.add(e.getEventType().getName() + " chuột → " + inputTarget(e)
+                        + " @" + Math.round(e.getScreenX()) + "," + Math.round(e.getScreenY()));
+            }
+            e.consume();
+        };
+        javafx.event.EventHandler<javafx.scene.input.KeyEvent> chord = e -> {
+            if (e.isControlDown() || e.isAltDown() || e.isMetaDown()) {
+                // Recorded, never consumed: two tests dispatch their own key events and
+                // a filter would blind the tests instead of the stranger.
+                synchronized (seen) {
+                    seen.add("phím " + e.getCode() + (e.isControlDown() ? " +Ctrl" : "")
+                            + (e.isAltDown() ? " +Alt" : ""));
+                }
+            }
+        };
+        java.util.Set<javafx.stage.Window> covered =
+                java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+        Runnable everyWindow = () -> {
+            for (javafx.stage.Window w : new java.util.ArrayList<>(javafx.stage.Window.getWindows())) {
+                if (covered.contains(w) || !(w instanceof javafx.stage.Stage st)
+                        || st.getScene() == null) {
+                    continue;
+                }
+                covered.add(w);
+                st.getScene().addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, pointer);
+                st.getScene().addEventFilter(javafx.scene.input.MouseEvent.MOUSE_CLICKED, pointer);
+                st.getScene().addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, chord);
+            }
+        };
+        everyWindow.run();
+        // Dialog stages are created and destroyed throughout the run, so the coverage has
+        // to follow the window list rather than be applied once.
+        javafx.stage.Window.getWindows().addListener(
+                (javafx.collections.ListChangeListener<javafx.stage.Window>) c -> everyWindow.run());
+    }
+
+    /** The node a real click landed on, named well enough to read in a log line. */
+    private static String inputTarget(javafx.event.Event event) {
+        if (!(event.getTarget() instanceof javafx.scene.Node n)) {
+            return event.getTarget().getClass().getSimpleName();
+        }
+        String cls = "";
+        for (String c : n.getStyleClass()) {
+            if (!c.equals("label") && !c.equals("vbox") && !c.equals("hbox")) {
+                cls = "." + c;
+                break;
+            }
+        }
+        String text = n instanceof javafx.scene.control.Labeled l && l.getText() != null
+                && !l.getText().isBlank() ? " \"" + oneLine(l.getText()) + "\"" : "";
+        return n.getClass().getSimpleName() + cls + text;
+    }
+
+    /** Snapshot the live scene into an AWT image the pixel measurements can read. */
+    private static java.awt.image.BufferedImage captureScene() throws Exception {
+        java.util.concurrent.CompletableFuture<java.awt.image.BufferedImage> f =
+                new java.util.concurrent.CompletableFuture<>();
+        javafx.application.Platform.runLater(() -> {
+            try {
+                var scene = LifeDeskApp.primaryStageRef.getScene();
+                javafx.scene.image.WritableImage img = scene.snapshot(null);
+                java.awt.image.BufferedImage buffered = new java.awt.image.BufferedImage(
+                        (int) img.getWidth(), (int) img.getHeight(),
+                        java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                for (int y = 0; y < (int) img.getHeight(); y++) {
+                    for (int x = 0; x < (int) img.getWidth(); x++) {
+                        buffered.setRGB(x, y, img.getPixelReader().getArgb(x, y));
+                    }
+                }
+                f.complete(buffered);
+            } catch (Throwable t) {
+                f.completeExceptionally(t);
+            }
+        });
+        return f.get(60, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
+    /**
+     * The review card's own background colour, asked of the engine that paints it. The
+     * palette is baked into the card's HTML, so this is exactly the thing a theme switch
+     * has to change — with no sampling geometry that can miss the target.
+     */
+    private static String reviewCardBackground() throws Exception {
+        java.util.concurrent.CompletableFuture<String> f =
+                new java.util.concurrent.CompletableFuture<>();
+        javafx.application.Platform.runLater(() -> {
+            try {
+                javafx.scene.Node card = findNode(
+                        LifeDeskApp.primaryStageRef.getScene().getRoot(),
+                        n -> n instanceof com.lifedesk.markdown.MarkdownPreviewPane);
+                if (!(card instanceof com.lifedesk.markdown.MarkdownPreviewPane mp)
+                        || !(mp.webViewNode() instanceof javafx.scene.web.WebView wv)) {
+                    f.complete("(không có thẻ ôn tập trên màn hình)");
+                    return;
+                }
+                Object bg = wv.getEngine().executeScript(
+                        "getComputedStyle(document.body).backgroundColor");
+                f.complete(bg == null ? "(engine không trả lời)" : bg.toString());
+            } catch (Throwable t) {
+                f.complete("(lỗi đọc màu: " + t.getClass().getSimpleName() + ")");
+            }
+        });
+        return f.get(20, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
+    /**
+     * 0..1 brightness of a CSS colour string ("rgb(22, 41, 74)", "rgba(255,255,255,1)").
+     * -1 when the string is not a colour at all, so a failed read cannot be mistaken for
+     * a dark theme.
+     */
+    private static double backgroundBrightness(String cssColor) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(\\d{1,3})\\D+(\\d{1,3})\\D+(\\d{1,3})")
+                .matcher(cssColor == null ? "" : cssColor);
+        if (!m.find()) {
+            return -1;
+        }
+        return (Integer.parseInt(m.group(1)) + Integer.parseInt(m.group(2))
+                + Integer.parseInt(m.group(3))) / (3 * 255.0);
+    }
+
+    /**
+     * Average brightness inside the review card's own rectangle, inset 15% so the border
+     * and the scrollbar are not part of the sample. -1 when no card is on screen: the
+     * caller treats that as a failed measurement, not a passed one.
+     */
+    private static long cardPatchBrightness(java.awt.image.BufferedImage shot) throws Exception {
+        java.util.concurrent.CompletableFuture<double[]> place =
+                new java.util.concurrent.CompletableFuture<>();
+        javafx.application.Platform.runLater(() -> {
+            try {
+                var scene = LifeDeskApp.primaryStageRef.getScene();
+                javafx.scene.Node card = findNode(scene.getRoot(),
+                        n -> n instanceof com.lifedesk.markdown.MarkdownPreviewPane);
+                if (card == null || card.getBoundsInLocal().getWidth() < 120) {
+                    place.complete(new double[]{-1, -1, -1, -1, 1, 1});
+                    return;
+                }
+                var b = card.localToScene(card.getBoundsInLocal());
+                // The snapshot is in device pixels; the bounds are in scene units.
+                place.complete(new double[]{b.getMinX(), b.getMinY(), b.getMaxX(), b.getMaxY(),
+                        scene.getWidth(), scene.getHeight()});
+            } catch (Throwable t) {
+                place.completeExceptionally(t);
+            }
+        });
+        double[] r = place.get(20, java.util.concurrent.TimeUnit.SECONDS);
+        if (r[0] < 0 || r[4] <= 0) {
+            return -1;
+        }
+        double sx = shot.getWidth() / r[4];
+        double sy = shot.getHeight() / r[5];
+        int x0 = (int) ((r[0] + (r[2] - r[0]) * 0.15) * sx);
+        int x1 = (int) ((r[2] - (r[2] - r[0]) * 0.15) * sx);
+        int y0 = (int) ((r[1] + (r[3] - r[1]) * 0.15) * sy);
+        int y1 = (int) ((r[3] - (r[3] - r[1]) * 0.15) * sy);
+        long lum = 0;
+        int n = 0;
+        for (int y = Math.max(0, y0); y <= Math.min(shot.getHeight() - 1, y1); y += 4) {
+            for (int x = Math.max(0, x0); x <= Math.min(shot.getWidth() - 1, x1); x += 4) {
+                int argb = shot.getRGB(x, y);
+                lum += ((argb >> 16) & 0xFF) + ((argb >> 8) & 0xFF) + (argb & 0xFF);
+                n++;
+            }
+        }
+        return n == 0 ? -1 : lum / (3L * n);
     }
 
     /**
@@ -790,6 +1077,31 @@ public final class SmokeMain {
                                 }
                             }
                         }
+                        if ("AI".equals(want)) {
+                            // The chat page owns its scrolling: the message column moves,
+                            // the page must not. A cap that forgot the content column's own
+                            // padding left the page exactly that padding too tall, so the
+                            // composer — the one thing you have to reach to use the module —
+                            // sat under the fold and needed a page scroll to see.
+                            System.out.println("VCHAIN " + heightChain(sp.getContent())
+                                    + " viewportH=" + Math.round(sp.getViewportBounds().getHeight()));
+                            javafx.scene.Node field = scene.lookup(".chat-input");
+                            if (field == null) {
+                                reach = "không tìm thấy ô soạn tin";
+                            } else {
+                                var ib = field.localToScene(field.getBoundsInLocal());
+                                var vb = sp.localToScene(sp.getViewportBounds());
+                                if (ib.getMaxY() > vb.getMaxY() + 1 || ib.getMinY() < vb.getMinY() - 1) {
+                                    reach = "ô soạn tin ở " + Math.round(ib.getMinY()) + "–"
+                                            + Math.round(ib.getMaxY()) + ", khung nhìn tới "
+                                            + Math.round(vb.getMaxY())
+                                            + " — phải cuộn cả trang mới gõ được"
+                                            + " [viewportH=" + Math.round(vb.getHeight())
+                                            + " contentH=" + Math.round(sp.getContent().getLayoutBounds().getHeight())
+                                            + " " + heightChain(sp.getContent()) + "]";
+                                }
+                            }
+                        }
                         probe.complete(new String[]{
                                 contentW <= viewport + 1 ? "" : "tràn " + Math.round(contentW)
                                         + ">" + Math.round(viewport)
@@ -823,10 +1135,10 @@ public final class SmokeMain {
                 check(width + "px: " + want + " chữ bị cắt đều còn chỗ đọc"
                         + (res[6].isEmpty() || res[6].equals("-") ? "" : " — " + res[6]),
                         res[6].isEmpty() || res[6].equals("-"));
-                if ("LEARNING".equals(want)) {
-                    // Asked only of the view that has the button: thirteen no-op passes
-                    // would inflate the count without measuring anything.
-                    check(width + "px: " + want + " nút ôn tập nằm trong khung nhìn, không phải cuộn"
+                if ("LEARNING".equals(want) || "AI".equals(want)) {
+                    // Asked only of the two views that own their scrolling: thirteen
+                    // no-op passes would inflate the count without measuring anything.
+                    check(width + "px: " + want + " điều khiển chính nằm trong khung nhìn, không phải cuộn cả trang"
                             + (res[7].isEmpty() || res[7].equals("-") ? "" : " — " + res[7]),
                             res[7].isEmpty() || res[7].equals("-"));
                 }
@@ -1189,6 +1501,10 @@ public final class SmokeMain {
             int[] acc = accCount.get(10, java.util.concurrent.TimeUnit.SECONDS);
             check("phím tắt Ctrl+1..Ctrl+0 đã đăng ký (" + acc[0] + "/10)", acc[0] == 10);
             check("tổng accelerator >= 14 (có Ctrl+K, Ctrl+B, Ctrl+,)", acc[1] >= 14);
+            // From here the window is measured view by view; a stray click would make a
+            // page look like another one (see isolateFromHumanInput).
+            java.util.List<String> humanInput = new java.util.ArrayList<>();
+            isolateFromHumanInput(humanInput);
             String[][] extraViews = {
                     {"TASKS", "target/ui-smoke-tasks.png"},
                     {"NOTES", "target/ui-smoke-notes.png"},
@@ -1326,8 +1642,34 @@ public final class SmokeMain {
                             String railMsg = railActiveVisible();
                             check("màn hình chỉ rõ đang ở module nào khi ở " + v[0]
                                     + (railMsg.isEmpty() ? "" : " — " + railMsg), railMsg.isEmpty());
+                            // ...and the row it points at has to be the row of this page.
+                            String railWrong = railMarksCurrentView();
+                            check("dấu 'đang ở đây' đúng là module đang mở khi ở " + v[0]
+                                    + (railWrong.isEmpty() ? "" : " — " + railWrong), railWrong.isEmpty());
                             // Once printed this as a note; a note nobody fails on is not a check.
                             check("không tràn ngang khi ở " + v[0], contentW <= viewport + 1);
+                            if ("AI".equals(v[0])) {
+                                // The chat page must fill the window, not grow past it:
+                                // the message column is the scroller. Content taller than
+                                // the viewport means a second, outer scrollbar — the thing
+                                // that hid the composer.
+                                double viewportH = sp.getViewportBounds().getHeight();
+                                double contentH = sp.getContent().getLayoutBounds().getHeight();
+                                check("trang chat không cuộn cả trang [contentH="
+                                        + Math.round(contentH) + " viewportH=" + Math.round(viewportH)
+                                        + " " + heightChain(sp.getContent()) + "]",
+                                        contentH <= viewportH + 1);
+                                // "Không có viền bọc ngoài" measured from the file that
+                                // declares the border would still pass when a theme or a
+                                // Java setStyle drew one. Region keeps the computed CSS, so
+                                // ask the node what it actually paints.
+                                String surfaceEdges = paintedEdges(scene.lookup(".chat-surface"));
+                                String headEdges = paintedEdges(scene.lookup(".chat-head"));
+                                check("cột chat không còn khung bọc ngoài"
+                                        + (surfaceEdges.isEmpty() && headEdges.isEmpty()
+                                                ? "" : " — surface: " + surfaceEdges + ", head: " + headEdges),
+                                        surfaceEdges.isEmpty() && headEdges.isEmpty());
+                            }
                             // A squeezed toolbar cuts control text to "Chia …", "Thẻ li…".
                             // That was found by eye once; it should not need an eye again.
                             java.util.List<String> clipped = new java.util.ArrayList<>();
@@ -1357,6 +1699,14 @@ public final class SmokeMain {
                     check("chụp và kiểm tra được view " + v[0], false);
                     System.out.println("View snapshot FAILED for " + v[0] + ": " + e);
                 }
+            }
+            // What the swallowed input was, printed rather than hidden: the filters stay
+            // on for the rest of the run (the narrow pass measures the same window), and a
+            // run that had a hand in it should say so out loud.
+            if (!humanInput.isEmpty()) {
+                System.out.println("INPUT " + humanInput.size()
+                        + " thao tác thật đã chặn trong lúc đo: "
+                        + String.join(" | ", humanInput));
             }
         }
         // ---- A media note whose link cannot play. This is the only path that builds
@@ -1676,66 +2026,55 @@ public final class SmokeMain {
         }
         // ---- Theme-switch regression: WebView panes (review card, markdown preview,
         // RSS reader) embed the palette inside their HTML, so a stylesheet swap alone
-        // used to leave them wearing the previous theme's colors. Switch Dark→Light
-        // on LEARNING and measure the review-card region: it must actually lighten.
+        // used to leave them wearing the previous theme's colors. Measure the card
+        // itself, before and after the switch: an absolute brightness read at the scene
+        // centre once sat exactly on its own threshold (180 against "> 180") because the
+        // centre is a fixed point that can land on the page background or on the card's
+        // text, and neither of those says anything about the palette.
         if (captured && LifeDeskApp.mainWindowRef != null) {
-            java.util.concurrent.CompletableFuture<java.awt.image.BufferedImage> themeCap =
-                    new java.util.concurrent.CompletableFuture<>();
-            javafx.application.Platform.runLater(() -> {
-                try {
-                    com.lifedesk.ui.MainWindow w = LifeDeskApp.mainWindowRef;
-                    w.showView(com.lifedesk.ui.MainWindow.ViewId.LEARNING);
-                    w.switchTheme("Light");
-                    themeCap.complete(null);
-                } catch (Throwable t) {
-                    themeCap.completeExceptionally(t);
-                }
-            });
             try {
-                themeCap.get(10, java.util.concurrent.TimeUnit.SECONDS);
-                Thread.sleep(1500); // WebView reload + repaint
-                java.util.concurrent.CompletableFuture<java.awt.image.BufferedImage> cap3 =
+                java.util.concurrent.CompletableFuture<Void> onLearning =
                         new java.util.concurrent.CompletableFuture<>();
                 javafx.application.Platform.runLater(() -> {
                     try {
-                        var scene = LifeDeskApp.primaryStageRef.getScene();
-                        javafx.scene.image.WritableImage img3 = scene.snapshot(null);
-                        java.awt.image.BufferedImage buffered = new java.awt.image.BufferedImage(
-                                (int) img3.getWidth(), (int) img3.getHeight(),
-                                java.awt.image.BufferedImage.TYPE_INT_ARGB);
-                        for (int y = 0; y < (int) img3.getHeight(); y++) {
-                            for (int x = 0; x < (int) img3.getWidth(); x++) {
-                                buffered.setRGB(x, y, img3.getPixelReader().getArgb(x, y));
-                            }
-                        }
-                        cap3.complete(buffered);
+                        LifeDeskApp.mainWindowRef.showView(com.lifedesk.ui.MainWindow.ViewId.LEARNING);
+                        onLearning.complete(null);
                     } catch (Throwable t) {
-                        cap3.completeExceptionally(t);
+                        onLearning.completeExceptionally(t);
                     }
                 });
-                java.awt.image.BufferedImage lightShot = cap3.get(60, java.util.concurrent.TimeUnit.SECONDS);
+                onLearning.get(10, java.util.concurrent.TimeUnit.SECONDS);
+                Thread.sleep(1200); // let the card finish painting in the starting theme
+                String darkCss = reviewCardBackground();
+                java.awt.image.BufferedImage darkShot = captureScene();
+                long darkPatch = cardPatchBrightness(darkShot);
+                java.util.concurrent.CompletableFuture<Void> switched =
+                        new java.util.concurrent.CompletableFuture<>();
+                javafx.application.Platform.runLater(() -> {
+                    try {
+                        LifeDeskApp.mainWindowRef.switchTheme("Light");
+                        switched.complete(null);
+                    } catch (Throwable t) {
+                        switched.completeExceptionally(t);
+                    }
+                });
+                switched.get(10, java.util.concurrent.TimeUnit.SECONDS);
+                Thread.sleep(1500); // WebView reload + repaint
+                java.awt.image.BufferedImage lightShot = captureScene();
                 Path themeShotPath = screenshot.toAbsolutePath().getParent()
                         .resolve("ui-smoke-learning-after-theme-switch.png");
                 javax.imageio.ImageIO.write(lightShot, "png", themeShotPath.toFile());
-                // Average brightness of a 200x200 patch at the scene center — the review
-                // card fills that area. Light page ≈ white; a stale dark palette ≈ #1a2436.
-                int cx = lightShot.getWidth() / 2;
-                int cy = lightShot.getHeight() / 2;
-                long lum = 0;
-                int n = 0;
-                for (int y = cy - 100; y < cy + 100; y += 4) {
-                    for (int x = cx - 100; x < cx + 100; x += 4) {
-                        int argb = lightShot.getRGB(x, y);
-                        int r = (argb >> 16) & 0xFF;
-                        int g = (argb >> 8) & 0xFF;
-                        int b = argb & 0xFF;
-                        lum += (r + g + b) / 3;
-                        n++;
-                    }
-                }
-                long avg = lum / Math.max(1, n);
-                System.out.println("THEME review-card brightness after Dark→Light: " + avg);
-                check("thẻ ôn tập đổi màu theo theme (" + avg + ")", avg > 180);
+                String lightCss = reviewCardBackground();
+                long lightPatch = cardPatchBrightness(lightShot);
+                System.out.println("THEME card background " + darkCss + " -> " + lightCss
+                        + " | patch brightness " + darkPatch + " -> " + lightPatch);
+                double darkLum = backgroundBrightness(darkCss);
+                double lightLum = backgroundBrightness(lightCss);
+                check("thẻ ôn tập đổi màu theo theme (" + darkCss + " → " + lightCss + ")",
+                        lightLum > 0.7 && lightLum - darkLum > 0.3);
+                // The DOM says the palette changed; the pixels say it reached the screen.
+                check("màn hình thẻ ôn tập vẽ lại sáng hơn (" + darkPatch + " → " + lightPatch + ")",
+                        lightPatch > 180 && lightPatch - darkPatch > 40);
             } catch (Exception e) {
                 check("đổi theme không lỗi", false);
                 System.out.println("Theme switch FAILED: " + e);
@@ -2097,36 +2436,42 @@ public final class SmokeMain {
                 System.out.println("PERF measurement FAILED: " + e);
             }
         }
-        // ---- AI chat round-trip: type a question, press Enter, snapshot the reply.
-        // Proves the chat surface, the streaming render path and the markdown output
-        // (the rule engine answers deterministically from local data).
+        // ---- AI chat round-trip: ask several questions in a row, then measure and
+        // snapshot. The streaming render path and the markdown output come from the rule
+        // engine (deterministic, offline), and the transcript grows past the window —
+        // which is the only case that says whether the page keeps its own scroll or hands
+        // it to the window. One short answer fits any screen and measures nothing.
         if (captured && LifeDeskApp.mainWindowRef != null) {
             Path chatShot = screenshot.toAbsolutePath().getParent().resolve("ui-smoke-ai-chat.png");
             try {
-                java.util.concurrent.CompletableFuture<String> sent =
-                        new java.util.concurrent.CompletableFuture<>();
-                javafx.application.Platform.runLater(() -> {
-                    try {
-                        LifeDeskApp.mainWindowRef.showView(com.lifedesk.ui.MainWindow.ViewId.AI);
-                        var scene = LifeDeskApp.primaryStageRef.getScene();
-                        var input = scene.lookup(".chat-input");
-                        if (input instanceof javafx.scene.control.TextArea area) {
-                            // The briefing exercises the widest answer: headings, table-free
-                            // sections, lists, bold text — one shot through the markdown renderer.
-                            area.setText("tổng quan hôm nay");
-                            area.fireEvent(new javafx.scene.input.KeyEvent(
-                                    javafx.scene.input.KeyEvent.KEY_PRESSED, "", "",
-                                    javafx.scene.input.KeyCode.ENTER, false, false, false, false));
-                            sent.complete("fired");
-                        } else {
-                            sent.complete("missing chat input");
+                String[] asks = {"tổng quan hôm nay", "việc nào quá hạn", "chi tiêu tháng này",
+                        "tóm tắt tình hình thói quen", "có flashcard nào cần ôn không?"};
+                for (String ask : asks) {
+                    java.util.concurrent.CompletableFuture<String> sent =
+                            new java.util.concurrent.CompletableFuture<>();
+                    final String question = ask;
+                    javafx.application.Platform.runLater(() -> {
+                        try {
+                            LifeDeskApp.mainWindowRef.showView(com.lifedesk.ui.MainWindow.ViewId.AI);
+                            var scene = LifeDeskApp.primaryStageRef.getScene();
+                            var input = scene.lookup(".chat-input");
+                            if (input instanceof javafx.scene.control.TextArea area) {
+                                area.setText(question);
+                                area.fireEvent(new javafx.scene.input.KeyEvent(
+                                        javafx.scene.input.KeyEvent.KEY_PRESSED, "", "",
+                                        javafx.scene.input.KeyCode.ENTER, false, false, false, false));
+                                sent.complete("fired");
+                            } else {
+                                sent.complete("missing chat input");
+                            }
+                        } catch (Throwable t) {
+                            sent.completeExceptionally(t);
                         }
-                    } catch (Throwable t) {
-                        sent.completeExceptionally(t);
-                    }
-                });
-                System.out.println("AI chat send: " + sent.get(10, java.util.concurrent.TimeUnit.SECONDS));
-                Thread.sleep(2500);
+                    });
+                    String fired = sent.get(10, java.util.concurrent.TimeUnit.SECONDS);
+                    check("gửi được câu hỏi \"" + ask + "\" bằng Enter", "fired".equals(fired));
+                    Thread.sleep(900);
+                }
                 javafx.application.Platform.runLater(() -> {
                     var root = LifeDeskApp.primaryStageRef.getScene().getRoot();
                     var cells = root.lookupAll(".chat-sidebar .list-cell");
@@ -2136,9 +2481,66 @@ public final class SmokeMain {
                 Thread.sleep(300);
                 java.util.concurrent.CompletableFuture<java.awt.image.BufferedImage> chatShotFuture =
                         new java.util.concurrent.CompletableFuture<>();
+                java.util.concurrent.CompletableFuture<String[]> chatStateFuture =
+                        new java.util.concurrent.CompletableFuture<>();
                 javafx.application.Platform.runLater(() -> {
                     try {
-                        var img = LifeDeskApp.primaryStageRef.getScene().snapshot(null);
+                        var scene = LifeDeskApp.primaryStageRef.getScene();
+                        scene.getRoot().applyCss();
+                        scene.getRoot().layout();
+                        // Measure the page with a whole conversation inside it. One short
+                        // answer fits any window; a transcript taller than the column is
+                        // what used to push the composer below the fold, because the
+                        // message column reports the height of all of its rows upward.
+                        javafx.scene.control.ScrollPane sp = null;
+                        for (javafx.scene.Node n = scene.lookup(".content-area");
+                             n != null; n = n.getParent()) {
+                            if (n instanceof javafx.scene.control.ScrollPane found) {
+                                sp = found;
+                                break;
+                            }
+                        }
+                        if (sp == null) {
+                            throw new IllegalStateException("không có vùng cuộn nội dung");
+                        }
+                        double viewportH = sp.getViewportBounds().getHeight();
+                        double contentH = sp.getContent().getLayoutBounds().getHeight();
+                        javafx.scene.Node field = scene.lookup(".chat-input");
+                        String composerMsg = "không tìm thấy ô soạn tin";
+                        if (field != null) {
+                            var ib = field.localToScene(field.getBoundsInLocal());
+                            var vb = sp.localToScene(sp.getViewportBounds());
+                            boolean inside = ib.getMaxY() <= vb.getMaxY() + 1
+                                    && ib.getMinY() >= vb.getMinY() - 1;
+                            composerMsg = inside ? ""
+                                    : "ô soạn tin ở " + Math.round(ib.getMinY()) + "–"
+                                            + Math.round(ib.getMaxY()) + ", khung nhìn tới "
+                                            + Math.round(vb.getMaxY());
+                        }
+                        int bubbles = scene.getRoot().lookupAll(".chat-bubble-ai").size();
+                        // Anti-vacuity: "the page does not scroll" only means something
+                        // when the transcript is taller than the column it sits in. A short
+                        // conversation fits any window and would pass with or without the
+                        // height cap, so the run has to say which of the two it measured.
+                        String longEnough = "không tìm thấy cột chat";
+                        if (scene.lookup(".chat-scroll")
+                                instanceof javafx.scene.control.ScrollPane inner) {
+                            double innerH = inner.getViewportBounds().getHeight();
+                            double rowsH = inner.getContent().getLayoutBounds().getHeight();
+                            longEnough = rowsH > innerH + 1 ? "dài"
+                                    : "ngắn [bản ghi " + Math.round(rowsH) + "px trong khung "
+                                            + Math.round(innerH) + "px]";
+                        }
+                        chatStateFuture.complete(new String[]{
+                                contentH <= viewportH + 1 ? ""
+                                        : "contentH=" + Math.round(contentH) + " > viewportH="
+                                                + Math.round(viewportH) + " — " + heightChain(sp.getContent()),
+                                composerMsg,
+                                paintedEdges(scene.lookup(".chat-surface")),
+                                String.valueOf(bubbles),
+                                longEnough,
+                                railMarksCurrentView()});
+                        var img = scene.snapshot(null);
                         int width = (int) img.getWidth();
                         int height = (int) img.getHeight();
                         java.awt.image.BufferedImage buffered = new java.awt.image.BufferedImage(
@@ -2151,11 +2553,30 @@ public final class SmokeMain {
                         chatShotFuture.complete(buffered);
                     } catch (Throwable t) {
                         chatShotFuture.completeExceptionally(t);
+                        chatStateFuture.completeExceptionally(t);
                     }
                 });
                 javax.imageio.ImageIO.write(chatShotFuture.get(30, java.util.concurrent.TimeUnit.SECONDS),
                         "png", chatShot.toFile());
-                check("AI chat trả lời và hiển thị trong khung chat", chatShot.toFile().length() > 0);
+                String[] st = chatStateFuture.get(30, java.util.concurrent.TimeUnit.SECONDS);
+                // Asked first: if the transcript never outgrew the column, the two
+                // measurements below are true of an empty page and prove nothing.
+                check("bài đo chat đủ dài để phép đo cuộn có ý nghĩa [" + st[4] + "]",
+                        "dài".equals(st[4]));
+                check("trang chat không cuộn khi hội thoại đã dài"
+                        + (st[0].isEmpty() ? "" : " — " + st[0]), st[0].isEmpty());
+                check("ô soạn tin còn trong khung nhìn khi hội thoại đã dài"
+                        + (st[1].isEmpty() ? "" : " — " + st[1]), st[1].isEmpty());
+                check("cột chat không còn khung bọc ngoài khi đã có câu trả lời"
+                        + (st[2].isEmpty() ? "" : " — " + st[2]), st[2].isEmpty());
+                // A screenshot nobody compares against anything is not a check: "the file
+                // exists" stayed true while the page scrolled and the composer was cut.
+                check("AI chat trả lời và hiển thị trong khung chat (" + st[3] + " bong bóng)",
+                        chatShot.toFile().length() > 0 && Integer.parseInt(st[3]) > 0);
+                // The screenshot that proved this was worth asking: the chat page was on
+                // screen with the rail lighting up another module.
+                check("rail chỉ đúng trang chat khi đo hội thoại"
+                        + (st[5].isEmpty() ? "" : " — " + st[5]), st[5].isEmpty());
                 System.out.println("Chat snapshot: " + chatShot);
             } catch (Exception e) {
                 System.out.println("Chat snapshot FAILED: " + e);

@@ -39,13 +39,15 @@ import java.util.function.Consumer;
 /**
  * AI chat.
  *
- * <p>Structure: a bordered conversation surface ("khung chat") with its own
- * header, a scrolling message column and a composer pinned at the bottom. The
- * assistant turn is rendered as markdown with {@link MarkdownFlow} and re-rendered
- * on a short throttle while the provider streams, so text appears as it is
- * generated. No WebView is involved: the previous implementation created one per
- * reply and reloaded its HTML on every tick, which is what exhausted native
- * memory and killed the process.
+ * <p>Structure: a header line, a scrolling message column and a composer pinned at
+ * the bottom, with the conversation history in a column beside it. Nothing here is a
+ * bordered card: the page already sits inside the rail, so a second frame around the
+ * conversation was a box inside a box, and the bubbles and the composer draw every
+ * edge the exchange needs. The assistant turn is rendered as markdown with
+ * {@link MarkdownFlow} and re-rendered on a short throttle while the provider
+ * streams, so text appears as it is generated. No WebView is involved: the previous
+ * implementation created one per reply and reloaded its HTML on every tick, which is
+ * what exhausted native memory and killed the process.
  *
  * <p>Smart composer: "@" attaches app data or a note as context and "/" inserts a
  * prompt template.
@@ -69,7 +71,6 @@ public class AiChatView extends View {
     private final TextArea input = new TextArea();
     private final Label providerStatus = new Label();
     private final Label modelChip = new Label();
-    private final Label countChip = new Label();
     private final Button sendBtn = new Button();
     private final VBox composer = new VBox(8);
 
@@ -116,7 +117,6 @@ public class AiChatView extends View {
 
     public AiChatView(AppContext ctx, MainWindow main) {
         super(ctx, main);
-        setSpacing(12);
     }
 
     @Override
@@ -129,8 +129,9 @@ public class AiChatView extends View {
     @Override
     protected Node build() {
         // ---- history sidebar (ChatGPT-style conversation list)
-        Label sidebarBrand = new Label("Trợ lý AI");
-        sidebarBrand.getStyleClass().add("section-label");
+        // No "Trợ lý AI" heading here: the rail on the left is lit up with exactly that
+        // word, and a page that repeats the name of the module it is in spends a line
+        // saying nothing.
         Button newChatBtn = new Button("Hội thoại mới", new IconView("plus", 15));
         newChatBtn.getStyleClass().add("primary-btn");
         newChatBtn.setMaxWidth(Double.MAX_VALUE);
@@ -184,10 +185,14 @@ public class AiChatView extends View {
         });
         ctx.aiConversations().changes().addListener(
                 () -> com.lifedesk.ui.Fx.runLater(this::refreshConvList));
-        VBox sidebar = new VBox(10, sidebarBrand, newChatBtn, recentLabel, convList);
+        VBox sidebar = new VBox(10, newChatBtn, recentLabel, convList);
         sidebar.getStyleClass().add("chat-sidebar");
         sidebar.setPrefWidth(250);
         sidebar.setMinWidth(210);
+        // A ListView asks for more height than the window has once a few conversations
+        // are stored. Its own scroller is the point of having one, so it must be free to
+        // shrink: the alternative is the whole page growing past the viewport.
+        convList.setMinHeight(0);
         convList.setPlaceholder(new com.lifedesk.ui.components.EmptyState("bot",
                 "Chưa có hội thoại nào."));
         VBox.setVgrow(convList, Priority.ALWAYS);
@@ -198,18 +203,17 @@ public class AiChatView extends View {
         modelChip.getStyleClass().addAll("chip", "chip-info");
         modelChip.setVisible(false);
         modelChip.setManaged(false);
-        countChip.getStyleClass().add("chip");
-        countChip.setVisible(false);
-        countChip.setManaged(false);
         Region headSpacer = new Region();
         HBox.setHgrow(headSpacer, Priority.ALWAYS);
         Button settingsBtn = new Button("Cài đặt AI", new IconView("settings", 15));
         settingsBtn.setOnAction(e -> main.showView(MainWindow.ViewId.SETTINGS));
         providerStatus.getStyleClass().add("dim-label");
         // No trash button here: clearing a chat = "Hội thoại mới" in the sidebar —
-        // a second path to the same action read as a delete button.
+        // a second path to the same action read as a delete button. No turn counter
+        // either: the transcript is the count, and a "1 lượt" chip spent the width the
+        // provider line needs to stay readable.
         HBox frameHead = new HBox(8, new IconView("bot", 15, "icon-accent"), chatTitle,
-                modelChip, countChip, headSpacer, providerStatus, settingsBtn);
+                modelChip, headSpacer, providerStatus, settingsBtn);
         frameHead.setAlignment(Pos.CENTER_LEFT);
         frameHead.getStyleClass().add("chat-head");
         // The title and the provider status are prose and may shorten (they elide);
@@ -237,6 +241,10 @@ public class AiChatView extends View {
         VBox.setVgrow(chatScroll, Priority.ALWAYS);
         chatScroll.vvalueProperty().addListener((o, a, b) ->
                 stickToBottom = b.doubleValue() > 0.92);
+        // The welcome panel is sized against this column, so it has to follow the
+        // column when the window changes.
+        chatScroll.viewportBoundsProperty().addListener((o, oldB, b) ->
+                sizeEmptyState(b.getHeight()));
 
         // ---- composer
         contextBar.setVisible(false);
@@ -263,9 +271,6 @@ public class AiChatView extends View {
             onInputChanged(now);
             growInput();
         });
-        input.focusedProperty().addListener((o, was, is) -> composer.pseudoClassStateChanged(
-                javafx.css.PseudoClass.getPseudoClass("focused"), is));
-
         sendBtn.setGraphic(new IconView("send", 15));
         sendBtn.setText("");
         sendBtn.getStyleClass().add("primary-btn");
@@ -279,26 +284,26 @@ public class AiChatView extends View {
             }
         });
         HBox.setHgrow(input, Priority.ALWAYS);
-        HBox inputRow = new HBox(8, input);
+        // The button belongs at the end of the line you are typing on. It used to sit
+        // one row below the field's right corner — the same action, two places away,
+        // and the eye had to leave the text to find whether it was blue or red.
+        HBox inputRow = new HBox(8, input, sendBtn);
+        inputRow.setAlignment(Pos.CENTER_RIGHT);
 
-        // Every mainstream AI app: a centered, compact composer card — not a
-        // full-window strip with buttons stacked in a side column.
+        // The composer is the input field itself, not a card holding a field: the text
+        // area already draws a bordered box, and wrapping it in a second one put a
+        // rectangle inside a rectangle on a page that is inside the rail's own frame.
+        // The hint line sits under the field, where it can be read without being boxed in.
         Label hint = new Label("Enter gửi · Shift+Enter xuống dòng · @ dữ liệu · / mẫu lệnh");
         hint.getStyleClass().add("chat-hint");
-        Region hintSpacer = new Region();
-        HBox.setHgrow(hintSpacer, Priority.ALWAYS);
-        Label privacy = new Label("Chỉ gửi dữ liệu khi bạn bật \"đọc dữ liệu\" trong Cài đặt → AI");
-        privacy.getStyleClass().add("chat-hint");
-        privacy.setWrapText(false);
-        HBox composerBottom = new HBox(10, hint, hintSpacer, sendBtn);
-        composerBottom.setAlignment(Pos.CENTER_LEFT);
 
-        composer.getStyleClass().add("chat-composer");
         composer.setMaxWidth(880);
-        composer.getChildren().addAll(contextBar, inputRow, composerBottom);
+        composer.getChildren().addAll(contextBar, inputRow, hint);
         HBox composerWrap = new HBox(composer);
         composerWrap.setAlignment(Pos.CENTER);
-        composerWrap.setPadding(new javafx.geometry.Insets(8, 14, 12, 14));
+        // Only the gap from the messages: the page's own padding is the outer gutter,
+        // and adding 14px here too made the field narrower than the column it belongs to.
+        composerWrap.setPadding(new javafx.geometry.Insets(2, 0, 0, 0));
 
         streamTick.setOnFinished(e -> {
             if (active != null && busy) {
@@ -307,7 +312,7 @@ public class AiChatView extends View {
             }
         });
 
-        VBox frame = new VBox(0, frameHead, chatScroll, composerWrap);
+        VBox frame = new VBox(6, frameHead, chatScroll, composerWrap);
         frame.getStyleClass().add("chat-surface");
         HBox.setHgrow(frame, Priority.ALWAYS);
 
@@ -316,8 +321,9 @@ public class AiChatView extends View {
         setBusy(false);
         refreshConvList();
 
-        // Sidebar + chat column fill the viewport: the page itself never scrolls,
-        // only the message area does (ChatGPT layout).
+        // Two frameless columns on the page background, filling the viewport: the page
+        // itself never scrolls, only the message area and the history list do. The cap
+        // that makes that true is pinHeightToViewport(), applied from onShow().
         HBox root = new HBox(12, sidebar, frame);
         root.setMaxHeight(Double.MAX_VALUE);
         VBox.setVgrow(root, Priority.ALWAYS);
@@ -395,7 +401,6 @@ public class AiChatView extends View {
         }
         // history already holds assistant messages; user messages replayed above
         refreshContextBar();
-        updateCount();
         chatTitleLabel.setText(stored.title);
         refreshConvList();
         scrollToEnd();
@@ -474,7 +479,20 @@ public class AiChatView extends View {
         card.getChildren().addAll(avatar, headline, sub, suggestions);
         emptyState = card;
         messages.getChildren().setAll(card);
-        updateCount();
+        sizeEmptyState(chatScroll.getViewportBounds().getHeight());
+    }
+
+    /**
+     * Let the welcome panel own the chat column. An empty conversation used to sit at
+     * the top of a tall page with a void under it down to the composer; the panel now
+     * takes the height it is offered and centres itself in it, which is where the eye
+     * looks. The 24px shortfall keeps it inside the viewport, so an empty page never
+     * grows a scrollbar of its own.
+     */
+    private void sizeEmptyState(double viewportHeight) {
+        if (emptyState instanceof Region r && messages.getChildren().contains(r)) {
+            r.setMinHeight(Math.max(0, viewportHeight - 24));
+        }
     }
 
     // ------------------------------------------------------------------ input helpers
@@ -718,13 +736,6 @@ public class AiChatView extends View {
         sendBtn.setDisable(!running && !ctx.ai().enabled());
     }
 
-    private void updateCount() {
-        int turns = (int) history.stream().filter(m -> m.role().equals("assistant")).count();
-        countChip.setVisible(turns > 0);
-        countChip.setManaged(turns > 0);
-        countChip.setText(turns + " lượt");
-    }
-
     // ------------------------------------------------------------------ chat flow
 
     private void send() {
@@ -790,7 +801,6 @@ public class AiChatView extends View {
         persistConversation();
         active = null;
         setBusy(false);
-        updateCount();
         scrollToEnd();
         main.status("AI đã trả lời (" + text.length() + " ký tự)");
     }
@@ -844,7 +854,6 @@ public class AiChatView extends View {
         row.setMaxWidth(920);
         row.getStyleClass().add("chat-row");
         messages.getChildren().add(row);
-        updateCount();
         return row;
     }
 
@@ -923,7 +932,6 @@ public class AiChatView extends View {
                 history.add(com.lifedesk.ai.ChatMessage.assistant(partial));
                 trimHistory();
                 persistConversation();
-                updateCount();
             }
         }
         if (messages.getChildren().isEmpty()) {
@@ -964,34 +972,8 @@ public class AiChatView extends View {
     public void onShow() {
         refreshStatus();
         scrollToEnd();
-        pinToViewport();
+        pinHeightToViewport();
         refreshConvList();
-    }
-
-    private boolean viewportPinned;
-
-    /**
-     * Pin this view's height to the outer content viewport. The chat ScrollPane's
-     * pref height grows with its content, which used to push the whole view past
-     * the viewport and let the PAGE scroll. With the cap, the page never scrolls —
-     * only the message area does; the deficit is absorbed by the chat ScrollPane
-     * (min height 0) and the conversation list.
-     */
-    private void pinToViewport() {
-        if (viewportPinned || getScene() == null) {
-            return;
-        }
-        for (javafx.scene.Node n = this; n != null; n = n.getParent()) {
-            if (n instanceof javafx.scene.control.ScrollPane sp) {
-                javafx.beans.InvalidationListener pin = obs ->
-                        setMaxHeight(sp.getViewportBounds().getHeight());
-                sp.viewportBoundsProperty().addListener(pin);
-                pin.invalidated(sp.viewportBoundsProperty());
-                convList.setMinHeight(0);
-                viewportPinned = true;
-                return;
-            }
-        }
     }
 
     @Override

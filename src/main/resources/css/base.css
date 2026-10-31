@@ -1399,24 +1399,24 @@
 .notif-item.unread .label { -fx-font-weight: bold; }
 
 /* ======================================================================
-   15. Chat — a bordered conversation surface with its own header,
-       scrolling message column and pinned composer.
+   15. Chat — a header line, a scrolling message column and a pinned
+       composer, with the history list in a column beside it.
    ====================================================================== */
 
+/* The chat column is deliberately not a card. It used to be a rounded bordered box
+   sitting on a page that is itself inside the rail — a frame around a frame that cost
+   two pixels of width and a horizontal line at each end of every message. The bubbles,
+   the composer and the hairline beside the history carry the structure instead. */
 .chat-surface {
-    -fx-background-color: -ld-card;
-    -fx-background-radius: 12;
-    -fx-border-color: -ld-border;
-    -fx-border-radius: 12;
-    -fx-border-width: 1;
+    -fx-background-color: transparent;
 }
 
+/* Header = the page's action row, like every other module: no fill, no rounding,
+   no underline. The row above the messages never moves, so the messages scrolling
+   past it is the only motion on the page. */
 .chat-head {
-    -fx-background-color: -ld-surface;
-    -fx-background-radius: 12 12 0 0;
-    -fx-border-color: transparent transparent -ld-border transparent;
-    -fx-border-width: 0 0 1 0;
-    -fx-padding: 9 12 9 14;
+    -fx-background-color: transparent;
+    -fx-padding: 2 0 0 0;
 }
 
 .chat-scroll,
@@ -1425,8 +1425,10 @@
     -fx-background-insets: 0;
 }
 
+/* Inside a card the column needed its own inset; on the page background the
+   message rows already carry their own width limit and gutter. */
 .chat-messages {
-    -fx-padding: 18 20 14 20;
+    -fx-padding: 2 0 10 0;
 }
 
 .chat-empty {
@@ -1513,28 +1515,27 @@
     -fx-border-width: 1 0 0 0;
 }
 
-/* Composer = centered floating card (ChatGPT-style), not a full-width strip. */
-.chat-composer {
-    -fx-background-color: -ld-surface;
-    -fx-background-radius: 12;
-    -fx-border-color: -ld-border;
-    -fx-border-radius: 12;
-    -fx-border-width: 1;
-    -fx-padding: 10 12 8 12;
-}
+/* The composer used to be a bordered card holding the bordered text field — one
+   rectangle inside another, and the outer one added nothing the field did not
+   already say. The text area (.chat-input) is the composer now. */
 
-/* History sidebar: the conversation list lives here, page never scrolls. */
+/* History sidebar: the conversation list lives here, page never scrolls.
+   One hairline separates it from the conversation — a box around a column that is
+   already at the edge of the page repeats the frame the rail just drew. */
 .chat-sidebar {
-    -fx-background-color: -ld-surface;
-    -fx-border-color: -ld-border;
-    -fx-border-radius: 12;
-    -fx-background-radius: 12;
-    -fx-border-width: 1;
-    -fx-padding: 12;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent -ld-border transparent transparent;
+    -fx-border-width: 0 1 0 0;
+    -fx-padding: 0 14 0 0;
 }
 
 .chat-sidebar .list-view {
     -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-color: transparent;
+    -fx-border-width: 0;
+    -fx-padding: 0;
 }
 
 .chat-sidebar .list-cell {
