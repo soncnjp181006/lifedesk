@@ -1,6 +1,7 @@
 package com.lifedesk.ui.components;
 
 import javafx.scene.canvas.Canvas;
+import com.lifedesk.ui.components.Card;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
@@ -20,13 +21,14 @@ public class ActivityRing extends StackPane {
     private final Canvas canvas = new Canvas(110, 110);
     private double progress;
     private String colorClass = "#4caf7d";
+    /** Center caption color, handed in by the view from the active palette. */
+    private String textColor = "#e8e8e8";
     private String valueText = "";
     private String goalText = "";
 
     public ActivityRing(String title, String colorClass) {
         this.colorClass = colorClass;
-        Label titleLabel = new Label(title);
-        titleLabel.getStyleClass().add("dim-label");
+        Label titleLabel = Card.dim(title);
         // Value + goal live INSIDE the ring; a second goal line below just
         // duplicated the center text.
         VBox box = new VBox(4, titleLabel, canvas);
@@ -55,7 +57,7 @@ public class ActivityRing extends StackPane {
         double radius = Math.min(w, h) / 2 - 10;
         double stroke = 9;
 
-        Color track = Color.web("#888888", 0.18);
+        Color track = Color.web(textColor, 0.18);
         Color fill = Color.web(colorClass);
 
         g.setLineWidth(stroke);
@@ -74,24 +76,27 @@ public class ActivityRing extends StackPane {
 
         // Center text: value big, goal small.
         g.setTextAlign(TextAlignment.CENTER);
-        g.setFill(Color.web(fxThemeText()));
+        g.setFill(Color.web(textColor));
         g.setFont(Font.font("System", FontWeight.BOLD, 15));
         g.fillText(valueText, cx, cy - 1);
         g.setFont(Font.font("System", 10));
-        g.setFill(Color.web(fxThemeText(), 0.6));
+        g.setFill(Color.web(textColor, 0.6));
         g.fillText(goalText, cx, cy + 14);
     }
 
-    /** Derive readable text color from the JavaFX theme class on this node. */
-    private String fxThemeText() {
-        javafx.scene.Scene scene = getScene();
-        if (scene != null) {
-            for (String style : scene.getStylesheets()) {
-                if (style.contains("light")) {
-                    return "#222222";
-                }
-            }
+    /**
+     * Paint the canvas with the active palette. Canvas is outside CSS, so the view is
+     * the only place that knows the theme; this used to guess the text color from
+     * whether a stylesheet URL happened to contain "light", which is wrong for any
+     * theme the user drops into config/themes/.
+     */
+    public void setPaletteColors(String ringColor, String text) {
+        if (ringColor != null && !ringColor.isBlank()) {
+            this.colorClass = ringColor;
         }
-        return "#e8e8e8";
+        if (text != null && !text.isBlank()) {
+            this.textColor = text;
+        }
+        draw();
     }
 }

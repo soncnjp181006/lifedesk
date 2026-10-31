@@ -3,8 +3,8 @@ package com.lifedesk.ui;
 import com.lifedesk.app.AppContext;
 import com.lifedesk.config.AppConfig;
 import com.lifedesk.notifications.NotificationItem;
-import com.lifedesk.notifications.NotificationService;
 import com.lifedesk.ui.components.IconView;
+import com.lifedesk.ui.components.Card;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -37,10 +37,12 @@ import java.util.function.Supplier;
  * between module views.
  */
 public class MainWindow {
-    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(MainWindow.class);
 
     public enum ViewId {
-        DASHBOARD("Dashboard", "layout-dashboard", null, null),
+        // Vietnamese-first: the landing page used to read "Tổng quan" while the rail
+        // said "Dashboard". With the in-page title gone the rail is the only place the
+        // name appears, so the one copy left has to be the product's own language.
+        DASHBOARD("Tổng quan", "layout-dashboard", null, null),
         TASKS("Công việc", "list-checks", "tasks", "TASK"),
         NOTES("Ghi chú", "file-text", "notes", "NOTE"),
         FINANCE("Tài chính", "wallet", "finance", "TRANSACTION"),
@@ -101,17 +103,47 @@ public class MainWindow {
     private final Stage stage;
     private final Scene scene;
     private final AppContext ctx;
-    /** Sidebar order; position in this list is the Ctrl+n shortcut digit (10th = Ctrl+0). */
-    private static final List<ViewId> NAV_ORDER = List.of(ViewId.DASHBOARD, ViewId.TASKS, ViewId.NOTES,
-            ViewId.FINANCE, ViewId.HABITS, ViewId.HEALTH, ViewId.LEARNING, ViewId.FILES,
-            ViewId.AI, ViewId.AGENT);
+    /**
+     * The sidebar, in display order. One declaration drives the rail, the section
+     * headers and the Ctrl+1..Ctrl+0 digits, so the three can never drift apart.
+     * SEARCH is absent (it opens from the search field) and SETTINGS is absent
+     * (the top-bar gear and Ctrl+, already reach it — a nav row for it was a third
+     * door to the same room).
+     */
+    private record NavSection(String title, ViewId... items) {
+    }
+
+    private static final List<NavSection> NAV = List.of(
+            new NavSection("TỔNG QUAN", ViewId.DASHBOARD),
+            new NavSection("QUẢN LÝ", ViewId.TASKS, ViewId.NOTES, ViewId.FINANCE, ViewId.HABITS,
+                    ViewId.HEALTH, ViewId.LEARNING),
+            new NavSection("TRỢ LÝ", ViewId.AI, ViewId.AGENT),
+            new NavSection("KHÁC", ViewId.FILES, ViewId.RSS, ViewId.LIBRARY));
+    /** Flat rail order; position in this list is the Ctrl digit (10th = Ctrl+0). */
+    private static final List<ViewId> NAV_ITEMS = NAV.stream()
+            .flatMap(s -> java.util.Arrays.stream(s.items()))
+            .toList();
+    /** Digit keys and their labels, index-aligned with NAV_ITEMS (10 digits only). */
+    private static final KeyCode[] DIGIT_KEYS = {KeyCode.DIGIT1, KeyCode.DIGIT2, KeyCode.DIGIT3,
+            KeyCode.DIGIT4, KeyCode.DIGIT5, KeyCode.DIGIT6, KeyCode.DIGIT7, KeyCode.DIGIT8,
+            KeyCode.DIGIT9, KeyCode.DIGIT0};
+    private static final String[] DIGIT_LABELS = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};
+
     private final BorderPane root = new BorderPane();
     private final StackPane content = new StackPane();
-    private final VBox sidebarBox = new VBox(4);
+    /** No constructor gaps: .sidebar / .topbar / .statusbar own spacing in CSS. */
+    private final VBox sidebarBox = new VBox();
+    /** The scrollable part of the rail: group headings + module buttons. */
+    private final VBox navList = new VBox(4);
+    private javafx.scene.control.ScrollPane navScroll;
     private final Map<ViewId, View> views = new HashMap<>();
     private final Map<ViewId, Supplier<View>> viewFactories = new HashMap<>();
     /** Sidebar buttons, kept so navigation only re-tints a class instead of rebuilding. */
     private final Map<ViewId, Button> navButtons = new HashMap<>();
+    /** Chord → the view that answers it while visible, so two views can share one key. */
+    private final Map<KeyCombination, Map<ViewId, Runnable>> viewKeys = new HashMap<>();
+    /** Chord → shell fallback, used when no visible view claims the key. */
+    private final Map<KeyCombination, Runnable> shellKeys = new HashMap<>();
     /** Scroll offset per view, restored when the view is shown again. */
     private final Map<ViewId, Double> scrollPositions = new HashMap<>();
     private ScrollPane centerScroll;
@@ -127,8 +159,8 @@ public class MainWindow {
 
     private Label statusLabel;
     private Label notifBadge;
-    /** Top-bar theme selector; kept so switchTheme() can sync its shown value. */
-    private javafx.scene.control.ComboBox<String> themeCombo;
+    /** Top-bar theme picker; applyTheme() is the only place that syncs its label. */
+    private javafx.scene.control.MenuButton themeMenu;
     private Label brandTitleLabel;
     private Label brandMark;
     private VBox brandNames;
@@ -137,6 +169,8 @@ public class MainWindow {
     private Popup notifPopup;
     private VBox notifList;
     private TextField searchField;
+    /** The gear in the top bar: it is the "you are here" mark for the settings page. */
+    private Button settingsBtn;
     private boolean sidebarCollapsed;
 
     public MainWindow(Stage stage, Scene scene, AppContext ctx) {
@@ -179,7 +213,6 @@ public class MainWindow {
         // when it is tall (fitToHeight would compress the dashboard charts).
         content.minHeightProperty().bind(centerScroll.viewportBoundsProperty()
                 .map(b -> b.getHeight()));
-        centerScroll.setStyle("-fx-background-color: transparent;");
 
         // The rail runs the full window height and the bar belongs to the content
         // column. Previously the bar spanned the whole window with the collapse
@@ -200,7 +233,7 @@ public class MainWindow {
     // ------------------------------------------------------------------ chrome
 
     private Node buildTopBar() {
-        HBox bar = new HBox(12);
+        HBox bar = new HBox();
         bar.getStyleClass().add("topbar");
         bar.setAlignment(Pos.CENTER_LEFT);
 
@@ -220,20 +253,21 @@ public class MainWindow {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        // Theme selector
-        themeCombo = new javafx.scene.control.ComboBox<>();
-        themeCombo.getItems().addAll(ctx.themeManager().availableThemes());
-        themeCombo.setValue(ctx.config().theme);
-        themeCombo.setTooltip(new Tooltip("Chủ đề giao diện"));
-        themeCombo.setPrefWidth(132);
-        themeCombo.setOnAction(e -> {
-            String theme = themeCombo.getValue();
-            if (theme != null) {
-                ctx.config().theme = theme;
-                applyTheme();
-                saveConfig();
-            }
-        });
+        // Theme picker: one button that names the active theme and lists the others,
+        // with the current one ticked. A ComboBox showed the same name but could not
+        // mark which entry was live, and switching it drove theme changes through a
+        // value setter that then had to be re-synced — the menu just calls switchTheme.
+        themeMenu = new javafx.scene.control.MenuButton(ctx.config().theme);
+        themeMenu.getStyleClass().add("theme-menu");
+        themeMenu.setTooltip(new Tooltip("Chủ đề giao diện"));
+        javafx.scene.control.ToggleGroup themeGroup = new javafx.scene.control.ToggleGroup();
+        for (String theme : ctx.themeManager().availableThemes()) {
+            javafx.scene.control.RadioMenuItem item = new javafx.scene.control.RadioMenuItem(theme);
+            item.setToggleGroup(themeGroup);
+            item.setSelected(theme.equals(ctx.config().theme));
+            item.setOnAction(e -> switchTheme(theme));
+            themeMenu.getItems().add(item);
+        }
 
         // Notification bell
         Button bell = new Button("", new IconView("bell", 17));
@@ -247,12 +281,12 @@ public class MainWindow {
         bell.setOnAction(e -> toggleNotifPopup(bellStack));
         ctx.notifications().changes().addListener(this::refreshNotifBadge);
 
-        Button settingsBtn = new Button("", new IconView("settings", 17));
+        settingsBtn = new Button("", new IconView("settings", 17));
         settingsBtn.getStyleClass().add("icon-btn");
         settingsBtn.setTooltip(new Tooltip("Cài đặt"));
         settingsBtn.setOnAction(e -> showView(ViewId.SETTINGS));
 
-        bar.getChildren().addAll(searchField, spacer, themeCombo, bellStack, settingsBtn);
+        bar.getChildren().addAll(searchField, spacer, themeMenu, bellStack, settingsBtn);
         return bar;
     }
 
@@ -284,16 +318,52 @@ public class MainWindow {
         brandBox.setPadding(new Insets(0, 0, 10, 0));
 
         sidebarBox.getChildren().add(brandBox);
+        // The rail scrolls. At the app's own minimum window height fourteen modules
+        // plus four group headings do not fit: "Thư viện" and "Cài đặt" sat below the
+        // fold with no way to reach them by mouse — and now that the page no longer
+        // paints its own title, the rail is the only place that says where you are,
+        // so it has to be able to show the item it is highlighting.
+        navScroll = new javafx.scene.control.ScrollPane(navList);
+        navScroll.setFitToWidth(true);
+        navScroll.setHbarPolicy(javafx.scene.control.ScrollPane.ScrollBarPolicy.NEVER);
+        navScroll.getStyleClass().add("nav-scroll");
+        navScroll.setAccessibleText("Danh sách module");
+        VBox.setVgrow(navScroll, Priority.ALWAYS);
+        sidebarBox.getChildren().add(navScroll);
         rebuildSidebarButtons();
         VBox.setVgrow(sidebarBox, Priority.ALWAYS);
         return sidebarBox;
     }
 
-    private void rebuildSidebarButtons() {
-        // Remove previous nav buttons, keep the brand block (first child).
-        if (sidebarBox.getChildren().size() > 1) {
-            sidebarBox.getChildren().remove(1, sidebarBox.getChildren().size());
+    /**
+     * Scroll the rail just far enough to show the highlighted module. JavaFX has no
+     * public "bring this node into view", so the arithmetic is done here: whichever way
+     * the item hangs past the viewport, move the thumb by exactly that much.
+     */
+    private void revealActiveNav() {
+        Button active = current == null ? null : navButtons.get(current);
+        if (active == null || navScroll == null) {
+            return;
         }
+        javafx.geometry.Bounds b = active.localToScene(active.getBoundsInLocal());
+        javafx.geometry.Bounds vp = navScroll.localToScene(navScroll.getViewportBounds());
+        double past = b.getMaxY() - vp.getMaxY();
+        double before = b.getMinY() - vp.getMinY();
+        if (past <= 0 && before >= 0) {
+            return;
+        }
+        double range = navScroll.getContent().getBoundsInLocal().getHeight()
+                - navScroll.getViewportBounds().getHeight();
+        if (range <= 0) {
+            return;
+        }
+        double shift = (past > 0 ? past : before) / range;
+        navScroll.setVvalue(Math.max(0, Math.min(1, navScroll.getVvalue() + shift)));
+    }
+
+    private void rebuildSidebarButtons() {
+        // The brand block stays fixed; only the module list is rebuilt.
+        navList.getChildren().clear();
         navButtons.clear();
         // Collapsed rail shows icons only. The brand text goes away but the mark and
         // the collapse control stay, otherwise the rail cannot be reopened.
@@ -303,43 +373,38 @@ public class MainWindow {
         brandMark.setVisible(showNames);
         brandMark.setManaged(showNames);
         if (sidebarCollapsed) {
-            sidebarBox.setStyle("-fx-min-width: 68; -fx-pref-width: 68; -fx-max-width: 68;");
+            sidebarBox.getStyleClass().add("collapsed");
             collapseBtn.setAlignment(Pos.CENTER);
         } else {
-            sidebarBox.setStyle("");
+            sidebarBox.getStyleClass().remove("collapsed");
         }
-        for (ViewId id : ViewId.values()) {
-            if (id == ViewId.SEARCH) {
-                continue; // opened via search action only
-            }
-            // Group markers: the rail is an information architecture, not a dump of
-            // twelve equal rows. Collapsed mode has no room for the label.
-            String group = id == ViewId.DASHBOARD ? "TỔNG QUAN"
-                    : id == ViewId.TASKS ? "QUẢN LÝ"
-                    : id == ViewId.AI ? "TRỢ LÝ"
-                    : id == ViewId.RSS ? "KHÁC" : null;
-            if (group != null && !sidebarCollapsed) {
-                Label groupLabel = new Label(group);
+        for (NavSection section : NAV) {
+            if (showNames) {
+                Label groupLabel = new Label(section.title());
                 groupLabel.getStyleClass().add("nav-group");
-                sidebarBox.getChildren().add(groupLabel);
+                navList.getChildren().add(groupLabel);
             }
-            // Iconic pattern: a user-picked icon (config) replaces the default.
-            String icon = ctx.config().iconOverrides.getOrDefault(id.name(), id.icon);
-            Button btn = new Button(sidebarCollapsed ? "" : id.label, new IconView(icon, 17));
-            btn.getStyleClass().add("nav-item");
-            btn.setMaxWidth(Double.MAX_VALUE);
-            btn.setAlignment(sidebarCollapsed ? Pos.CENTER : Pos.CENTER_LEFT);
-            if (id == current) {
-                btn.getStyleClass().add("active");
+            for (ViewId id : section.items()) {
+                // Iconic pattern: a user-picked icon (config) replaces the default.
+                String icon = ctx.config().iconOverrides.getOrDefault(id.name(), id.icon);
+                Button btn = new Button(sidebarCollapsed ? "" : id.label, new IconView(icon, 17));
+                btn.getStyleClass().add("nav-item");
+                btn.setMaxWidth(Double.MAX_VALUE);
+                btn.setAlignment(sidebarCollapsed ? Pos.CENTER : Pos.CENTER_LEFT);
+                if (id == current) {
+                    btn.getStyleClass().add("active");
+                }
+                btn.setOnAction(e -> showView(id));
+                String hint = shortcutHint(id);
+                btn.setTooltip(new Tooltip(hint == null ? id.label : id.label + "  (" + hint + ")"));
+                attachIconMenu(btn, id.name());
+                navButtons.put(id, btn);
+                navList.getChildren().add(btn);
             }
-            btn.setOnAction(e -> showView(id));
-            String hint = shortcutHint(id);
-            btn.setTooltip(new Tooltip(hint == null ? id.label : id.label + "  (" + hint + ")"
-                    + "  ·  chuột phải để đổi icon"));
-            attachIconMenu(btn, id.name(), () -> rebuildSidebarButtons());
-            navButtons.put(id, btn);
-            sidebarBox.getChildren().add(btn);
         }
+        // Rebuilding replaced every button, so the highlighted one may now sit outside
+        // the viewport the old one was scrolled to.
+        javafx.application.Platform.runLater(this::revealActiveNav);
     }
 
     /**
@@ -355,30 +420,53 @@ public class MainWindow {
                 btn.getStyleClass().remove("active");
             }
         });
+        // Two pages are not in the rail — settings is the gear, search is the field.
+        // With no title painted inside the page, the control that opened them is the
+        // only thing on screen that can say "this is where you are", so it carries the
+        // marker instead of the rail.
+        if (settingsBtn != null) {
+            settingsBtn.getStyleClass().remove("origin-active");
+            if (current == ViewId.SETTINGS) {
+                settingsBtn.getStyleClass().add("origin-active");
+            }
+        }
+        if (searchField != null) {
+            searchField.getStyleClass().remove("origin-active");
+            if (current == ViewId.SEARCH) {
+                searchField.getStyleClass().add("origin-active");
+            }
+        }
     }
 
     /**
-     * Iconic interaction: right-click an icon slot → searchable picker;
-     * picking applies immediately and persists in config.
+     * Iconic interaction: right-click an icon slot → searchable picker; picking
+     * applies immediately and persists in config. The menu is built the first time
+     * it is actually asked for, not once per rail row at startup — thirteen
+     * context menus for a feature used maybe once.
      */
-    private void attachIconMenu(javafx.scene.control.Button btn, String configKey, Runnable onRebuilt) {
-        javafx.scene.control.ContextMenu menu = new javafx.scene.control.ContextMenu();
-        javafx.scene.control.MenuItem change = new javafx.scene.control.MenuItem("Đổi icon…");
-        change.setOnAction(e -> com.lifedesk.ui.panes.IconPicker.show(btn, icon -> {
-            ctx.config().iconOverrides.put(configKey, icon);
-            saveConfig();
-            status("Đã đổi icon: " + icon);
-            onRebuilt.run();
-        }));
-        javafx.scene.control.MenuItem reset = new javafx.scene.control.MenuItem("Khôi phục icon mặc định");
-        reset.setOnAction(e -> {
-            if (ctx.config().iconOverrides.remove(configKey) != null) {
-                saveConfig();
-                onRebuilt.run();
+    private void attachIconMenu(Button btn, String configKey) {
+        btn.setOnContextMenuRequested(e -> {
+            if (btn.getContextMenu() != null) {
+                return;
             }
+            javafx.scene.control.ContextMenu menu = new javafx.scene.control.ContextMenu();
+            javafx.scene.control.MenuItem change = new javafx.scene.control.MenuItem("Đổi icon…");
+            change.setOnAction(e2 -> com.lifedesk.ui.panes.IconPicker.show(btn, icon -> {
+                ctx.config().iconOverrides.put(configKey, icon);
+                saveConfig();
+                status("Đã đổi icon: " + icon);
+                rebuildSidebarButtons();
+            }));
+            javafx.scene.control.MenuItem reset = new javafx.scene.control.MenuItem("Khôi phục icon mặc định");
+            reset.setOnAction(e2 -> {
+                if (ctx.config().iconOverrides.remove(configKey) != null) {
+                    saveConfig();
+                    rebuildSidebarButtons();
+                }
+            });
+            menu.getItems().addAll(change, reset);
+            btn.setContextMenu(menu);
         });
-        menu.getItems().addAll(change, reset);
-        btn.setContextMenu(menu);
     }
 
     private void toggleSidebar() {
@@ -394,59 +482,63 @@ public class MainWindow {
      * module, and start typing a search.
      */
     private void installShortcuts() {
-        // Only the first 10 sidebar entries get Ctrl+1..Ctrl+0 (digit limit).
-        for (int i = 0; i < Math.min(NAV_ORDER.size(), 10); i++) {
-            ViewId id = NAV_ORDER.get(i);
-            KeyCodeCombination key = new KeyCodeCombination(navDigit(i), KeyCombination.CONTROL_DOWN);
-            scene.getAccelerators().put(key, () -> showView(id));
+        // Only the first 10 rail entries get Ctrl+1..Ctrl+0 (digit limit).
+        for (int i = 0; i < Math.min(NAV_ITEMS.size(), DIGIT_KEYS.length); i++) {
+            ViewId id = NAV_ITEMS.get(i);
+            bindShellKey(new KeyCodeCombination(DIGIT_KEYS[i], KeyCombination.CONTROL_DOWN),
+                    () -> showView(id));
         }
-        scene.getAccelerators().put(new KeyCodeCombination(KeyCode.K, KeyCombination.CONTROL_DOWN),
-                this::focusSearch);
-        scene.getAccelerators().put(new KeyCodeCombination(KeyCode.B, KeyCombination.CONTROL_DOWN),
-                this::toggleSidebar);
-        scene.getAccelerators().put(new KeyCodeCombination(KeyCode.COMMA, KeyCombination.CONTROL_DOWN),
+        bindShellKey(new KeyCodeCombination(KeyCode.K, KeyCombination.CONTROL_DOWN), this::focusSearch);
+        bindShellKey(new KeyCodeCombination(KeyCode.B, KeyCombination.CONTROL_DOWN), this::toggleSidebar);
+        bindShellKey(new KeyCodeCombination(KeyCode.COMMA, KeyCombination.CONTROL_DOWN),
                 () -> showView(ViewId.SETTINGS));
-        scene.getAccelerators().put(new KeyCodeCombination(KeyCode.ESCAPE), this::dismissOverlays);
+        bindShellKey(new KeyCodeCombination(KeyCode.ESCAPE), this::dismissOverlays);
     }
 
-    private static KeyCode navDigit(int index) {
-        return switch (index) {
-            case 0 -> KeyCode.DIGIT1;
-            case 1 -> KeyCode.DIGIT2;
-            case 2 -> KeyCode.DIGIT3;
-            case 3 -> KeyCode.DIGIT4;
-            case 4 -> KeyCode.DIGIT5;
-            case 5 -> KeyCode.DIGIT6;
-            case 6 -> KeyCode.DIGIT7;
-            case 7 -> KeyCode.DIGIT8;
-            case 8 -> KeyCode.DIGIT9;
-            default -> KeyCode.DIGIT0;
-        };
-    }
-
-    /** "Ctrl+4" for FINANCE, or null for a view with no shortcut. */
+    /** "Ctrl+4" for FINANCE, or null for a rail entry with no shortcut. */
     private static String shortcutHint(ViewId id) {
-        int i = NAV_ORDER.indexOf(id);
-        if (i < 0 || i > 9) {
-            return null;
-        }
-        return "Ctrl+" + (i == 9 ? 0 : i + 1);
+        int i = NAV_ITEMS.indexOf(id);
+        return i < 0 || i >= DIGIT_LABELS.length ? null : "Ctrl+" + DIGIT_LABELS[i];
+    }
+
+    /**
+     * Register a chord the shell answers — unless the view on screen claims it.
+     * NotesView binds Ctrl+1..6 to heading levels, so the shell cannot own the same
+     * map slot: writing it straight into Scene.getAccelerators() meant whoever
+     * registered last silenced the other for the rest of the session, which is
+     * exactly how "Ctrl+2 stopped switching views once I had opened Ghi chú".
+     */
+    private void bindShellKey(KeyCodeCombination key, Runnable shellAction) {
+        shellKeys.put(key, shellAction);
+        scene.getAccelerators().put(key, () -> dispatchKey(key));
     }
 
     /**
      * Bind a shortcut owned by one view. Views are built once and cached, so the
-     * binding lives for the whole session; the guard keeps it firing only while its
-     * own view is on screen, which is what the user expects from Ctrl+S / Ctrl+N.
+     * binding lives for the whole session; the dispatcher keeps it firing only while
+     * its own view is on screen, which is what the user expects from Ctrl+S / Ctrl+N.
      */
     public void addAccelerator(ViewId owner, KeyCodeCombination key, Runnable action) {
-        scene.getAccelerators().put(key, () -> {
-            if (current == owner) {
-                action.run();
-            }
-        });
+        viewKeys.computeIfAbsent(key, k -> new HashMap<>()).put(owner, action);
+        scene.getAccelerators().putIfAbsent(key, () -> dispatchKey(key));
     }
 
-    private void focusSearch() {
+    /** Route a chord to the visible view when it claims one, otherwise to the shell. */
+    private void dispatchKey(KeyCombination key) {
+        Map<ViewId, Runnable> owners = viewKeys.get(key);
+        Runnable viewAction = owners == null ? null : owners.get(current);
+        if (viewAction != null) {
+            viewAction.run();
+            return;
+        }
+        Runnable shellAction = shellKeys.get(key);
+        if (shellAction != null) {
+            shellAction.run();
+        }
+    }
+
+    /** Put the caret in the global search box (Ctrl+K does the same). */
+    public void focusSearch() {
         searchField.requestFocus();
         searchField.selectAll();
     }
@@ -461,10 +553,13 @@ public class MainWindow {
     }
 
     private Node buildStatusBar() {
-        HBox bar = new HBox(12);
+        HBox bar = new HBox();
         bar.getStyleClass().add("statusbar");
-        statusLabel = new Label("Sẵn sàng");
-        Label dataDirLabel = new Label("Dữ liệu: " + ctx.dataDir());
+        statusLabel = new Label(IDLE_STATUS);
+        // A 60-character absolute path on every screen is noise nobody reads; keep the
+        // tail visible and the whole value one hover away (and in Settings → Dữ liệu).
+        Label dataDirLabel = Card.dim(Fx.shortenPath(ctx.dataDir().toString()));
+        dataDirLabel.setTooltip(new Tooltip(ctx.dataDir().toString()));
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         bar.getChildren().addAll(statusLabel, spacer, dataDirLabel);
@@ -472,12 +567,38 @@ public class MainWindow {
     }
 
     public void status(String message) {
-        if (statusLabel != null) {
-            Fx.runLater(() -> statusLabel.setText(message));
+        if (statusLabel == null) {
+            return;
         }
+        Fx.runLater(() -> {
+            statusLabel.setText(message);
+            // A receipt that never expires turns into a lie. The bar used to keep
+            // "Đã lưu: …" for the rest of the session, so minutes later it still
+            // claimed to describe what had just happened.
+            if (statusFade != null) {
+                statusFade.stop();
+            }
+            statusFade = new javafx.animation.Timeline(new javafx.animation.KeyFrame(
+                    javafx.util.Duration.seconds(STATUS_HOLD_SECONDS),
+                    e -> statusLabel.setText(IDLE_STATUS)));
+            statusFade.play();
+        });
     }
 
+    private static final double STATUS_HOLD_SECONDS = 4.0;
+    private static final String IDLE_STATUS = "Sẵn sàng";
+    private javafx.animation.Timeline statusFade;
+
     // ------------------------------------------------------------------ navigation
+
+    /**
+     * What the shell believes it is showing. A test that reads the pixel tree can be
+     * fooled by its own lookup; comparing the tree against this answers "did the app
+     * switch, or did the probe look in the wrong place?".
+     */
+    public ViewId currentView() {
+        return current;
+    }
 
     public void showView(ViewId id) {
         View view = views.computeIfAbsent(id, k -> viewFactories.get(k).get());
@@ -496,7 +617,17 @@ public class MainWindow {
         view.ensureBuilt();
         content.getChildren().setAll(view);
         VBox.setVgrow(view, Priority.ALWAYS);
+        // The page no longer paints its own title, so the name has to live somewhere
+        // that is not a second copy on screen: the window title (taskbar, Alt+Tab) and
+        // the accessible name of the content area (screen reader, and the one place a
+        // test can ask "which module is this?").
+        stage.setTitle("LifeDesk — " + id.label);
+        content.setAccessibleText(id.label);
         updateNavSelection();
+        // Bring the highlighted item into view: the page no longer repeats its own
+        // name, so a highlight the user cannot see is the only "where am I" they have.
+        revealActiveNav();
+        javafx.application.Platform.runLater(this::revealActiveNav);
         view.onShow();
         animateIn(view);
         if (centerScroll != null) {
@@ -530,46 +661,6 @@ public class MainWindow {
         previousEnter = rise;
     }
 
-    /**
-     * Build views ahead of the first click so navigation is instant.
-     *
-     * <p>Runs one view per pulse after startup instead of one big blocking burst,
-     * and skips views whose whole surface is a WebView (Notes, RSS): those allocate
-     * a WebKit page per visit, and paying that at startup would raise peak memory
-     * for no benefit. Learning is warmed last because its review tab does create a
-     * WebView — cheap once, but not something to pay for before the user asks.
-     */
-    private void prewarmViews() {
-        List<ViewId> warm = List.of(ViewId.TASKS, ViewId.FINANCE, ViewId.HABITS, ViewId.HEALTH,
-                ViewId.FILES, ViewId.AI, ViewId.AGENT, ViewId.SETTINGS,
-                ViewId.LIBRARY, ViewId.DASHBOARD, ViewId.LEARNING);
-        warmOne(warm, 0);
-    }
-
-    private void warmOne(List<ViewId> ids, int index) {
-        if (index >= ids.size()) {
-            return;
-        }
-        ViewId id = ids.get(index);
-        javafx.animation.PauseTransition delay = new javafx.animation.PauseTransition(
-                javafx.util.Duration.millis(index == 0 ? 700 : 90));
-        delay.setOnFinished(e -> {
-            try {
-                View v = views.computeIfAbsent(id, k -> viewFactories.get(k).get());
-                v.ensureBuilt();
-            } catch (Throwable ex) {
-                // Speculative work must never reach the global crash handler: a broken
-                // optional native (WebKit) or a fragile view would otherwise pop an
-                // error dialog about a screen the user never asked to open. Drop the
-                // half-built view so the real click retries it with a clean slate.
-                views.remove(id);
-                LOG.warn("Không dựng trước được view {}", id, ex);
-            }
-            warmOne(ids, index + 1);
-        });
-        delay.play();
-    }
-
     public void showSearch(String query) {
         showView(ViewId.SEARCH);
         View v = views.get(ViewId.SEARCH);
@@ -589,10 +680,34 @@ public class MainWindow {
         views.get(target).openRecord(refId);
     }
 
+    /**
+     * Jump to the module that owns a notification and open its record. Same three
+     * steps as {@link #openRecord}, keyed by module instead of doc type — the two
+     * used to be written out twice, once per caller.
+     */
+    private void openModuleRecord(String moduleKey, String refId) {
+        ViewId target = ViewId.byModuleKey(moduleKey);
+        if (target == null) {
+            status("Không có liên kết tới loại bản ghi: " + moduleKey);
+            return;
+        }
+        showView(target);
+        views.get(target).openRecord(refId);
+    }
+
     public void applyTheme() {
         scene.getStylesheets().setAll(ctx.themeManager().stylesheetsFor(ctx.config().theme));
         // Dialogs live in their own windows - hand them the active theme explicitly.
         Dialogs.setGlobalStylesheets(scene.getStylesheets());
+        // The top bar shows the live theme name, whatever asked for the change.
+        if (themeMenu != null) {
+            themeMenu.setText(ctx.config().theme);
+            for (javafx.scene.control.MenuItem mi : themeMenu.getItems()) {
+                if (mi instanceof javafx.scene.control.RadioMenuItem radio) {
+                    radio.setSelected(mi.getText().equals(ctx.config().theme));
+                }
+            }
+        }
         // WebView panes embed the palette in their HTML, so a stylesheet swap
         // alone leaves them wearing the previous theme's colors.
         for (View v : views.values()) {
@@ -600,20 +715,22 @@ public class MainWindow {
         }
     }
 
-    /** Switch theme by name and apply it live (settings UI + automation hook). */
+    /**
+     * Switch theme by name and apply it live. Every caller (top bar, settings,
+     * automation) goes through here, so the widget state is derived in applyTheme
+     * rather than kept in step by each entry point.
+     */
     public void switchTheme(String theme) {
-        if (themeCombo != null && !theme.equals(themeCombo.getValue())) {
-            // Setting the value fires the combo's action handler, which applies
-            // and persists — so the top bar never shows a stale theme name.
-            themeCombo.setValue(theme);
-        } else {
-            ctx.config().theme = theme;
-            applyTheme();
-            saveConfig();
+        if (theme == null || theme.equals(ctx.config().theme)) {
+            return;
         }
+        ctx.config().theme = theme;
+        applyTheme();
+        saveConfig();
     }
 
-    private void saveConfig() {
+    /** Persist config after a UI-initiated change. Shared with {@link View#saveConfig()}. */
+    public void saveConfig() {
         Fx.async(ctx.executors().io(), () -> {
             new com.lifedesk.config.ConfigService(com.lifedesk.config.ConfigService.defaultConfigDir())
                     .save(ctx.config());
@@ -650,7 +767,6 @@ public class MainWindow {
         notifList = new VBox(6);
         ScrollPane scroll = new ScrollPane(notifList);
         scroll.setFitToWidth(true);
-        scroll.setStyle("-fx-background-color: transparent;");
         Button markRead = new Button("Đánh dấu đã đọc");
         markRead.setOnAction(e -> {
             ctx.notifications().markAllRead();
@@ -682,12 +798,10 @@ public class MainWindow {
             }
             Label title = new Label(item.title);
             title.getStyleClass().add("section-label");
-            Label msg = new Label(item.message);
-            msg.getStyleClass().add("dim-label");
+            Label msg = Card.dim(item.message);
             msg.setWrapText(true);
-            Label time = new Label(item.createdAt.atZone(java.time.ZoneId.systemDefault())
+            Label time = Card.dim(item.createdAt.atZone(java.time.ZoneId.systemDefault())
                     .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm dd/MM")));
-            time.getStyleClass().add("dim-label");
             row.getChildren().addAll(title, msg, time);
             boolean hasRef = item.refView != null && !item.refView.isBlank();
             if (hasRef) {
@@ -696,13 +810,7 @@ public class MainWindow {
                     ctx.notifications().markAllRead();
                     refreshNotifBadge();
                     try {
-                        ViewId target = ViewId.byModuleKey(item.refView);
-                        if (target == null) {
-                            status("Không có liên kết tới loại bản ghi: " + item.refView);
-                        } else {
-                            showView(target);
-                            views.get(target).openRecord(item.refId);
-                        }
+                        openModuleRecord(item.refView, item.refId);
                     } catch (RuntimeException ex) {
                         status("Không mở được đích thông báo");
                     }
@@ -714,9 +822,9 @@ public class MainWindow {
     }
 
     public void onReady() {
-        ctx.notifications().push("Chào mừng", "LifeDesk đã sẵn sàng. Dữ liệu: " + ctx.dataDir(), "INFO", "", "");
+        // Paint the bell badge from the notifications already on disk: without this the
+        // count only appears once a new one fires, so last week's unread items stayed hidden.
         refreshNotifBadge();
-        prewarmViews();
         ctx.issueLog().addListener(() -> {
             var issues = ctx.issueLog().issues();
             if (!issues.isEmpty()) {
@@ -735,6 +843,14 @@ public class MainWindow {
 
     public AppContext context() {
         return ctx;
+    }
+
+    /**
+     * A view this session has already opened, or null if it never has been. Does not
+     * build it: diagnostics must not change what is on screen.
+     */
+    public View openedView(ViewId id) {
+        return views.get(id);
     }
 
     public AppConfig config() {

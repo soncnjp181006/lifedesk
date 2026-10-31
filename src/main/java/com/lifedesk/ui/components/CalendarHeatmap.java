@@ -18,12 +18,34 @@ public class CalendarHeatmap extends VBox {
     private static final int CELL = 13;
     private static final int GAP = 3;
 
+    /**
+     * Hosts the canvas plus the hover bubble. A Pane, not the VBox: the VBox would
+     * re-layout the bubble under the grid on every pass and the tooltip would float
+     * in the wrong place.
+     */
+    private final javafx.scene.layout.Pane host = new javafx.scene.layout.Pane();
     private final Canvas canvas = new Canvas(100, 7 * CELL);
     private String accent = "#4caf7d";
+    private String textColor = "#8a8a8a";
+    private String emptyColor = "#808080";
 
-    /** weekStart (Monday-first) → per-day value in [0..1] plus raw values for tooltips. */
-    public void render(LocalDate from, LocalDate to, Map<LocalDate, Double> values, String accentColor) {
+    /**
+     * weekStart (Monday-first) → per-day value in [0..1] plus raw values for tooltips.
+     *
+     * @param textColor month/weekday caption colour — the canvas cannot read CSS, so
+     *                  the caller passes the active palette.
+     * @param emptyColor fill for a day with no data; must stay visible on the theme
+     *                   background, which a fixed 12%-alpha grey never was.
+     */
+    public void render(LocalDate from, LocalDate to, Map<LocalDate, Double> values,
+                       String accentColor, String textColor, String emptyColor) {
         this.accent = accentColor == null || accentColor.isBlank() ? accent : accentColor;
+        if (textColor != null && !textColor.isBlank()) {
+            this.textColor = textColor;
+        }
+        if (emptyColor != null && !emptyColor.isBlank()) {
+            this.emptyColor = emptyColor;
+        }
         if (values.isEmpty() || to.isBefore(from)) {
             getChildren().setAll(new com.lifedesk.ui.components.EmptyState("flame", "Chưa có dữ liệu cho heatmap."));
             return;
@@ -46,7 +68,7 @@ public class CalendarHeatmap extends VBox {
         Color base = Color.web(accent);
         LocalDate today = LocalDate.now();
         // Month labels along the top.
-        g.setFill(Color.GRAY);
+        g.setFill(Color.web(textColor));
         g.setFont(javafx.scene.text.Font.font("System", 9));
         int lastMonth = -1;
         for (LocalDate d = start; !d.isAfter(to); d = d.plusDays(1)) {
@@ -74,14 +96,19 @@ public class CalendarHeatmap extends VBox {
                 continue; // future cells invisible
             }
             if (v == null || v <= 0) {
-                g.setFill(Color.GRAY.deriveColor(0, 1, 1, 0.12));
+                g.setFill(Color.web(emptyColor, 0.35));
             } else {
                 double intensity = 0.25 + 0.75 * Math.min(1, v / max);
                 g.setFill(Color.web(accent, intensity));
             }
             g.fillRoundRect(x, y, CELL, CELL, 3, 3);
         }
-        getChildren().setAll(canvas);
+        if (!host.getChildren().contains(canvas)) {
+            host.getChildren().add(0, canvas);
+        }
+        host.setMinSize(w, h);
+        host.setPrefSize(w, h);
+        getChildren().setAll(host);
     }
 
     /** Live tooltip for the hovered cell (single listener for the whole canvas). */
@@ -108,8 +135,9 @@ public class CalendarHeatmap extends VBox {
             bubble.setVisible(true);
         });
         canvas.setOnMouseExited(e -> bubble.setVisible(false));
-        if (!getChildren().contains(bubble)) {
-            getChildren().add(bubble);
-        }
+        // One bubble at a time: render() runs on every refresh and each pass used to
+        // append another Label that stayed in the tree (invisible, but growing).
+        host.getChildren().removeIf(n -> n instanceof javafx.scene.control.Label);
+        host.getChildren().add(bubble);
     }
 }

@@ -7,7 +7,6 @@ import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.Fx;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
-import com.lifedesk.common.Tags;
 import com.lifedesk.markdown.MarkdownEditor;
 import com.lifedesk.ui.components.EmptyState;
 import com.lifedesk.ui.components.IconView;
@@ -16,8 +15,6 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.ListCell;
-import javafx.scene.control.ListView;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TextArea;
@@ -28,6 +25,7 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -56,7 +54,6 @@ public class NotesView extends View {
      * content, so firing per keystroke made typing feel heavy on large vaults.
      */
     private final PauseTransition searchDebounce = new PauseTransition(Duration.millis(250));
-    private HBox editorBar;
     /** Full-width header (tab row + toolbar) spanning editor and preview. */
     private VBox headerStack;
     /** Debounced preview + outline rendering — a full WebView rebuild per keystroke caused visible lag. */
@@ -68,6 +65,8 @@ public class NotesView extends View {
     private NoteMeta draggingNote;
     /** First build expands every folder; later builds honor the user's collapses. */
     private boolean treeStateInitialized;
+    /** Set while openNote() fills the fields; the text listeners must ignore that. */
+    private boolean loadingNote;
 
     /** One row of the explorer tree: either a folder path or a note. */
     record TreeEntry(String folderPath, NoteMeta note) {
@@ -83,7 +82,13 @@ public class NotesView extends View {
             return new TreeEntry(meta.folder, meta);
         }
     }
-    private final HBox mdToolbar = new HBox(2);
+    /**
+     * Editor toolbar as two purpose rows: text formatting on top (the action
+     * buttons sit at its right end) and block inserts below. One row for all 20
+     * buttons forced JavaFX to squeeze labels until they truncated.
+     */
+    private final VBox mdToolbar = new VBox(2);
+    private final HBox mdFormatRow = new HBox(2);
     /** Quiet-outline side panel (quiet-outline port). */
     private final com.lifedesk.ui.panes.NoteOutlinePane outlinePane =
             new com.lifedesk.ui.panes.NoteOutlinePane(pos -> {
@@ -106,7 +111,9 @@ public class NotesView extends View {
     private enum EditorMode { SPLIT, READ, EDIT }
 
     private EditorMode editorMode = EditorMode.SPLIT;
-    private Button previewToggle;
+    /** Three visible modes; the single cycling button hid which one was live. */
+    private final javafx.scene.control.ToggleGroup editorModes = new javafx.scene.control.ToggleGroup();
+    private HBox modeRow;
 
     public NotesView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -167,7 +174,7 @@ public class NotesView extends View {
                     setText(leaf);
                     setGraphic(new IconView("folder", 14, "icon-dim"));
                     setTooltip(path.isEmpty() ? null : new Tooltip(path));
-                    setStyle("-fx-font-weight: bold;");
+                    getStyleClass().add("tree-folder");
                     // Explorer behavior: click a folder label toggles it open/closed.
                     setOnMouseClicked(e -> {
                         if (e.getClickCount() == 1) {
@@ -202,7 +209,7 @@ public class NotesView extends View {
                     setText(n.title);
                     setGraphic(new IconView("file-text", 13, "icon-dim"));
                     setTooltip(null);
-                    setStyle("");
+                    getStyleClass().remove("tree-folder");
                     // Drag a note onto a folder to move it (real file-manager feel).
                     setOnDragDetected(e -> {
                         draggingNote = n;
@@ -250,20 +257,24 @@ public class NotesView extends View {
         VBox left = new VBox(8, searchRow, folderToolbar, folderTree, listActions);
         left.getStyleClass().add("notes-sidebar");
         VBox.setVgrow(folderTree, Priority.ALWAYS);
-        left.setMinWidth(280);
-        left.setPrefWidth(300);
         searchField.setMinWidth(0);
         searchField.getStyleClass().add("notes-search-field");
-        SplitPane.setResizableWithParent(left, Boolean.FALSE);
 
         // ---- right: editor + preview
         titleField.setPromptText("Tiêu đề");
         titleField.getStyleClass().add("notes-title-field");
-        titleField.textProperty().addListener((o, a, b) -> queueAutosave());
+        titleField.textProperty().addListener((o, a, b) -> {
+            if (!loadingNote) {
+                queueAutosave();
+            }
+        });
         editor.getStyleClass().add("notes-editor");
         editor.setWrapText(true); // long markdown lines flow — never scroll sideways
         editor.setPromptText("");
         editor.textProperty().addListener((o, a, b) -> {
+            if (loadingNote) {
+                return;
+            }
             queueAutosave();
             queueLivePanels();
         });
@@ -274,14 +285,36 @@ public class NotesView extends View {
         saveBtn.setTooltip(new Tooltip("Lưu ngay (Ctrl+S)"));
         saveBtn.setOnAction(e -> saveNow());
         addAccelerator(new KeyCodeCombination(KeyCode.S, KeyCombination.CONTROL_DOWN), saveBtn::fire);
-        previewToggle = new Button("", new IconView("eye", 15));
-        previewToggle.getStyleClass().add("icon-btn");
-        previewToggle.setTooltip(new Tooltip("Chế độ xem: chia đôi — bấm để chỉ đọc"));
-        previewToggle.setOnAction(e -> cycleEditorMode());
+        // Split / read / edit as three labelled buttons instead of one button that
+        // cycled through them: the cycle showed only an icon, so reaching "chỉ soạn"
+        // from "chia đôi" cost two blind clicks and a guess about where you landed.
+        // Spacing comes from .mode-row: setting it here would fight the stylesheet
+        // and the gaps would change when the theme is re-applied.
+        modeRow = new HBox();
+        modeRow.getStyleClass().add("mode-row");
+        // Never squeeze the mode labels: truncated to "Chia …" the control stops
+        // telling you which mode you are in, which was the whole point of the row.
+        modeRow.setMinWidth(Region.USE_PREF_SIZE);
+        // ...and keep it the height of its buttons. The toolbar row above wraps to
+        // two lines of format buttons, an HBox stretches its children to fill the
+        // row, and the track grew a dark empty band under the segments.
+        modeRow.setMaxHeight(Region.USE_PREF_SIZE);
+        for (EditorMode mode : EditorMode.values()) {
+            ToggleButton modeBtn = new ToggleButton(modeLabel(mode));
+            modeBtn.getStyleClass().add("compact-control");
+            modeBtn.setToggleGroup(editorModes);
+            modeBtn.setSelected(mode == editorMode);
+            modeBtn.setOnAction(e -> setEditorMode(mode));
+            modeRow.getChildren().add(modeBtn);
+        }
         outlineToggle.setText("");
+        outlineToggle.setAccessibleText("Outline đề mục");
         outlineToggle.setTooltip(new Tooltip("Outline đề mục"));
         outlineToggle.selectedProperty().addListener((o, a, b) -> layoutEditorSplit());
-        latexToggle.setText("∑");
+        // Icon only: the "∑" text glyph was a stand-in for a missing icons/sigma.svg
+        // and drew the same symbol twice next to the vector one.
+        latexToggle.setText("");
+        latexToggle.setAccessibleText("Trợ gõ LaTeX");
         latexToggle.setTooltip(new Tooltip("Trợ gõ LaTeX"));
         latexToggle.setSelected(ctx.config().latexAssist);
         latexToggle.setOnAction(e -> ctx.config().latexAssist = latexToggle.isSelected());
@@ -295,8 +328,6 @@ public class NotesView extends View {
         // Header (user-mandated): NO tags field on top — the markdown toolbar sits
         // first, then the wide title row; the eye joins the action buttons at the
         // toolbar's right end.
-        Region tabSpring = new Region();
-        HBox.setHgrow(tabSpring, Priority.ALWAYS);
 
         // Heading levels Ctrl+1..6 (editing-toolbar convention).
         for (int i = 1; i <= 6; i++) {
@@ -313,17 +344,17 @@ public class NotesView extends View {
                 });
 
         buildMarkdownToolbar();
+        HBox actionRow = new HBox(2, mediaBtn, latexToggle, outlineToggle, modeRow, saveBtn);
+        actionRow.setAlignment(Pos.CENTER_RIGHT);
+        actionRow.setMinWidth(Region.USE_PREF_SIZE);
+        // The mode switch and save belong to the formatting row: they act on what
+        // you just typed. Inserts stay on their own line below.
         Region toolbarSpring = new Region();
         HBox.setHgrow(toolbarSpring, Priority.ALWAYS);
-        HBox actionRow = new HBox(2, mediaBtn, latexToggle, outlineToggle, previewToggle, saveBtn);
-        actionRow.setAlignment(Pos.CENTER_RIGHT);
-        mdToolbar.getChildren().add(0, toolbarSpring);
-        mdToolbar.getChildren().add(actionRow);
-        HBox.setHgrow(actionRow, Priority.NEVER);
+        mdFormatRow.getChildren().addAll(toolbarSpring, actionRow);
         HBox titleRow = new HBox(titleField);
         HBox.setHgrow(titleField, Priority.ALWAYS);
         this.headerStack = new VBox(mdToolbar, titleRow);
-        this.editorBar = titleRow; // legacy reference (empty-state guard)
         editorPane.getStyleClass().add("notes-editor-pane");
         editorPane.setTop(headerStack);
         layoutEditorSplit();
@@ -352,9 +383,18 @@ public class NotesView extends View {
 
         // Two panes in an HBox instead of a SplitPane: the split's skin inset the
         // children differently and its divider stopped above the bottom edge.
-        left.setMinWidth(300);
-        left.setPrefWidth(320);
-        left.setMaxWidth(320);
+        // One place, one size: a fixed 320px list ate a third of the screen at the
+        // minimum window size and left the editor fighting for the rest.
+        left.setMinWidth(220);
+        left.setPrefWidth(300);
+        left.setMaxWidth(340);
+        // A TextArea and a WebView both report a wide computed minimum, and that is
+        // what pushed the whole notes shell past the viewport on a narrow window.
+        editor.setMinWidth(160);
+        preview.setMinWidth(160);
+        // The list column is a fixed 320px; a long folder or note name must not be
+        // able to widen it (the cells elide, which is what the column is for).
+        folderTree.setMinWidth(0);
         left.setMaxHeight(Double.MAX_VALUE);
         editorPane.setMaxHeight(Double.MAX_VALUE);
         HBox root = new HBox(10, left, editorPane);
@@ -373,23 +413,16 @@ public class NotesView extends View {
         editorPane.setBottom(null);
     }
 
-    /** Eye button cycles the layout: split (soạn + đọc) → read (chỉ xem trước) → edit (chỉ nguồn). */
-    private void cycleEditorMode() {
-        editorMode = switch (editorMode) {
-            case SPLIT -> EditorMode.READ;
-            case READ -> EditorMode.EDIT;
-            case EDIT -> EditorMode.SPLIT;
+    private static String modeLabel(EditorMode mode) {
+        return switch (mode) {
+            case SPLIT -> "Chia đôi";
+            case READ -> "Chỉ đọc";
+            case EDIT -> "Chỉ soạn";
         };
-        previewToggle.setGraphic(new IconView(switch (editorMode) {
-            case SPLIT -> "eye";
-            case READ -> "book-open";
-            case EDIT -> "pencil";
-        }, 15));
-        previewToggle.setTooltip(new Tooltip(switch (editorMode) {
-            case SPLIT -> "Chế độ xem: chia đôi — bấm để chỉ đọc";
-            case READ -> "Chế độ xem: chỉ xem trước — bấm để chỉ soạn";
-            case EDIT -> "Chế độ xem: chỉ soạn thảo — bấm để chia đôi";
-        }));
+    }
+
+    private void setEditorMode(EditorMode mode) {
+        editorMode = mode;
         layoutEditorSplit();
     }
 
@@ -606,12 +639,10 @@ public class NotesView extends View {
         }
         String target = currentFolder;
         int count = ctx.notes().countNotesInFolder(target);
-        if (!Dialogs.confirm("Xoá thư mục", "Xoá \"" + target + "\""
-                + (count > 0 ? " và toàn bộ " + count + " ghi chú bên trong?" : "?"))) {
-            return;
-        }
-        if (count > 0 && !Dialogs.confirm("Xoá vĩnh viễn?",
-                count + " ghi chú trong thư mục này sẽ bị xoá và không thể khôi phục.")) {
+        // One confirmation, not two in a row: the same destructive act asked twice
+        // only trains the user to click through the second dialog.
+        if (!Dialogs.confirm("Xoá thư mục", "Xoá \"" + target + "\"?"
+                + (count > 0 ? "\n" + count + " ghi chú bên trong sẽ bị xoá vĩnh viễn và không thể khôi phục." : ""))) {
             return;
         }
         try {
@@ -732,12 +763,21 @@ public class NotesView extends View {
     private void buildMarkdownToolbar() {
         mdToolbar.getStyleClass().add("md-toolbar");
         mdToolbar.setAlignment(Pos.CENTER_LEFT);
-        mdToolbar.getChildren().addAll(
-                mdButton("B", "Đậm (Ctrl+B vùng chọn không bắt buộc)", "-fx-font-weight: bold;",
+        // Row 1: inline formatting + the action buttons. Row 2: block inserts.
+        // Both rows are FlowPanes: at 1920px they sit on one line each, and on a
+        // narrow window they wrap instead of cutting "H▾" down to "H…".
+        FlowPane formatButtons = new FlowPane(javafx.geometry.Orientation.HORIZONTAL, 2, 2);
+        formatButtons.setAlignment(Pos.CENTER_LEFT);
+        formatButtons.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(formatButtons, Priority.ALWAYS);
+        mdFormatRow.setAlignment(Pos.CENTER_LEFT);
+        mdFormatRow.getChildren().add(formatButtons);
+        formatButtons.getChildren().addAll(
+                mdButton("B", "Đậm (Ctrl+B vùng chọn không bắt buộc)", "md-fmt-bold",
                         () -> MarkdownEditor.wrapSelection(editor, "**", "**", "đậm")),
-                mdButton("I", "Nghiêng", "-fx-font-style: italic;",
+                mdButton("I", "Nghiêng", "md-fmt-italic",
                         () -> MarkdownEditor.wrapSelection(editor, "*", "*", "nghiêng")),
-                mdButton("S", "Gạch ngang", "-fx-strikethrough: true;",
+                mdButton("S", "Gạch ngang", "md-fmt-strike",
                         () -> MarkdownEditor.wrapSelection(editor, "~~", "~~", "gạch")),
                 mdButton("≡", "Đánh dấu nổi bật (==highlight==)", "",
                         () -> MarkdownEditor.wrapSelection(editor, "==", "==", "nổi bật")),
@@ -755,8 +795,10 @@ public class NotesView extends View {
                 mdButton("`x`", "Code inline", "", () -> MarkdownEditor.wrapSelection(editor, "`", "`", "code")),
                 mdButton("{ }", "Khối code", "", () -> MarkdownEditor.insertBlock(editor, "\n```\ncode\n```\n")),
                 mdButton("$x$", "Công thức inline", "", () -> MarkdownEditor.wrapSelection(editor, "$", "$", "x^2")),
-                mdButton("$$", "Khối công thức", "", () -> MarkdownEditor.insertBlock(editor, "\n$$\n\\frac{a}{b}\n$$\n")),
-                sep(),
+                mdButton("$$", "Khối công thức", "", () -> MarkdownEditor.insertBlock(editor, "\n$$\n\\frac{a}{b}\n$$\n")));
+        FlowPane insertRow = new FlowPane(javafx.geometry.Orientation.HORIZONTAL, 2, 2);
+        insertRow.setAlignment(Pos.CENTER_LEFT);
+        insertRow.getChildren().addAll(
                 mdButton("[…]", "Liên kết", "", () -> MarkdownEditor.wrapSelection(editor, "[", "](https://)", "mô tả")),
                 mdButton("[[+]]", "Liên kết ghi chú", "", () -> MarkdownEditor.wrapSelection(editor, "[[", "]]", "Tên ghi chú")),
                 mdButton("▦", "Bảng 2 cột", "",
@@ -764,10 +806,12 @@ public class NotesView extends View {
                                 "\n| Cột 1 | Cột 2 |\n| --- | --- |\n|  |  |\n")),
                 mdButton("―", "Đường kẻ ngang", "", () -> MarkdownEditor.insertBlock(editor, "\n---\n")),
                 sep(),
-                mdButton("🖼", "Thẻ link từ clipboard (lấy tiêu đề + ảnh)", "", this::insertLinkCard),
-                mdButton("🧠", "Mindmap từ outline của ghi chú", "", this::showMindmap),
-                sep(),
-                mdButton("⋮≡", "Outline", "", outlineToggle::fire));
+                // Named buttons, not emoji: 🖼/🧠 render differently per font and are
+                // the one place the app used emoji as structural icons. The row already
+                // mixes text labels (H1, 1., "[…]"), so words fit the language here.
+                mdButton("Thẻ link", "Thẻ link từ clipboard (lấy tiêu đề + ảnh)", "", this::insertLinkCard),
+                mdButton("Sơ đồ", "Mindmap từ outline của ghi chú", "", this::showMindmap));
+        mdToolbar.getChildren().addAll(mdFormatRow, insertRow);
     }
 
     /**
@@ -819,8 +863,9 @@ public class NotesView extends View {
         }
         javafx.stage.Stage stage = new javafx.stage.Stage();
         stage.setTitle("Mindmap — " + current.title);
+        var palette = ctx.themeManager().previewPalette(ctx.config().theme);
         var root = new com.lifedesk.ui.components.MindMapCanvas(editor.getText(),
-                ctx.themeManager().previewPalette(ctx.config().theme).accent());
+                palette.accent(), palette.text());
         javafx.scene.Scene scene = new javafx.scene.Scene(root, 900, 640);
         scene.getStylesheets().setAll(ctx.themeManager().stylesheetsFor(ctx.config().theme));
         stage.setScene(scene);
@@ -830,6 +875,7 @@ public class NotesView extends View {
 
     private javafx.scene.control.MenuButton headingMenu() {
         javafx.scene.control.MenuButton menu = new javafx.scene.control.MenuButton("H▾");
+        menu.setMinWidth(Region.USE_PREF_SIZE);
         menu.getStyleClass().addAll("ghost-btn", "md-toolbar-btn");
         for (int i = 4; i <= 6; i++) {
             final int level = i;
@@ -849,12 +895,13 @@ public class NotesView extends View {
         return s;
     }
 
-    private Button mdButton(String label, String tip, String inlineStyle, Runnable action) {
+    /** @param fmtClass one of md-fmt-bold / md-fmt-italic / md-fmt-strike, or "" */
+    private Button mdButton(String label, String tip, String fmtClass, Runnable action) {
         Button b = new Button(label);
         b.getStyleClass().add("ghost-btn");
         b.getStyleClass().add("md-toolbar-btn");
-        if (!inlineStyle.isEmpty()) {
-            b.setStyle(inlineStyle);
+        if (!fmtClass.isEmpty()) {
+            b.getStyleClass().add(fmtClass);
         }
         b.setTooltip(new Tooltip(tip));
         b.setOnAction(e -> action.run());
@@ -874,15 +921,24 @@ public class NotesView extends View {
         }
         editorPane.setTop(headerStack);
         editorPane.setBottom(statusHint);
-        layoutEditorSplit();
-        String content = ctx.notes().readContent(meta.id);
-        loadedHash = com.lifedesk.common.Fingerprint.sha256(content);
-        editor.setText(content);
-        outlinePane.update(meta.id, content);
-        refreshMediaBar();
-        titleField.setText(meta.title);
+        // Programmatic text writes must not read as typing: the listeners below are
+        // guarded while loading, so opening a note neither marks it dirty nor starts
+        // an autosave for a document the user has not touched.
+        loadingNote = true;
+        try {
+            String content = ctx.notes().readContent(meta.id);
+            loadedHash = com.lifedesk.common.Fingerprint.sha256(content);
+            editor.setText(content);
+            outlinePane.update(meta.id, content);
+            titleField.setText(meta.title);
+        } finally {
+            loadingNote = false;
+        }
         statusHint.setText("");
-        renderPreview();
+        // One layout, one render: refreshMediaBar already ends in layoutEditorSplit(),
+        // which paints the preview. Calling all three used to convert the same markdown
+        // two or three extra times per opened note.
+        refreshMediaBar();
     }
 
     // ------------------------------------------------------------------ media notes
@@ -921,7 +977,6 @@ public class NotesView extends View {
                     unloadMediaBar();
                     layoutEditorSplit();
                 });
-        mediaBar.setOnTimestamp(ts -> MarkdownEditor.insertBlock(editor, ts));
         mediaBar.load(current.id, current.mediaLink);
         layoutEditorSplit();
     }
@@ -1057,7 +1112,6 @@ public class NotesView extends View {
     public void openRecord(String recordId) {
         ctx.notes().list().stream().filter(n -> n.id.equals(recordId)).findFirst()
                 .ifPresent(meta -> {
-                    editorPane.setVisible(true);
                     refreshNoteList();
                     selectNoteInTree(meta.id);
                 });

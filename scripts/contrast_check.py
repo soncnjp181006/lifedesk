@@ -1,8 +1,12 @@
 import re, sys, pathlib
 
-CSS_DIR = pathlib.Path(r"C:\Users\sangdo\Downloads\lifedesk\src\main\resources\css")
+# Repo-relative: this used to hard-code one developer's Downloads folder, so the
+# gate died with FileNotFoundError before printing a single ratio on every other
+# machine and nothing was ever wired to run it.
+CSS_DIR = pathlib.Path(__file__).resolve().parents[1] / "src" / "main" / "resources" / "css"
 REQUIRED = [
     "-ld-bg", "-ld-surface", "-ld-card", "-ld-input", "-ld-elev", "-ld-border",
+    "-ld-hairline",
     "-ld-text", "-ld-text-dim", "-ld-accent", "-ld-accent-text", "-ld-accent-soft",
     "-ld-danger", "-ld-ok", "-ld-warn", "-ld-info",
     "-ld-danger-soft", "-ld-ok-soft", "-ld-warn-soft", "-ld-info-soft",

@@ -50,11 +50,6 @@ public class MarkdownFlow extends VBox {
         } : handler;
     }
 
-    /** Plain markdown (no streaming caret). */
-    public void render(String markdown) {
-        render(markdown, false);
-    }
-
     /**
      * Render markdown.
      *

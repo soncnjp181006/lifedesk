@@ -27,8 +27,10 @@ public final class IconPicker {
             "file-text", "flag", "flame", "flask-conical", "folder", "folder-open",
             "heart-pulse", "hourglass", "kanban", "layout-dashboard", "library-big",
             "list", "list-checks", "menu", "pencil", "plus", "puzzle", "recycle", "repeat",
-            "save", "scroll-text", "search", "send", "settings", "star", "sticky-note",
-            "target", "trash", "triangle-alert", "wallet");
+            "save", "scroll-text", "search", "send", "settings", "sigma", "star", "sticky-note",
+            "target", "trash", "triangle-alert", "wallet",
+            "external-link", "film", "gamepad", "graduation-cap", "music",
+            "pause", "play", "rss", "timer", "tv");
 
     private IconPicker() {
     }
@@ -65,13 +67,12 @@ public final class IconPicker {
                 grid.getChildren().add(new Label("(không có icon khớp)"));
             }
         };
-        search.textProperty().addListener((o, a, b) -> rebuild.run());
+        com.lifedesk.ui.Fx.debounced(search, rebuild);
         rebuild.run();
 
         ScrollPane scroll = new ScrollPane(grid);
         scroll.setFitToWidth(true);
         scroll.setPrefSize(260, 220);
-        scroll.setStyle("-fx-background-color: transparent;");
         VBox pane = new VBox(6, search, scroll);
         pane.setPadding(new Insets(8));
         pane.getStyleClass().add("notif-popup");

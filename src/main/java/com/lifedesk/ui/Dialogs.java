@@ -17,6 +17,17 @@ public final class Dialogs {
     /** Active theme stylesheets, wired by MainWindow; applied to every dialog. */
     private static volatile List<String> globalStylesheets = List.of();
 
+    /**
+     * JavaFX draws its three stock dialog buttons from the English control bundle
+     * ("OK", "Cancel", "Close"), which left English on every dialog in a
+     * Vietnamese app. These carry the SAME ButtonData, so the result converters —
+     * all of which key off getButtonData() — keep working untouched.
+     */
+    public static final ButtonType SAVE = new ButtonType("Lưu", ButtonBar.ButtonData.OK_DONE);
+    public static final ButtonType YES = new ButtonType("Đồng ý", ButtonBar.ButtonData.OK_DONE);
+    public static final ButtonType CANCEL = new ButtonType("Hủy", ButtonBar.ButtonData.CANCEL_CLOSE);
+    public static final ButtonType CLOSE = new ButtonType("Đóng", ButtonBar.ButtonData.CANCEL_CLOSE);
+
     private Dialogs() {
     }
 
@@ -58,6 +69,8 @@ public final class Dialogs {
             a.setTitle(title);
             a.setHeaderText(null);
             a.setContentText(message);
+            // INFORMATION/ERROR/WARNING default to the English "OK".
+            a.getButtonTypes().setAll(YES);
             style(a);
             a.showAndWait();
         };
@@ -69,6 +82,7 @@ public final class Dialogs {
         a.setTitle(title);
         a.setHeaderText(null);
         a.setContentText(message);
+        a.getButtonTypes().setAll(YES, CANCEL);
         style(a);
         Optional<ButtonType> result = a.showAndWait();
         return result.isPresent() && result.get().getButtonData() == ButtonBar.ButtonData.OK_DONE;
@@ -80,6 +94,7 @@ public final class Dialogs {
         d.setTitle(title);
         d.setHeaderText(null);
         d.setContentText(message);
+        d.getDialogPane().getButtonTypes().setAll(YES, CANCEL);
         style(d);
         return d.showAndWait().map(String::trim);
     }

@@ -12,6 +12,18 @@ public class EmptyState extends VBox {
         this(new IconView(iconName, 34), message, actions);
     }
 
+    /**
+     * An empty page that names a button in prose ("Bấm \"Thêm feed\"") is making the
+     * user read a sentence and then hunt for the control it describes. Offer the
+     * control instead, right under the sentence.
+     */
+    public static EmptyState withAction(String iconName, String message,
+            String actionLabel, Runnable onAction) {
+        Button action = new Button(actionLabel);
+        action.setOnAction(e -> onAction.run());
+        return new EmptyState(iconName, message, action);
+    }
+
     public EmptyState(IconView icon, String message, Node... actions) {
         getStyleClass().add("empty-state");
         icon.getStyleClass().add("icon");
@@ -25,16 +37,5 @@ public class EmptyState extends VBox {
             }
             getChildren().add(a);
         }
-    }
-
-    public static EmptyState loading(String message) {
-        var box = new EmptyState("hourglass", message);
-        var progress = new javafx.scene.control.ProgressIndicator();
-        box.getChildren().add(1, progress);
-        return box;
-    }
-
-    public static EmptyState error(String message) {
-        return new EmptyState("triangle-alert", message);
     }
 }

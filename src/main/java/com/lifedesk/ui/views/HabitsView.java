@@ -8,8 +8,10 @@ import com.lifedesk.habits.Habit;
 import com.lifedesk.habits.HabitService;
 import com.lifedesk.habits.ProgressMode;
 import com.lifedesk.ui.Dialogs;
+import com.lifedesk.ui.components.Card;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
+import com.lifedesk.ui.components.Combos;
 import com.lifedesk.ui.components.EmptyState;
 import com.lifedesk.ui.components.FormGrid;
 import com.lifedesk.ui.components.IconView;
@@ -65,11 +67,6 @@ public class HabitsView extends View {
 
     @Override
     protected Node build() {
-        Label title = new Label("Thói quen & Mục tiêu");
-        title.getStyleClass().add("title-label");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
         todayOnlyMode = new ToggleButton("Chỉ việc hôm nay");
         // Without this the button only takes effect after some unrelated refresh.
         todayOnlyMode.selectedProperty().addListener((o, a, b) -> refreshHabits());
@@ -77,33 +74,36 @@ public class HabitsView extends View {
         weekBtn.setOnAction(e -> showWeeklySummary());
         Button logBtn = new Button("Nhật ký thay đổi", new IconView("scroll-text", 15));
         logBtn.setOnAction(e -> showChangeLog());
-        HBox header = new HBox(10, title, spacer, todayOnlyMode, weekBtn, logBtn);
-        header.getStyleClass().add("view-header");
-        header.setAlignment(Pos.CENTER_LEFT);
+        HBox header = toolbar(null, todayOnlyMode, weekBtn, logBtn);
 
         // ---- habits tab
         Button addHabit = new Button("Thói quen mới", new IconView("plus", 15));
         addHabit.getStyleClass().add("primary-btn");
         addHabit.setOnAction(e -> openHabitEditor(null));
-        Label markHint = new Label("Bấm nút ngày để ghi nhận hoàn thành; chỉnh sửa lịch sử sẽ được ghi nhật ký.");
-        markHint.getStyleClass().add("dim-label");
-        VBox habitsPane = new VBox(10, addHabit, markHint, new javafx.scene.control.ScrollPane(habitCards));
-        habitsPane.getChildren().get(2).getStyleClass().add("fit");
-        ((javafx.scene.control.ScrollPane) habitsPane.getChildren().get(2)).setFitToWidth(true);
-        ((javafx.scene.control.ScrollPane) habitsPane.getChildren().get(2)).setStyle("-fx-background-color: transparent;");
-        VBox.setVgrow(habitsPane.getChildren().get(2), Priority.ALWAYS);
+        Label markHint = Card.dim("Bấm nút ngày để ghi nhận hoàn thành; chỉnh sửa lịch sử sẽ được ghi nhật ký.");
+        // The scroll used to be built inside the VBox constructor and then pulled back
+        // out of children().get(2) with a cast, four times. A name is cheaper than an
+        // index: reorder the rows once and the casts silently grab the wrong node.
+        javafx.scene.control.ScrollPane habitScroll = new javafx.scene.control.ScrollPane(habitCards);
+        habitScroll.getStyleClass().add("fit");
+        habitScroll.setFitToWidth(true);
+        VBox.setVgrow(habitScroll, Priority.ALWAYS);
+        VBox habitsPane = new VBox(10, addHabit, markHint, habitScroll);
 
         // ---- goals tab
         buildGoalTable();
-        goalTable.setPlaceholder(new EmptyState("flag", "Chưa có mục tiêu nào."));
+        goalTable.setPlaceholder(EmptyState.withAction("flag", "Chưa có mục tiêu nào.",
+                "Mục tiêu mới", () -> openGoalEditor(null)));
         Button addGoal = new Button("Mục tiêu mới", new IconView("plus", 15));
         addGoal.getStyleClass().add("primary-btn");
         addGoal.setOnAction(e -> openGoalEditor(null));
         Button editGoal = new Button("Sửa", new IconView("pencil", 15));
-        editGoal.setOnAction(e -> {
-            Goal g = goalTable.getSelectionModel().getSelectedItem();
-            if (g != null) {
-                openGoalEditor(g);
+        editGoal.setOnAction(e -> editSelectedGoal());
+        // A goal row is already selected before anyone looks for the pencil button,
+        // so the button costs an extra trip across the screen for the same action.
+        goalTable.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) {
+                editSelectedGoal();
             }
         });
         Button delGoal = new Button("Xóa", new IconView("trash", 15));
@@ -124,9 +124,9 @@ public class HabitsView extends View {
         VBox.setVgrow(tabs, Priority.ALWAYS);
         buildLogTable();
 
-        ctx.habits().changes().addListener(this::scheduleRefresh);
+        watch(ctx.habits().changes());
 
-        return new VBox(10, header, tabs);
+        return page(header, tabs);
     }
 
     // ------------------------------------------------------------------ habits
@@ -135,7 +135,8 @@ public class HabitsView extends View {
         habitCards.getChildren().clear();
         List<Habit> habits = ctx.habits().habits(false);
         if (habits.isEmpty()) {
-            habitCards.getChildren().add(new EmptyState("flame", "Chưa có thói quen nào. Bấm \"Thói quen mới\"."));
+            habitCards.getChildren().add(EmptyState.withAction("flame",
+                    "Chưa có thói quen nào.", "Thói quen mới", () -> openHabitEditor(null)));
             return;
         }
         boolean todayOnly = todayOnlyMode != null && todayOnlyMode.isSelected();
@@ -192,8 +193,7 @@ public class HabitsView extends View {
         // 14-day grid of toggle buttons
         HBox days = new HBox(4);
         LocalDate today = LocalDate.now();
-        Label daysCaption = new Label("14 ngày gần nhất:");
-        daysCaption.getStyleClass().add("dim-label");
+        Label daysCaption = Card.dim("14 ngày gần nhất:");
         for (int i = 13; i >= 0; i--) {
             LocalDate d = today.minusDays(i);
             boolean scheduled = h.scheduledOn(d.getDayOfWeek());
@@ -218,7 +218,9 @@ public class HabitsView extends View {
                     } else {
                         ctx.habits().setCompletion(h.id, d, target, "Ghi nhận trong ngày", "user");
                     }
-                    refresh();
+                    // setCompletion() fires the notifier this view watches, and that
+                    // repaint is already coalesced — refreshing here too rebuilt every
+                    // tile a second time inside the click.
                 } catch (RuntimeException ex) {
                     Dialogs.error("Không ghi nhận được", ex.getMessage());
                     dayBtn.setSelected(!dayBtn.isSelected());
@@ -237,8 +239,8 @@ public class HabitsView extends View {
         javafx.scene.control.Dialog<Habit> dialog = Dialogs.newDialog();
         dialog.setTitle(existing == null ? "Thói quen mới" : "Sửa thói quen");
         dialog.setHeaderText(null);
-        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
-                javafx.scene.control.ButtonType.CANCEL);
+        dialog.getDialogPane().getButtonTypes().addAll(Dialogs.SAVE,
+                Dialogs.CANCEL);
 
         TextField name = new TextField(existing == null ? "" : existing.name);
         TextArea description = new TextArea(existing == null ? "" : existing.description);
@@ -247,8 +249,7 @@ public class HabitsView extends View {
         List<CheckBox> dayChecks = new java.util.ArrayList<>();
         HBox daysBox = WeekdayChecks.row(
                 existing == null ? java.util.Set.of(DayOfWeek.values()) : existing.scheduleDays, dayChecks);
-        Label hint = new Label("Bỏ trống tất cả = hằng ngày");
-        hint.getStyleClass().add("dim-label");
+        Label hint = Card.dim("Bỏ trống tất cả = hằng ngày");
         Spinner<Integer> reminderH = new Spinner<>(0, 23, existing != null && existing.reminderTime != null
                 ? existing.reminderTime.getHour() : 8);
         Spinner<Integer> reminderM = new Spinner<>(0, 59, existing != null && existing.reminderTime != null
@@ -291,18 +292,26 @@ public class HabitsView extends View {
                 } else {
                     ctx.habits().updateHabit(h, "Chỉnh sửa từ UI", "user");
                 }
-                refresh();
             } catch (RuntimeException ex) {
                 Dialogs.error("Không lưu được", ex.getMessage());
             }
         });
     }
 
+    private void editSelectedGoal() {
+        Goal g = goalTable.getSelectionModel().getSelectedItem();
+        if (g != null) {
+            openGoalEditor(g);
+        }
+    }
+
     private void showChangeLog() {
         if (tabPaneRef != null) {
             tabPaneRef.getSelectionModel().select(2);
         }
-        refresh();
+        // Nothing was written, so nothing else on the page can have changed:
+        // refresh() here rebuilt every habit tile just to open a tab.
+        refreshLogs();
     }
 
     private void showWeeklySummary() {
@@ -362,8 +371,8 @@ public class HabitsView extends View {
         javafx.scene.control.Dialog<Goal> dialog = Dialogs.newDialog();
         dialog.setTitle(existing == null ? "Mục tiêu mới" : "Sửa mục tiêu");
         dialog.setHeaderText(null);
-        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
-                javafx.scene.control.ButtonType.CANCEL);
+        dialog.getDialogPane().getButtonTypes().addAll(Dialogs.SAVE,
+                Dialogs.CANCEL);
 
         TextField title = new TextField(existing == null ? "" : existing.title());
         TextArea description = new TextArea(existing == null ? "" : existing.description());
@@ -379,14 +388,7 @@ public class HabitsView extends View {
         Spinner<Integer> progress = new Spinner<>(0, 100, existing == null ? 0 : existing.manualProgress());
         ComboBox<com.lifedesk.tasks.Task> taskPick = new ComboBox<>();
         taskPick.getItems().addAll(ctx.tasks().all());
-        taskPick.setCellFactory(v -> new ListCell<>() {
-            @Override
-            protected void updateItem(com.lifedesk.tasks.Task item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null ? null : item.title);
-            }
-        });
-        taskPick.setButtonCell(taskPick.getCellFactory().call(null));
+        Combos.label(taskPick, task -> task.title);
         Set<String> linked = existing == null ? new LinkedHashSet<>() : new LinkedHashSet<>(existing.linkedTaskIds());
         Label linkedLabel = new Label("Đã liên kết: " + linked.size() + " task");
         Button toggleLink = new Button("Bật/tắt liên kết task đang chọn");
@@ -438,7 +440,6 @@ public class HabitsView extends View {
                 } else {
                     ctx.habits().updateGoal(g, "Chỉnh sửa từ UI", "user");
                 }
-                refresh();
             } catch (RuntimeException ex) {
                 Dialogs.error("Không lưu được", ex.getMessage());
             }
@@ -463,6 +464,8 @@ public class HabitsView extends View {
                 p.getValue().reason + " (" + p.getValue().actor + ")"));
         logTable.getColumns().setAll(List.of(at, entity, field, change, reason));
         logTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        logTable.setPlaceholder(new EmptyState("scroll-text",
+                "Chưa có thay đổi nào. Nhật ký ghi lại mỗi lần bạn sửa hoặc xoá thói quen, mục tiêu."));
     }
 
     @Override
@@ -475,10 +478,15 @@ public class HabitsView extends View {
     protected void refresh() {
         refreshHabits();
         goalTable.getItems().setAll(ctx.habits().goals());
+        refreshLogs();
+    }
+
+    private void refreshLogs() {
         logTable.getItems().setAll(ctx.habits().changeLog().stream()
                 .sorted(java.util.Comparator.comparing((ChangeLogEntry e) -> e.at).reversed())
                 .limit(100).toList());
     }
+
 
     @Override
     public void openRecord(String recordId) {

@@ -36,12 +36,14 @@ public final class IconView extends StackPane {
     private static final Logger log = LoggerFactory.getLogger(IconView.class);
     private static final double CANVAS = 24;
     private static final Map<String, List<Shape>> CACHE = new ConcurrentHashMap<>();
+    /**
+     * Names that rendered nothing: no file, or a file whose geometry this parser cannot
+     * read. A blank icon is silent, so the set is exposed for the smoke gate to assert
+     * on after every module has been painted.
+     */
+    private static final java.util.Set<String> MISSING = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private static final Pattern ELEMENT = Pattern.compile("<(path|circle|ellipse|rect|line|polyline|polygon)\\b([^>]*?)/>");
     private static final Pattern ATTR = Pattern.compile("([\\w-]+)=\"([^\"]*)\"");
-
-    public IconView(String name) {
-        this(name, 16);
-    }
 
     public IconView(String name, double size) {
         this(name, size, new String[0]);
@@ -66,12 +68,6 @@ public final class IconView extends StackPane {
         }
     }
 
-    public IconView tooltip(String text) {
-        setMouseTransparent(false);
-        Tooltip.install(this, new Tooltip(text));
-        return this;
-    }
-
     /** Parsed, CSS-styled primitives for an icon name; shared templates are copied per use. */
     private static List<Shape> shapesFor(String name) {
         List<Shape> template = CACHE.computeIfAbsent(name, IconView::load);
@@ -87,6 +83,7 @@ public final class IconView extends StackPane {
         try (InputStream in = IconView.class.getResourceAsStream(resource)) {
             if (in == null) {
                 log.warn("Thiếu icon: {}", resource);
+                MISSING.add(name);
                 return List.of();
             }
             String svg = new String(in.readAllBytes(), StandardCharsets.UTF_8);
@@ -99,11 +96,20 @@ public final class IconView extends StackPane {
                     shapes.add(shape);
                 }
             }
+            if (shapes.isEmpty()) {
+                MISSING.add(name); // a file that exists but paints nothing is the same blank square
+            }
             return shapes;
         } catch (IOException e) {
             log.warn("Không đọc được icon {}: {}", resource, e.toString());
+            MISSING.add(name);
             return List.of();
         }
+    }
+
+    /** Icon names that rendered nothing this session: no file, or no usable geometry. */
+    public static java.util.Set<String> missingIcons() {
+        return java.util.Set.copyOf(MISSING);
     }
 
     private static Map<String, String> attrs(String raw) {

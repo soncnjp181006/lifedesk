@@ -1,13 +1,12 @@
 package com.lifedesk.ui.panes;
 
-import javafx.application.Platform;
+import com.lifedesk.ui.components.IconView;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.Slider;
 import javafx.scene.control.Tooltip;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.media.Media;
@@ -33,14 +32,18 @@ import java.util.Map;
 public class MediaBar extends VBox {
     /** Resume positions per note id, kept for the session (media-notes "resume where you left off"). */
     private static final Map<String, Double> RESUME = new HashMap<>();
+    /** Same words for every degrade cause: what the user can do is the same in each. */
+    private static final String DEGRADE_NOTE = "không phát trong app — bấm Mở ngoài";
 
-    private final Button playBtn = new Button("▶");
-    private final Button timestampBtn = new Button("⏱ Chèn timestamp (Ctrl+I)");
-    private final Button externalBtn = new Button("Mở ngoài ↗");
+    private final Button playBtn = new Button("", new IconView("play", 15));
+    private final Button timestampBtn = new Button("", new IconView("timer", 15));
+    private final Button externalBtn = new Button("", new IconView("external-link", 15));
     private final Button removeBtn = new Button("Gỡ media");
     private final Slider seek = new Slider(0, 1, 0);
     private final Label timeLabel = new Label("00:00 / 00:00");
     private final Label urlLabel = new Label();
+    /** Why the transport is off, on its own line: eliding it with the link would hide the advice. */
+    private final Label hintLabel = new Label();
     private final MediaView videoView = new MediaView();
 
     private MediaPlayer player;
@@ -48,49 +51,86 @@ public class MediaBar extends VBox {
     private String currentUrl = "";
     private boolean externalOnly;
     private boolean seeking;
-    private boolean resumed;
+    private final java.util.function.Consumer<String> onTimestamp;
 
     /** @param onInsertTimestamp receives the "[HH:MM:SS]()" text for the editor caret */
     public MediaBar(java.util.function.Consumer<String> onInsertTimestamp, Runnable onRemove) {
+        this.onTimestamp = onInsertTimestamp == null ? s -> {
+        } : onInsertTimestamp;
         setSpacing(6);
         getStyleClass().add("card");
 
+        // Icon-only transport: in the split editor the note column is barely 500px
+        // wide, and a row of labelled buttons was shaved to "Chèn tim…" at the app's
+        // own minimum window. The words move to the accessible name and the tooltip,
+        // which is what a screen reader and a hover both read anyway.
         playBtn.getStyleClass().add("primary-btn");
+        playBtn.setAccessibleText("Phát / tạm dừng");
         playBtn.setTooltip(new Tooltip("Phát / tạm dừng"));
         playBtn.setOnAction(e -> togglePlay());
         timestampBtn.getStyleClass().add("ghost-btn");
+        timestampBtn.setAccessibleText("Chèn timestamp");
+        timestampBtn.setTooltip(new Tooltip("Chèn [HH:MM:SS]() tại con trỏ — Ctrl+I"));
         timestampBtn.setOnAction(e -> insertTimestamp());
         externalBtn.getStyleClass().add("ghost-btn");
+        externalBtn.setAccessibleText("Mở ngoài");
         externalBtn.setTooltip(new Tooltip("Mở media bằng trình duyệt/hệ thống"));
         externalBtn.setOnAction(e -> openExternal());
         externalBtn.setVisible(false);
         externalBtn.setManaged(false);
-        removeBtn.getStyleClass().add("icon-btn");
+        // Not icon-btn: that class clamps the box to a 34px square, which had been
+        // shaving this word to "Gỡ…" even in a wide window.
+        removeBtn.getStyleClass().add("ghost-btn");
         removeBtn.setTooltip(new Tooltip("Gỡ liên kết media khỏi ghi chú"));
         removeBtn.setOnAction(e -> onRemove.run());
 
         seek.setPrefWidth(320);
+        // The slider is the elastic part: a seek bar at 60px still works, a button
+        // label at 60px does not.
+        seek.setMinWidth(60);
+        seek.setMaxWidth(Double.MAX_VALUE);
         seek.setDisable(true);
         seek.valueProperty().addListener((o, was, now) -> {
             if (seeking && player != null) {
                 player.seek(Duration.seconds(now.doubleValue()));
             }
         });
+        // One listener for the bar's whole life: attaching it per load() would stack a
+        // new listener on the same slider every time a note is opened.
+        seek.valueChangingProperty().addListener((o, was, changing) -> seeking = changing);
 
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox controls = new HBox(8, playBtn, seek, timeLabel, timestampBtn, externalBtn, removeBtn, spacer);
+        // A FlowPane, not an HBox: the note column in the split editor is about 500px
+        // and a single-row control strip would set the whole view's minimum width, so
+        // the window would scroll sideways. The strip wraps to a second line instead,
+        // and each control keeps every letter.
+        FlowPane controls = new FlowPane(8, 6,
+                playBtn, seek, timeLabel, timestampBtn, externalBtn, removeBtn);
         controls.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(timestampBtn, Priority.NEVER);
+        // The strip wraps, so it must not be the thing that sets the note column's
+        // minimum width: measured, its one-row floor (362px) pushed the whole split
+        // past the viewport at the app's own minimum window. Min 0 lets the parent
+        // narrow it and the FlowPane rewraps; each control inside keeps every letter.
+        controls.setMinWidth(0);
+        setMinWidth(0);
+        for (Button b : new Button[]{playBtn, timestampBtn, externalBtn, removeBtn}) {
+            b.setMinWidth(Region.USE_PREF_SIZE);
+        }
+        timeLabel.setMinWidth(Region.USE_PREF_SIZE);
 
         urlLabel.getStyleClass().add("dim-label");
+        // The link line may be shortened: it is a Label with a tooltip carrying the
+        // whole value, and a long path with no spaces would otherwise set the floor.
+        urlLabel.setMinWidth(0);
+        urlLabel.setMaxWidth(Double.MAX_VALUE);
+        hintLabel.getStyleClass().add("dim-label");
+        hintLabel.setWrapText(true);
+        hintLabel.setMinWidth(0);
+        hintLabel.setMaxWidth(Double.MAX_VALUE);
         videoView.setFitWidth(320);
         videoView.setFitHeight(180);
         videoView.setPreserveRatio(true);
-        videoView.setVisible(false);
-        videoView.setManaged(false);
 
-        getChildren().addAll(videoView, new HBox(8, urlLabel), controls);
+        getChildren().addAll(videoView, urlLabel, controls, hintLabel);
         setMaxWidth(Double.MAX_VALUE);
     }
 
@@ -99,20 +139,15 @@ public class MediaBar extends VBox {
         unload();
         this.noteId = newNoteId;
         this.currentUrl = url == null ? "" : url.trim();
-        urlLabel.setText("🎞 " + currentUrl);
-        externalOnly = !isPlayable(currentUrl);
-        boolean external = externalOnly;
-        externalBtn.setVisible(external);
-        externalBtn.setManaged(external);
-        if (external) {
-            playBtn.setDisable(true);
-            seek.setDisable(true);
-            timestampBtn.setDisable(true);
-            timeLabel.setText("—");
+        // A full absolute path is wider than the bar and gets elided to "…".
+        // Show the tail (the part that identifies the file) with the whole value a hover away.
+        urlLabel.setText(com.lifedesk.ui.Fx.shortenPath(currentUrl));
+        urlLabel.setTooltip(new Tooltip(currentUrl));
+        hintLabel.setText("");
+        if (!isPlayable(currentUrl)) {
+            showExternalOnly(DEGRADE_NOTE);
             return;
         }
-        playBtn.setDisable(false);
-        timestampBtn.setDisable(false);
         try {
             Media media = new Media(mediaUri(currentUrl));
             player = new MediaPlayer(media);
@@ -132,9 +167,8 @@ public class MediaBar extends VBox {
                 if (resume != null && resume > 1 && resume < total) {
                     player.seek(Duration.seconds(resume));
                 }
-                resumed = true;
                 player.play();
-                playBtn.setText("⏸");
+                setPlaying(true);
             });
             player.currentTimeProperty().addListener((o, was, now) -> {
                 if (!seek.isValueChanging() && !seeking) {
@@ -143,52 +177,56 @@ public class MediaBar extends VBox {
                     timeLabel.setText(fmt(t) + " / " + fmt(seek.getMax()));
                 }
             });
-            seek.valueChangingProperty().addListener((o, was, changing) -> seeking = changing);
-            player.setOnError(() -> {
-                // Unparseable media: degrade to external instead of a dead player.
-                unloadPlayer();
-                externalOnly = true;
-                externalBtn.setVisible(true);
-                externalBtn.setManaged(true);
-                playBtn.setDisable(true);
-                timestampBtn.setDisable(true);
-                seek.setDisable(true);
-                timeLabel.setText("không phát được — mở ngoài");
-            });
-            player.setOnEndOfMedia(() -> playBtn.setText("▶"));
+            player.setOnError(() -> showExternalOnly(DEGRADE_NOTE));
+            player.setOnEndOfMedia(() -> setPlaying(false));
         } catch (RuntimeException e) {
-            unloadPlayer();
-            externalOnly = true;
-            externalBtn.setVisible(true);
-            externalBtn.setManaged(true);
-            playBtn.setDisable(true);
-            timestampBtn.setDisable(true);
+            showExternalOnly(DEGRADE_NOTE);
         }
+    }
+
+    /**
+     * The one degrade path: hide the transport, offer the OS handler instead.
+     * Used by an unrecognised link, a player error, and a Media that will not construct.
+     * The reason goes on the link line, which can wrap; the clock keeps its narrow
+     * column because a squeezed "00:0…" is worse than a dash.
+     */
+    private void showExternalOnly(String reason) {
+        unloadPlayer();          // stop + dispose whatever half-ready player exists
+        externalOnly = true;
+        videoView.setVisible(false);
+        videoView.setManaged(false);
+        playBtn.setDisable(true);
+        timestampBtn.setDisable(true);
+        seek.setDisable(true);
+        externalBtn.setVisible(true);
+        externalBtn.setManaged(true);
+        timeLabel.setText("—");
+        hintLabel.setText(reason);
+    }
+
+    private void setPlaying(boolean playing) {
+        playBtn.setGraphic(new IconView(playing ? "pause" : "play", 15));
     }
 
     /** Stop playback and remember the resume position. */
     public void unload() {
-        if (player != null && currentUrl != null && !currentUrl.isBlank()) {
+        if (player != null && !currentUrl.isBlank()) {
             RESUME.put(noteId, player.getCurrentTime().toSeconds());
         }
         unloadPlayer();
         externalOnly = false;
-        resumed = false;
         videoView.setVisible(false);
         videoView.setManaged(false);
+        playBtn.setDisable(false);
+        timestampBtn.setDisable(false);
+        seek.setDisable(true);
+        externalBtn.setVisible(false);
+        externalBtn.setManaged(false);
+        timeLabel.setText("00:00 / 00:00");
     }
 
     public boolean hasPlayer() {
         return player != null;
-    }
-
-    private java.util.function.Consumer<String> onTimestamp = s -> {
-    };
-
-    /** Wire the timestamp callback: text like "[00:01:23]()" goes to the editor caret. */
-    public void setOnTimestamp(java.util.function.Consumer<String> callback) {
-        this.onTimestamp = callback == null ? s -> {
-        } : callback;
     }
 
     public void insertTimestamp() {
@@ -203,15 +241,12 @@ public class MediaBar extends VBox {
         if (player == null) {
             return;
         }
-        switch (player.getStatus()) {
-            case PLAYING -> {
-                player.pause();
-                playBtn.setText("▶");
-            }
-            default -> {
-                player.play();
-                playBtn.setText("⏸");
-            }
+        if (player.getStatus() == MediaPlayer.Status.PLAYING) {
+            player.pause();
+            setPlaying(false);
+        } else {
+            player.play();
+            setPlaying(true);
         }
     }
 
@@ -221,7 +256,8 @@ public class MediaBar extends VBox {
                     : Path.of(currentUrl).toUri().toString();
             Desktop.getDesktop().browse(URI.create(target));
         } catch (Exception e) {
-            Platform.runLater(() -> { });
+            // Say so: a button that silently does nothing reads as a broken app.
+            hintLabel.setText("không mở được liên kết bằng trình duyệt");
         }
     }
 
@@ -236,7 +272,7 @@ public class MediaBar extends VBox {
             player = null;
         }
         videoView.setMediaPlayer(null);
-        playBtn.setText("▶");
+        setPlaying(false);
     }
 
     /** Direct local files and http media streams play embedded; the rest is external. */

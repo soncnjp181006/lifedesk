@@ -3,6 +3,7 @@ package com.lifedesk.ui.views;
 import com.lifedesk.ai.AiProvider;
 import com.lifedesk.app.AppContext;
 import com.lifedesk.ui.Dialogs;
+import com.lifedesk.ui.components.Card;
 import com.lifedesk.ui.Fx;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
@@ -89,8 +90,11 @@ public class AiChatView extends View {
     private int atTokenStart = -1;
     private String lastQuestion = "";
 
-    /** One attached context: an app-data summary or a full note. */
-    private record ContextItem(String label, String content) {
+    /** One attached context: an app-data summary or a full note, with its own vector marker. */
+    private record ContextItem(String label, String content, String icon) {
+        ContextItem(String label, String content) {
+            this(label, content, "");
+        }
     }
 
     /** The UI pieces of one assistant turn. */
@@ -131,8 +135,7 @@ public class AiChatView extends View {
         newChatBtn.getStyleClass().add("primary-btn");
         newChatBtn.setMaxWidth(Double.MAX_VALUE);
         newChatBtn.setOnAction(e -> startNewChat());
-        Label recentLabel = new Label("Gần đây");
-        recentLabel.getStyleClass().add("dim-label");
+        Label recentLabel = Card.dim("Gần đây");
         convList.setCellFactory(v -> new javafx.scene.control.ListCell<>() {
             private final Button removeBtn = new Button("", new IconView("trash", 13));
 
@@ -159,7 +162,7 @@ public class AiChatView extends View {
                     setText(null);
                     return;
                 }
-                Label titleLabel = new Label(conv.title);
+                Label titleLabel = com.lifedesk.ui.Fx.shrinkable(new Label(conv.title));
                 titleLabel.getStyleClass().add("form-label");
                 titleLabel.setMaxWidth(150);
                 Label timeLabel = new Label(relateTime(conv.updatedAt));
@@ -179,11 +182,14 @@ public class AiChatView extends View {
                 loadConversation(sel.id);
             }
         });
-        ctx.aiConversations().changes().addListener(this::refreshConvList);
+        ctx.aiConversations().changes().addListener(
+                () -> com.lifedesk.ui.Fx.runLater(this::refreshConvList));
         VBox sidebar = new VBox(10, sidebarBrand, newChatBtn, recentLabel, convList);
         sidebar.getStyleClass().add("chat-sidebar");
         sidebar.setPrefWidth(250);
         sidebar.setMinWidth(210);
+        convList.setPlaceholder(new com.lifedesk.ui.components.EmptyState("bot",
+                "Chưa có hội thoại nào."));
         VBox.setVgrow(convList, Priority.ALWAYS);
 
         // ---- chat column: top bar, messages (the ONLY page scroller), composer
@@ -206,6 +212,19 @@ public class AiChatView extends View {
                 modelChip, countChip, headSpacer, providerStatus, settingsBtn);
         frameHead.setAlignment(Pos.CENTER_LEFT);
         frameHead.getStyleClass().add("chat-head");
+        // The title and the provider status are prose and may shorten (they elide);
+        // the model chip and the settings button lost letters first on a narrow
+        // window, and a control without its label is not a control.
+        // The provider line is the one that gives way, and it gives way with the
+        // full engine name on hover — "Rule-based engine (offline, khô…" names
+        // neither the engine nor the fact that it needs no network.
+        Fx.shrinkable(providerStatus);
+        // Only the provider line is allowed to give. A Label that does not wrap can
+        // elide down to a single letter, so leaving the title flexible too is what
+        // turned "Hội thoại" into "H…" on a 1080px window — the one word that says
+        // which conversation you are in.
+        chatTitle.setMinWidth(chatTitle.prefWidth(-1));
+        Fx.pinFixedWidths(frameHead, providerStatus);
 
         // ---- message column
         messages.setFillWidth(true);
@@ -484,11 +503,13 @@ public class AiChatView extends View {
     /** Context picker: app data summaries + every note. */
     private void showContextPicker() {
         List<ContextItem> options = new ArrayList<>();
-        options.add(new ContextItem("⌘ Tổng quan công việc", taskOverview()));
-        options.add(new ContextItem("⌘ Tài chính tháng này", financeOverview()));
-        options.add(new ContextItem("⌘ Thói quen + mục tiêu", habitOverview()));
+        // Each source carries its own vector marker: the list is flat, so the icon is
+        // what separates "a summary" from "a note" — a decoration character cannot do that.
+        options.add(new ContextItem("Tổng quan công việc", taskOverview(), "list-checks"));
+        options.add(new ContextItem("Tài chính tháng này", financeOverview(), "wallet"));
+        options.add(new ContextItem("Thói quen + mục tiêu", habitOverview(), "target"));
         for (var n : ctx.notes().list()) {
-            options.add(new ContextItem("📄 " + n.title, ctx.notes().readContent(n.id)));
+            options.add(new ContextItem(n.title, ctx.notes().readContent(n.id), "file-text"));
         }
         openPicker(options, item -> {
             contextItems.add(item);
@@ -520,6 +541,11 @@ public class AiChatView extends View {
 
     private void openPicker(List<ContextItem> options, Consumer<ContextItem> onSelect) {
         hidePicker();
+        if (options.isEmpty()) {
+            // Nothing matches the query: an empty popup over the composer is just a
+            // grey box covering what the user was typing.
+            return;
+        }
         ListView<ContextItem> list = new ListView<>();
         list.getItems().setAll(options);
         list.setPrefHeight(Math.min(320, options.size() * 34 + 12));
@@ -528,6 +554,8 @@ public class AiChatView extends View {
             protected void updateItem(ContextItem item, boolean empty) {
                 super.updateItem(item, empty);
                 setText(empty || item == null ? null : item.label());
+                setGraphic(empty || item == null || item.icon().isEmpty()
+                        ? null : new IconView(item.icon(), 14, "icon-dim"));
             }
         });
         list.setOnMouseClicked(e -> {
@@ -571,6 +599,9 @@ public class AiChatView extends View {
         contextBar.getChildren().add(hint);
         for (ContextItem item : contextItems) {
             Label chip = new Label(item.label());
+            if (!item.icon().isEmpty()) {
+                chip.setGraphic(new IconView(item.icon(), 12, "icon-dim"));
+            }
             chip.getStyleClass().add("chip");
             chip.setMaxWidth(260);
             contextBar.getChildren().add(chip);

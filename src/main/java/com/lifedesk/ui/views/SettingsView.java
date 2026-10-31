@@ -38,14 +38,8 @@ public class SettingsView extends View {
 
     @Override
     protected Node build() {
-        // Every other screen opens with a title block; settings used to start with
-        // bare tabs flush against the window edge, which read as an unfinished page.
-        Label title = new Label("Cài đặt");
-        title.getStyleClass().add("title-label");
-        Label subtitle = new Label("Giao diện, AI, dữ liệu, quyền truy cập tệp và nhắc việc");
-        subtitle.getStyleClass().add("page-subtitle");
-        VBox titleBlock = new VBox(1, title, subtitle);
-
+        // Every screen opens with a title block; settings used to start with bare
+        // tabs flush against the window edge, which read as an unfinished page.
         TabPane tabs = new TabPane();
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         tabs.getTabs().addAll(
@@ -56,7 +50,7 @@ public class SettingsView extends View {
                 new Tab("Nhắc việc", buildRemindersTab()),
                 new Tab("Giới thiệu", buildAboutTab()));
         VBox.setVgrow(tabs, javafx.scene.layout.Priority.ALWAYS);
-        return new VBox(12, titleBlock, tabs);
+        return page(tabs);
     }
 
     // ------------------------------------------------------------------ appearance
@@ -72,6 +66,11 @@ public class SettingsView extends View {
             rb.setOnAction(e -> main.switchTheme(theme));
             box.getChildren().add(rb);
         }
+        // One visible hint instead of the same sentence repeated in thirteen nav
+        // tooltips: the rail icon picker is a right-click, so it needs a signpost.
+        Label iconHint = Fx.wrapped("Nhấp phải một mục trên thanh bên để đổi icon của nó.");
+        iconHint.getStyleClass().add("page-subtitle");
+        box.getChildren().add(iconHint);
         return wrapScroll(box);
     }
 
@@ -115,10 +114,15 @@ public class SettingsView extends View {
             }
         });
 
+        // A FlowPane, not an HBox: none of these four buttons may lose letters, and
+        // there is no flexible member to absorb a narrow window, so they wrap.
+        javafx.scene.layout.FlowPane backupRow = new javafx.scene.layout.FlowPane(10, 10);
+        backupRow.getChildren().setAll(backup, restore, integrity, openData);
+
         VBox box = new VBox(10, new Label("Vị trí dữ liệu (local-first, không cloud):"), dirLabel,
-                new HBox(10, backup, restore, integrity, openData),
-                new Label("Bản sao lưu nằm trong <data>/backups — file zip có manifest + SHA-256."),
-                new Label("Đổi thư mục dữ liệu: đóng app, đặt thuộc tính -Dlifedesk.data=<đường dẫn>, "
+                backupRow,
+                Fx.wrapped("Bản sao lưu nằm trong <data>/backups — file zip có manifest + SHA-256."),
+                Fx.wrapped("Đổi thư mục dữ liệu: đóng app, đặt thuộc tính -Dlifedesk.data=<đường dẫn>, "
                         + "hoặc chỉnh %APPDATA%/LifeDesk/config/config/app-config.json."));
         return wrapScroll(box);
     }
@@ -164,7 +168,7 @@ public class SettingsView extends View {
                 rebuildRootsList(list);
             }
         });
-        VBox box = new VBox(10, new Label("Các thư mục được cấp quyền (trình quản lý tệp):"),
+        VBox box = new VBox(10, Fx.wrapped("Các thư mục được cấp quyền (trình quản lý tệp):"),
                 add, list);
         return wrapScroll(box);
     }
@@ -212,11 +216,11 @@ public class SettingsView extends View {
     private Node buildAboutTab() {
         VBox box = new VBox(10,
                 new Label("LifeDesk 1.0.0"),
-                new Label("Ứng dụng năng suất cá nhân offline-first: công việc, ghi chú markdown, tài chính, "
+                Fx.wrapped("Ứng dụng năng suất cá nhân offline-first: công việc, ghi chú markdown, tài chính, "
                         + "thói quen, sức khỏe, học tập, tệp, tìm kiếm và AI cục bộ."),
-                new Label("Dữ liệu: JSON + Markdown thuần trong thư mục dữ liệu của bạn — không database server, không cloud."),
-                new Label("Sức khỏe: chỉ ghi nhận thủ công, không chẩn đoán y tế."),
-                new Label("AI: chỉ chạy theo provider bạn cấu hình; dữ liệu chỉ rời máy khi bật provider cloud."));
+                Fx.wrapped("Dữ liệu: JSON + Markdown thuần trong thư mục dữ liệu của bạn — không database server, không cloud."),
+                Fx.wrapped("Sức khỏe: chỉ ghi nhận thủ công, không chẩn đoán y tế."),
+                Fx.wrapped("AI: chỉ chạy theo provider bạn cấu hình; dữ liệu chỉ rời máy khi bật provider cloud."));
         return wrapScroll(box);
     }
 
@@ -225,7 +229,6 @@ public class SettingsView extends View {
     private Node wrapScroll(Node content) {
         javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(content);
         scroll.setFitToWidth(true);
-        scroll.setStyle("-fx-background-color: transparent;");
         VBox.setVgrow(scroll, Priority.ALWAYS);
         VBox padding = new VBox(scroll);
         padding.setPadding(new javafx.geometry.Insets(8));

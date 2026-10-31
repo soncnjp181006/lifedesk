@@ -18,10 +18,8 @@ import javafx.scene.control.ListCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
-import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
 import java.nio.file.Path;
@@ -57,15 +55,11 @@ public class FilesView extends View {
 
     @Override
     protected Node build() {
-        Label title = new Label("Tệp (chỉ đọc)");
-        title.getStyleClass().add("title-label");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
         Button addRoot = new Button("Cấp quyền thư mục", new IconView("plus", 15));
         addRoot.setOnAction(e -> addAllowedRoot());
-        HBox header = new HBox(10, title, spacer, addRoot);
-        header.getStyleClass().add("view-header");
-        header.setAlignment(Pos.CENTER_LEFT);
+        // Title echoes the rail label ("Tệp") and the subtitle carries the read-only
+        // scope that used to live in the title itself.
+        HBox header = toolbar(null, addRoot);
 
         scopeNote.getStyleClass().add("dim-label");
         scopeNote.setWrapText(true);
@@ -101,12 +95,12 @@ public class FilesView extends View {
         HBox.setHgrow(rootCombo, Priority.SOMETIMES);
 
         buildTable();
-        table.setPlaceholder(new EmptyState("folder", "Chọn một thư mục đã cấp quyền để duyệt hoặc tìm kiếm."));
+        table.setPlaceholder(EmptyState.withAction("folder",
+                "Chưa chọn thư mục nào để duyệt.", "Cấp quyền thư mục", () -> addAllowedRoot()));
 
-        VBox root = new VBox(10, header, scopeNote, searchRow, table);
         VBox.setVgrow(table, Priority.ALWAYS);
         refreshRoots();
-        return root;
+        return page(header, scopeNote, searchRow, table);
     }
 
     private void buildTable() {

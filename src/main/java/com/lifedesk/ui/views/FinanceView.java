@@ -11,6 +11,7 @@ import com.lifedesk.finance.FinanceService;
 import com.lifedesk.finance.PaymentMethod;
 import com.lifedesk.finance.Transaction;
 import com.lifedesk.finance.TxType;
+import com.lifedesk.ui.Fx;
 import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
@@ -45,7 +46,6 @@ import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
 import java.io.File;
@@ -119,11 +119,7 @@ public class FinanceView extends View {
 
     @Override
     protected Node build() {
-        // ---- header
-        Label title = new Label("Tài chính cá nhân");
-        title.getStyleClass().add("title-label");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
+        // ---- action row (no title: the rail already reads "Tài chính")
         Button exportBtn = new Button("Xuất CSV");
         exportBtn.setOnAction(e -> exportCsv());
         Button importBtn = new Button("Nhập CSV");
@@ -131,12 +127,7 @@ public class FinanceView extends View {
         Button catBtn = new Button("Danh mục…");
         catBtn.setTooltip(new Tooltip("Thêm / đổi tên / xóa danh mục"));
         catBtn.setOnAction(e -> FinanceDialogs.manageCategories(ctx, this::afterCategoryChange));
-        Label subtitle = new Label("Thu chi, ngân sách, khoản phải trả và báo cáo trong một chỗ");
-        subtitle.getStyleClass().add("page-subtitle");
-        VBox titleBlock = new VBox(1, title, subtitle);
-        HBox header = new HBox(10, titleBlock, spacer, catBtn, exportBtn, importBtn);
-        header.getStyleClass().add("view-header");
-        header.setAlignment(Pos.CENTER_LEFT);
+        HBox header = toolbar(null, catBtn, exportBtn, importBtn);
 
         TabPane tabs = new TabPane();
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
@@ -154,13 +145,13 @@ public class FinanceView extends View {
                 new Tab("Báo cáo", buildReportsTab()));
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
-        ctx.finance().changes().addListener(this::scheduleRefresh);
-        return new VBox(12, header, tabs);
+        watch(ctx.finance().changes());
+        return page(header, tabs);
     }
 
     private void afterCategoryChange() {
         reloadQuickCategories();
-        refresh();
+        // No refresh(): the notifier the service fires already queues one repaint.
     }
 
     // ------------------------------------------------------------------ transactions tab
@@ -191,13 +182,13 @@ public class FinanceView extends View {
         HBox monthNav = new HBox(8, prevMonth, monthLabel, nextMonth, thisMonth);
         monthNav.setAlignment(Pos.CENTER_LEFT);
 
-        // ---- summary cards
-        HBox summary = new HBox(12,
+        // ---- summary cards: equal tiles that wrap. Same width, and a figure is never
+        // cut down to "24.500.0…" to keep four of them on one line.
+        var summary = Fx.equalTiles(12,
                 summaryCard("THU NHẬP", incomeMetric, "metric-pos"),
                 summaryCard("CHI TIÊU", expenseMetric, "metric-neg"),
                 summaryCard("RÒNG", netMetric, "metric-pos"),
                 summaryCard("TIẾT KIỆM", savingMetric, "metric-pos"));
-        summary.getChildren().forEach(n -> HBox.setHgrow(n, Priority.ALWAYS));
 
         // ---- quick-add bar: nhập thu/chi trực tiếp
         ToggleGroup typeGroup = new ToggleGroup();
@@ -236,7 +227,7 @@ public class FinanceView extends View {
 
         // ---- search/filter/table
         txSearch.setPromptText("Tìm trong tháng (mô tả, tag)…");
-        txSearch.textProperty().addListener((o, a, b) -> refreshTransactions());
+        Fx.debounced(txSearch, this::refreshTransactions);
         txTypeFilter.getItems().addAll("(tất cả)", "INCOME", "EXPENSE");
         txTypeFilter.setValue("(tất cả)");
         txTypeFilter.setOnAction(e -> refreshTransactions());
@@ -297,7 +288,7 @@ public class FinanceView extends View {
         TableColumn<Transaction, String> amountCol = new TableColumn<>("Số tiền");
         amountCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(
                 (p.getValue().type == TxType.INCOME ? "+ " : "− ") + VND.format(p.getValue().amount) + " đ"));
-        amountCol.setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-weight: bold;");
+        amountCol.getStyleClass().add("num-column");
         amountCol.setPrefWidth(130);
 
         TableColumn<Transaction, String> catCol = new TableColumn<>("Danh mục");
@@ -354,7 +345,7 @@ public class FinanceView extends View {
                     main.status("Đã lưu nhanh: " + VND.format(t.amount) + " đ — "
                             + parsed.description() + " (" + parsed.date() + ")");
                     quickDesc.clear();
-                    refresh();
+                    // No refresh(): the notifier the service fires already queues one repaint.
                     return;
                 }
                 main.status("Nhập số tiền trước.");
@@ -376,7 +367,7 @@ public class FinanceView extends View {
             quickAmount.clear();
             quickDesc.clear();
             quickAmount.requestFocus();
-            refresh();
+            // No refresh(): the notifier the service fires already queues one repaint.
         } catch (NumberFormatException e) {
             Dialogs.error("Số tiền không hợp lệ", "Chỉ nhập số, ví dụ: 250000 hoặc 1.5 (triệu không hỗ trợ — nhập 1500000).");
         } catch (RuntimeException e) {
@@ -453,6 +444,20 @@ public class FinanceView extends View {
         }
     }
 
+    private void editSelectedBudget() {
+        Budget b = budgetTable.getSelectionModel().getSelectedItem();
+        if (b != null) {
+            FinanceDialogs.editBudget(ctx, b, this::scheduleRefresh);
+        }
+    }
+
+    private void editSelectedDebt() {
+        Debt d = debtTable.getSelectionModel().getSelectedItem();
+        if (d != null) {
+            FinanceDialogs.editDebt(ctx, d, this::scheduleRefresh);
+        }
+    }
+
     // ------------------------------------------------------------------ budgets
 
     private Node buildBudgetsTab() {
@@ -461,10 +466,12 @@ public class FinanceView extends View {
         addBudget.getStyleClass().add("primary-btn");
         addBudget.setOnAction(e -> FinanceDialogs.editBudget(ctx, null, this::refresh));
         Button editBudget = new Button("Sửa");
-        editBudget.setOnAction(e -> {
-            Budget b = budgetTable.getSelectionModel().getSelectedItem();
-            if (b != null) {
-                FinanceDialogs.editBudget(ctx, b, this::refresh);
+        editBudget.setOnAction(e -> editSelectedBudget());
+        // The row is already under the cursor; making the user hunt for the button
+        // afterwards is a second trip for one intention.
+        budgetTable.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) {
+                editSelectedBudget();
             }
         });
         Button delBudget = new Button("Xóa");
@@ -493,11 +500,14 @@ public class FinanceView extends View {
         TableColumn<Budget, String> paceCol = new TableColumn<>("Nhịp chi");
         paceCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(paceText(p.getValue())));
         budgetTable.getColumns().setAll(List.of(monthCol, catCol, limitCol, spentCol, remainCol, paceCol));
+        budgetTable.setPlaceholder(EmptyState.withAction("wallet",
+                "Chưa đặt ngân sách nào.", "Đặt ngân sách",
+                () -> FinanceDialogs.editBudget(ctx, null, this::scheduleRefresh)));
         budgetTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
     }
 
     /**
-     * Pace-aware budget line (finance-tracker study): "nhanh nhịp" when spend
+     * Pace-aware budget line (finance-tracker study): "tiêu nhanh" when spend
      * is ahead of the linear expectation for the month, plus the safe-to-spend
      * Left/Day figure for the current month.
      */
@@ -518,7 +528,7 @@ public class FinanceView extends View {
         }
         BigDecimal expected = b.limitAmount.multiply(BigDecimal.valueOf(elapsed))
                 .divide(BigDecimal.valueOf(days), 0, RoundingMode.HALF_UP);
-        String status = s.spent().compareTo(expected) > 0 ? "⚡ nhanh nhịp" : "đúng nhịp";
+        String status = s.spent().compareTo(expected) > 0 ? "tiêu nhanh" : "đúng nhịp";
         if (!m.equals(YearMonth.now())) {
             return status;
         }
@@ -559,10 +569,10 @@ public class FinanceView extends View {
         addDebt.getStyleClass().add("primary-btn");
         addDebt.setOnAction(e -> FinanceDialogs.editDebt(ctx, null, this::refresh));
         Button editDebt = new Button("Sửa");
-        editDebt.setOnAction(e -> {
-            Debt d = debtTable.getSelectionModel().getSelectedItem();
-            if (d != null) {
-                FinanceDialogs.editDebt(ctx, d, this::refresh);
+        editDebt.setOnAction(e -> editSelectedDebt());
+        debtTable.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) {
+                editSelectedDebt();
             }
         });
         Button settle = new Button("Tất toán");
@@ -598,6 +608,9 @@ public class FinanceView extends View {
         statusCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(
                 p.getValue().status == DebtStatus.OPEN ? "Đang mở" : "Đã tất toán"));
         debtTable.getColumns().setAll(List.of(dirCol, partyCol, amountCol, dueCol, statusCol));
+        debtTable.setPlaceholder(EmptyState.withAction("coins",
+                "Chưa ghi khoản phải thu / phải trả nào.", "Thêm khoản",
+                () -> FinanceDialogs.editDebt(ctx, null, this::scheduleRefresh)));
         debtTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
     }
 

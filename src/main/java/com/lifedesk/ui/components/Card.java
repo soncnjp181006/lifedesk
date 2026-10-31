@@ -13,7 +13,8 @@ public class Card extends VBox {
 
     public Card(String title) {
         getStyleClass().add("card");
-        setSpacing(8);
+        // .card owns -fx-spacing in CSS; setting it here only made a second number to
+        // keep in step with the stylesheet.
         // Cards live in equal-width grids; without this their content width becomes
         // their minimum and the whole grid overflows the viewport.
         setMinWidth(0);
@@ -24,14 +25,6 @@ public class Card extends VBox {
         header.setSpacing(6);
         getChildren().add(header);
         VBox.setVgrow(header, Priority.NEVER);
-    }
-
-    public void setTitle(String title) {
-        titleLabel.setText(title);
-    }
-
-    public Label titleLabel() {
-        return titleLabel;
     }
 
     public void content(Node... nodes) {

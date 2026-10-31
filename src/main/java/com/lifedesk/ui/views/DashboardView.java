@@ -5,7 +5,9 @@ import com.lifedesk.finance.FinanceService;
 import com.lifedesk.habits.Habit;
 import com.lifedesk.learning.LearningService;
 import com.lifedesk.tasks.Task;
+import com.lifedesk.ui.Fx;
 import com.lifedesk.ui.MainWindow;
+import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.Card;
 import com.lifedesk.ui.components.Chips;
@@ -20,7 +22,7 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
-import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -48,13 +50,7 @@ public class DashboardView extends View {
     private LocalDate rangeTo = LocalDate.now();
     private final Map<String, Node> widgets = new LinkedHashMap<>();
     /** The four headline numbers above the widget grid. */
-    private HBox metricStrip;
-    /**
-     * Fingerprint of everything the dashboard draws. Rebuilding ten cards on every
-     * visit to an unchanged page was the slowest navigation in the app (~58ms of
-     * layout churn), so a repeat visit with the same data now does nothing at all.
-     */
-    private String lastStamp;
+    private VBox metricStrip;
 
     public DashboardView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -69,54 +65,13 @@ public class DashboardView extends View {
     protected Node build() {
         initWidgetDefs();
 
-        HBox header = new HBox(10);
-        header.getStyleClass().add("view-header");
-        header.setAlignment(Pos.CENTER_LEFT);
-        VBox titleBlock = new VBox(2);
-        // The app is Vietnamese everywhere else; an English "Dashboard" heading on
-        // the landing screen was the one label that did not belong to the product.
-        Label title = new Label("Tổng quan");
-        title.getStyleClass().add("title-label");
-        Label subtitle = new Label("Việc cần làm, tiền, thói quen và việc học trong một trang");
-        subtitle.getStyleClass().add("page-subtitle");
-        titleBlock.getChildren().addAll(title, subtitle);
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
+        // No page title block: the rail already names this page, and the landing
+        // screen spent two lines saying it again.
         ComboBox<String> preset = new ComboBox<>();
         preset.getItems().addAll("Hôm nay", "Tuần này", "Tháng này", "Tùy chọn…");
         preset.setValue("Hôm nay");
         DatePicker from = new DatePicker(rangeFrom);
         DatePicker to = new DatePicker(rangeTo);
-        from.setDisable(true);
-        to.setDisable(true);
-        preset.setOnAction(e -> {
-            switch (preset.getValue()) {
-                case "Hôm nay" -> {
-                    rangeFrom = LocalDate.now();
-                    rangeTo = LocalDate.now();
-                }
-                case "Tuần này" -> {
-                    rangeFrom = LocalDate.now().with(java.time.DayOfWeek.MONDAY);
-                    rangeTo = rangeFrom.plusDays(6);
-                }
-                case "Tháng này" -> {
-                    rangeFrom = LocalDate.now().withDayOfMonth(1);
-                    rangeTo = LocalDate.now().withDayOfMonth(LocalDate.now().lengthOfMonth());
-                }
-                default -> {
-                    from.setDisable(false);
-                    to.setDisable(false);
-                }
-            }
-            from.setValue(rangeFrom);
-            to.setValue(rangeTo);
-            if (!"Tùy chọn…".equals(preset.getValue())) {
-                from.setDisable(true);
-                to.setDisable(true);
-                refresh();
-            }
-        });
         from.setOnAction(e -> {
             rangeFrom = from.getValue();
             refresh();
@@ -144,9 +99,42 @@ public class DashboardView extends View {
         rangeStrip.setAlignment(Pos.CENTER_LEFT);
         rangeStrip.getStyleClass().add("toolbar-strip");
 
-        HBox headerActions = new HBox(10, rangeStrip, manage);
-        headerActions.setAlignment(Pos.CENTER_RIGHT);
-        header.getChildren().addAll(titleBlock, spacer, headerActions);
+        // The two pickers only mean anything in "Tùy chọn…". They used to stay in the
+        // header permanently, greyed out — 300px of dead controls on every visit — and
+        // the old handler also forgot to repaint when you switched *to* custom.
+        Runnable showCustom = () -> {
+            boolean custom = "Tùy chọn…".equals(preset.getValue());
+            for (Node cell : new Node[]{fromLabel, from, toLabel, to}) {
+                cell.setVisible(custom);
+                cell.setManaged(custom);
+            }
+        };
+        preset.setOnAction(e -> {
+            LocalDate today = LocalDate.now();
+            switch (preset.getValue()) {
+                case "Hôm nay" -> {
+                    rangeFrom = today;
+                    rangeTo = today;
+                }
+                case "Tuần này" -> {
+                    rangeFrom = today.with(java.time.DayOfWeek.MONDAY);
+                    rangeTo = rangeFrom.plusDays(6);
+                }
+                case "Tháng này" -> {
+                    rangeFrom = today.withDayOfMonth(1);
+                    rangeTo = today.withDayOfMonth(today.lengthOfMonth());
+                }
+                default -> {
+                }
+            }
+            from.setValue(rangeFrom);
+            to.setValue(rangeTo);
+            showCustom.run();
+            refresh();
+        });
+        showCustom.run();
+
+        HBox header = toolbar(null, rangeStrip, manage);
 
         widgetGrid.setHgap(14);
         widgetGrid.setVgap(14);
@@ -156,11 +144,15 @@ public class DashboardView extends View {
         widgetCol.setHgrow(Priority.ALWAYS);
         widgetGrid.getColumnConstraints().addAll(widgetCol, widgetCol, widgetCol);
 
-        metricStrip = new HBox(12);
-        metricStrip.setMinWidth(0);
+        // One row of equal tiles. An HBox with hgrow shares out only the *spare*
+        // width on top of each tile's own content width, so the tile holding the
+        // longest sentence stayed the widest and the strip read as a table with one
+        // fat column; the cards here exist to be compared, so they must be the same
+        // size whatever they say.
+        metricStrip = new VBox();
         metricStrip.setMaxWidth(Double.MAX_VALUE);
 
-        VBox root = new VBox(14, header, metricStrip, widgetGrid);
+        VBox root = page(header, metricStrip, widgetGrid);
         VBox.setVgrow(widgetGrid, Priority.ALWAYS);
         root.getStyleClass().add("dashboard");
         return root;
@@ -182,23 +174,36 @@ public class DashboardView extends View {
 
     @Override
     public void onShow() {
-        refresh();
+        // Same revision check every other data view uses. The dashboard used to
+        // recompute a fingerprint of the whole dataset on every visit — all streaks
+        // (365 days each), month totals, budget rows, due cards, health averages —
+        // to decide whether to redraw itself.
+        // Revisions say nothing about midnight. Every widget here is keyed to
+        // "today" — due tasks, this month's budget rows, streaks — so a dashboard
+        // left open over the date line used to keep yesterday's numbers until some
+        // service happened to write.
+        java.time.LocalDate now = java.time.LocalDate.now();
+        boolean newDay = paintedOn == null || !paintedOn.equals(now);
+        paintedOn = now;
+        if (newDay) {
+            refresh();
+            return;
+        }
+        refreshWhenChanged(ctx.tasks().changes(), ctx.finance().changes(), ctx.habits().changes(),
+                ctx.learning().changes(), ctx.health().changes(), ctx.notes().changes());
     }
+
+    private java.time.LocalDate paintedOn;
 
     @Override
     public void onThemeChanged() {
-        // dataStamp() includes the theme, so this forces the charts (which embed
-        // the accent color in their HTML) to rebuild with the new palette.
+        // The charts embed the accent color in their HTML, so a palette swap must
+        // repaint even when no data moved.
         scheduleRefresh();
     }
 
     @Override
     protected void refresh() {
-        String stamp = dataStamp();
-        if (stamp.equals(lastStamp) && !widgetGrid.getChildren().isEmpty()) {
-            return;                       // nothing on this page changed
-        }
-        lastStamp = stamp;
         rebuildMetrics();
         widgets.clear();
         widgets.put("w_today", todayWidget());
@@ -233,33 +238,11 @@ public class DashboardView extends View {
             }
         }
         if (widgetGrid.getChildren().isEmpty()) {
-            widgetGrid.add(new EmptyState("puzzle",
-                    "Tất cả widget đang tắt. Bấm \"Quản lý widget\" để bật lại."), 0, 0, 3, 1);
+            widgetGrid.add(EmptyState.withAction("puzzle", "Tất cả widget đang tắt.",
+                    "Quản lý widget", () -> showWidgetManager()), 0, 0, 3, 1);
         }
     }
 
-    /**
-     * Cheap fingerprint: counts and totals the widgets actually render. Not a cache
-     * key for correctness-critical state — just a reason to skip a full teardown.
-     */
-    private String dataStamp() {
-        var m = ctx.finance().monthSummary(java.time.YearMonth.now());
-        long streaks = 0;
-        for (Habit h : ctx.habits().habits(false)) {
-            streaks += ctx.habits().currentStreak(h);
-        }
-        return ctx.config().theme + '|' + rangeFrom + '|' + rangeTo
-                + '|' + ctx.tasks().dueToday().size() + '|' + ctx.tasks().overdue().size()
-                + '|' + ctx.tasks().openCount()
-                + '|' + m.income() + '|' + m.expense()
-                + '|' + ctx.habits().habits(false).size() + '|' + streaks
-                + '|' + ctx.habits().goals().size()
-                + '|' + ctx.notes().list().size()
-                + '|' + ctx.learning().dueCount() + '|' + ctx.learning().cardCount()
-                + '|' + ctx.finance().budgetStatus(java.time.YearMonth.now()).size()
-                + '|' + String.valueOf(ctx.health().averageDays(
-                        com.lifedesk.health.HealthService.HealthField.SLEEP, 30));
-    }
 
     // ------------------------------------------------------------------ metric strip
 
@@ -277,7 +260,7 @@ public class DashboardView extends View {
         var month = ctx.finance().monthSummary(java.time.YearMonth.now());
         int cards = ctx.learning().dueCount();
 
-        metricStrip.getChildren().setAll(
+        metricStrip.getChildren().setAll(com.lifedesk.ui.Fx.equalTiles(12,
                 metricTile("Việc hôm nay", String.valueOf(dueToday), "việc",
                         overdue == 0 ? "không có việc quá hạn" : overdue + " việc đã quá hạn",
                         overdue > 0, () -> main.showView(MainWindow.ViewId.TASKS)),
@@ -290,7 +273,7 @@ public class DashboardView extends View {
                         false, () -> main.showView(MainWindow.ViewId.LEARNING)),
                 metricTile("Ghi chú", String.valueOf(ctx.notes().list().size()), "ghi chú",
                         ctx.notes().list().isEmpty() ? "chưa có ghi chú nào" : "mở tab Ghi chú để viết tiếp",
-                        false, () -> main.showView(MainWindow.ViewId.NOTES)));
+                        false, () -> main.showView(MainWindow.ViewId.NOTES))));
     }
 
     /** A headline number the user can click through to the module it summarises. */
@@ -313,12 +296,13 @@ public class DashboardView extends View {
         if (alert) {
             val.getStyleClass().add("metric-neg");
         }
-        VBox tile = new VBox(2, cap, valueRow, n);
+        // Spacing and the hand cursor come from .metric-tile in CSS: the constructor
+        // gap was dead against -fx-spacing, and setting the cursor on mouse-enter only
+        // (no mouse-exit) left the hand pointer stuck on the tile after the mouse left.
+        VBox tile = new VBox(cap, valueRow, n);
         tile.getStyleClass().add("metric-tile");
         tile.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(tile, Priority.ALWAYS);
         tile.setOnMouseClicked(e -> onClick.run());
-        tile.setOnMouseEntered(e -> tile.setCursor(javafx.scene.Cursor.HAND));
         return tile;
     }
 
@@ -337,6 +321,15 @@ public class DashboardView extends View {
             out = abs + " đ";
         }
         return (negative ? "-" : "") + out;
+    }
+
+    /**
+     * A line inside a widget card: the row is the part that shortens when the column
+     * is narrow, and the whole text (title, date, figures) stays readable on hover.
+     * Without the tooltip a truncated task name is simply lost.
+     */
+    private static Label rowLine(String text) {
+        return Fx.shrinkable(new Label(text));
     }
 
     /** Compact in-card empty state: states the gap and offers the way out of it. */
@@ -385,8 +378,8 @@ public class DashboardView extends View {
             if (t.status == com.lifedesk.tasks.TaskStatus.DONE) {
                 continue;
             }
-            HBox row = new HBox(6, Chips.priority(t.priority.name()),
-                    new Label(t.title + (t.dueTime != null ? " " + t.dueTime : "")));
+            HBox row = new HBox(6, Chips.priority(t.priority.name()), rowLine(
+                    t.title + (t.dueTime != null ? " " + t.dueTime : "")));
             row.setAlignment(Pos.CENTER_LEFT);
             box.getChildren().add(row);
             if (++shown >= 6) {
@@ -411,7 +404,8 @@ public class DashboardView extends View {
         } else {
             VBox box = new VBox(4);
             list.stream().limit(5).forEach(t -> {
-                HBox row = new HBox(6, Chips.overdue("trễ " + t.dueDate.format(DF)), new Label(t.title));
+                HBox row = new HBox(6, Chips.overdue("trễ " + t.dueDate.format(DF)),
+                        rowLine(t.title));
                 row.setAlignment(Pos.CENTER_LEFT);
                 box.getChildren().add(row);
             });
@@ -429,7 +423,7 @@ public class DashboardView extends View {
         }
         VBox box = new VBox(4);
         list.stream().limit(7).forEach(t -> box.getChildren().add(
-                new Label(t.dueDate.format(DF) + "  " + t.title)));
+                rowLine(t.dueDate.format(DF) + "  " + t.title)));
         card.content(box);
         return card;
     }
@@ -491,8 +485,13 @@ public class DashboardView extends View {
         }
         VBox box = new VBox(6);
         for (var s : statuses) {
-            Label name = new Label(s.categoryName() + ": " + s.spent().toPlainString() + " / "
-                    + s.budget().limitAmount.toPlainString() + " VND");
+            // Compact like every other money figure on this page: "2803569 / 4000000 VND"
+            // is eighteen characters wide and the row elided the limit ("…V"). The exact
+            // figures stay one hover away.
+            Label name = Fx.shrinkable(new Label(s.categoryName() + " · "
+                    + compactVnd(s.spent()) + " / " + compactVnd(s.budget().limitAmount)));
+            name.setTooltip(new Tooltip(s.categoryName() + ": " + s.spent().toPlainString()
+                    + " / " + s.budget().limitAmount.toPlainString() + " VND"));
             ProgressBar bar = new ProgressBar(Math.min(1.0, Math.max(0, s.usedRatio())));
             bar.setMaxWidth(Double.MAX_VALUE);
             if (s.usedRatio() > 1) {
@@ -519,7 +518,7 @@ public class DashboardView extends View {
         VBox box = new VBox(6);
         for (Habit h : habits) {
             double rate = ctx.habits().completionRate(h, 30);
-            HBox row = new HBox(8, new Label(h.name),
+            HBox row = new HBox(8, Fx.shrinkable(new Label(h.name)),
                     Chips.chip("chuỗi " + ctx.habits().currentStreak(h) + " ngày", "chip-done"));
             row.setAlignment(Pos.CENTER_LEFT);
             ProgressBar bar = new ProgressBar(rate);
@@ -543,7 +542,7 @@ public class DashboardView extends View {
         VBox box = new VBox(6);
         for (var g : goals) {
             int progress = computeGoalProgress(g);
-            HBox row = new HBox(8, new Label(g.title()), Chips.chip(progress + "%",
+            HBox row = new HBox(8, Fx.shrinkable(new Label(g.title())), Chips.chip(progress + "%",
                     progress >= 100 ? "chip-done" : "chip-medium"));
             row.setAlignment(Pos.CENTER_LEFT);
             ProgressBar bar = new ProgressBar(progress / 100.0);
@@ -579,23 +578,20 @@ public class DashboardView extends View {
     private Card notesWidget() {
         Card card = new Card("Ghi chú");
         var notes = ctx.notes().list();
-        long words = 0;
         java.util.Map<java.time.LocalDate, Double> activity = new java.util.HashMap<>();
         java.time.LocalDate today = java.time.LocalDate.now();
         java.time.LocalDate from = today.minusWeeks(25).with(java.time.DayOfWeek.MONDAY);
         for (var n : notes) {
-            words += ctx.notes().readContent(n.id).split("\\s+").length;
             java.time.LocalDate day = n.updatedAt.atZone(java.time.ZoneId.systemDefault()).toLocalDate();
             if (!day.isBefore(from)) {
                 activity.merge(day, 1.0, Double::sum);
             }
         }
-        Label stats = new Label(notes.size() + " ghi chú — ~" + words + " từ");
-        stats.getStyleClass().add("dim-label");
+        Label stats = Card.dim(notes.size() + " ghi chú");
         var heatmap = new com.lifedesk.ui.components.CalendarHeatmap();
         heatmap.setPrefHeight(150);
-        heatmap.render(from, today, activity,
-                ctx.themeManager().previewPalette(ctx.config().theme).accent());
+        var palette = ctx.themeManager().previewPalette(ctx.config().theme);
+        heatmap.render(from, today, activity, palette.accent(), palette.text(), palette.border());
         heatmap.installHoverTracking(activity::get, from);
         card.content(stats, heatmap);
         return card;
@@ -641,16 +637,15 @@ public class DashboardView extends View {
             checks.add(cb);
             box.getChildren().add(cb);
         }
-        Label hint = new Label("Tích = hiện trên dashboard, bỏ tick = ẩn. Bấm OK để áp dụng.");
-        hint.getStyleClass().add("dim-label");
+        Label hint = Card.dim("Tích = hiện trên dashboard, bỏ tick = ẩn. Bấm OK để áp dụng.");
 
         // Dialogs.newDialog() = themed + owned; the raw Alert rendered as a white
         // system dialog floating over the dark dashboard.
         javafx.scene.control.Dialog<Boolean> dialog = com.lifedesk.ui.Dialogs.newDialog();
         dialog.setTitle("Quản lý widget dashboard");
         dialog.setHeaderText(null);
-        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
-                javafx.scene.control.ButtonType.CANCEL);
+        dialog.getDialogPane().getButtonTypes().addAll(Dialogs.SAVE,
+                Dialogs.CANCEL);
         dialog.getDialogPane().setContent(new VBox(8, hint, box));
         dialog.setResultConverter(bt ->
                 bt.getButtonData() == javafx.scene.control.ButtonBar.ButtonData.OK_DONE ? Boolean.TRUE : null);

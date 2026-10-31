@@ -1,6 +1,7 @@
 package com.lifedesk.ui.components;
 
 import javafx.geometry.Pos;
+import com.lifedesk.ui.components.Card;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.layout.ColumnConstraints;
@@ -54,18 +55,12 @@ public class FormGrid extends GridPane {
         return this;
     }
 
-    public FormGrid full(Node node) {
-        add(node, 1, getRowCount(), 2, 1);
-        return this;
-    }
-
     /**
      * A dim-labeled field in its own VBox — the standard layout for compact
      * dialog forms that do not use the aligned two-column grid.
      */
     public static VBox labeled(String labelText, Node field) {
-        Label l = new Label(labelText);
-        l.getStyleClass().add("dim-label");
+        Label l = Card.dim(labelText);
         return new VBox(2, l, field);
     }
 }

@@ -136,9 +136,10 @@ public class MarkdownService {
     public String wrapPresentationPage(String bodyHtml, ThemeManager.PreviewPalette palette) {
         return wrap(bodyHtml, palette, """
                   html, body { height: 100%%; }
-                  body { display: flex; flex-direction: column; align-items: center;
+                  body { box-sizing: border-box; display: flex; flex-direction: column;
+                         align-items: center;
                          justify-content: center; font-size: 30px; line-height: 1.5;
-                         text-align: center; margin: 0 40px; }
+                         text-align: center; margin: 0; padding: 0 40px; }
                   h1, h2, h3, h4 { border-bottom: none; margin: 10px 0; }
                   p { margin: 8px 0; }
                   img.math-display { margin: 18px auto; }
@@ -156,8 +157,14 @@ public class MarkdownService {
                 <meta charset="utf-8">
                 <style>
                   body { background: %s; color: %s; font-family: "Segoe UI", sans-serif;
-                         font-size: 14px; line-height: 1.55; margin: 16px 22px; }
-                  h1,h2,h3,h4 { color: %s; border-bottom: 1px solid %s; padding-bottom: 4px; }
+                         font-size: 14px; line-height: 1.6; padding: 16px 22px;
+                         max-width: 74ch; margin: 0 auto; }
+                  h1 { font-size: 26px; } h2 { font-size: 20px; }
+                  h3 { font-size: 16px; } h4 { font-size: 14px; }
+                  h1,h2,h3,h4 { color: %s; padding-bottom: 4px; margin: 18px 0 8px; }
+                  h1, h2 { border-bottom: 1px solid %s; }
+                  p { margin: 10px 0; }
+                  li { margin: 3px 0; }
                   a { color: %s; }
                   code { background: %s; padding: 1px 5px; border-radius: 4px;
                          font-family: Consolas, monospace; font-size: 13px; }

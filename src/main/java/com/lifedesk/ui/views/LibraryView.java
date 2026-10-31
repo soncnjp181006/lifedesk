@@ -5,11 +5,11 @@ import com.lifedesk.library.LibraryService;
 import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
+import com.lifedesk.ui.components.Combos;
 import com.lifedesk.ui.components.Card;
 import com.lifedesk.ui.components.EmptyState;
 import com.lifedesk.ui.components.FormGrid;
 import com.lifedesk.ui.components.IconView;
-import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
@@ -24,7 +24,7 @@ import javafx.scene.image.ImageView;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 import java.util.List;
@@ -50,10 +50,6 @@ public class LibraryView extends View {
 
     @Override
     protected Node build() {
-        Label title = new Label("Thư viện cá nhân");
-        title.getStyleClass().add("title-label");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
         statsLabel.getStyleClass().add("dim-label");
         kindFilter.getItems().addAll("Tất cả", "Sách", "Phim", "Series", "Game", "Nhạc", "Khóa học");
         kindFilter.setValue("Tất cả");
@@ -61,19 +57,25 @@ public class LibraryView extends View {
         Button add = new Button("Thêm mục", new IconView("plus", 15));
         add.getStyleClass().add("primary-btn");
         add.setOnAction(e -> openEditor(null));
-        HBox header = new HBox(10, title, spacer, statsLabel, new Label("Loại:"), kindFilter, add);
-        header.getStyleClass().add("view-header");
-        header.setAlignment(Pos.CENTER_LEFT);
+        HBox header = toolbar(statsLabel, new Label("Loại:"), kindFilter, add);
 
         shelves.getStyleClass().add("library-shelves");
         ScrollPane scroll = new ScrollPane(shelves);
         scroll.setFitToWidth(true);
-        scroll.setStyle("-fx-background-color: transparent;");
         VBox.setVgrow(scroll, Priority.ALWAYS);
 
-        ctx.library().changes().addListener(this::scheduleRefresh);
-        rebuild();
-        return new VBox(12, header, scroll);
+        watch(ctx.library().changes());
+        return page(header, scroll);
+    }
+
+    /**
+     * Data is read here, not in build(): the shell calls onShow() right after the
+     * page is built, so painting in both places filled every shelf twice on the
+     * first visit.
+     */
+    @Override
+    public void onShow() {
+        refreshWhenChanged(ctx.library().changes());
     }
 
     private void rebuild() {
@@ -91,8 +93,8 @@ public class LibraryView extends View {
         shelf("Hoàn thành", items.stream().filter(i -> i.status == LibraryService.Status.DONE).toList());
         shelf("Tạm bỏ", items.stream().filter(i -> i.status == LibraryService.Status.DROPPED).toList());
         if (items.isEmpty()) {
-            shelves.getChildren().add(new EmptyState("library-big",
-                    "Thư viện trống. Thêm sách/phim/game/course đầu tiên của bạn."));
+            shelves.getChildren().add(EmptyState.withAction("library-big",
+                    "Thư viện trống.", "Thêm mục đầu tiên", () -> openEditor(null)));
         }
     }
 
@@ -127,9 +129,11 @@ public class LibraryView extends View {
             view.setImage(new Image(item.coverUrl, 160, 200, true, true, true)); // background load
             cover = view;
         } else {
-            Label placeholder = new Label(iconFor(item.kind));
-            placeholder.setStyle("-fx-font-size: 40px;");
-            placeholder.setAlignment(Pos.CENTER);
+            // Vector placeholder, not a colour emoji glyph: an emoji character renders
+            // from the system emoji font, so card art differs per OS, it ignores the
+            // active theme, and at card size it reads as clipart. The Lucide set is
+            // stroke-only and follows the palette like every other control.
+            StackPane placeholder = new StackPane(placeholderIcon(item.kind));
             placeholder.setPrefSize(160, 120);
             placeholder.getStyleClass().add("card");
             cover = placeholder;
@@ -139,11 +143,10 @@ public class LibraryView extends View {
         titleLabel.getStyleClass().add("form-label");
         titleLabel.setWrapText(true);
         titleLabel.setMaxWidth(165);
-        Label meta = new Label(kindLabel(item.kind)
+        Label meta = Card.dim(kindLabel(item.kind)
                 + (item.creator.isBlank() ? "" : " — " + item.creator)
                 + (item.rating > 0 ? "  ★ " + item.rating + "/10" : "")
                 + (item.progressTotal > 0 ? "  [" + item.progressCurrent + "/" + item.progressTotal + "]" : ""));
-        meta.getStyleClass().add("dim-label");
         meta.setWrapText(true);
 
         Button tick = new Button("", new IconView("check", 14));
@@ -195,14 +198,20 @@ public class LibraryView extends View {
         }
     }
 
-    private String iconFor(LibraryService.Kind kind) {
+    /**
+     * Monochrome vector placeholder for a kind with no cover image. The names are
+     * written inside the IconView calls on purpose: the icon audit reads literals
+     * at those call sites, so a kind pointing at a missing file fails a gate
+     * instead of painting an empty square.
+     */
+    private IconView placeholderIcon(LibraryService.Kind kind) {
         return switch (kind) {
-            case BOOK -> "📕";
-            case MOVIE -> "🎬";
-            case SERIES -> "📺";
-            case GAME -> "🎮";
-            case MUSIC -> "🎵";
-            case COURSE -> "🎓";
+            case BOOK -> new IconView("book-open", 40, "icon-dim");
+            case MOVIE -> new IconView("film", 40, "icon-dim");
+            case SERIES -> new IconView("tv", 40, "icon-dim");
+            case GAME -> new IconView("gamepad", 40, "icon-dim");
+            case MUSIC -> new IconView("music", 40, "icon-dim");
+            case COURSE -> new IconView("graduation-cap", 40, "icon-dim");
         };
     }
 
@@ -221,14 +230,14 @@ public class LibraryView extends View {
         javafx.scene.control.Dialog<LibraryService.Item> dialog = com.lifedesk.ui.Dialogs.newDialog();
         dialog.setTitle(existing == null ? "Thêm vào thư viện" : "Sửa mục thư viện");
         dialog.setHeaderText(null);
-        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
-                javafx.scene.control.ButtonType.CANCEL);
+        dialog.getDialogPane().getButtonTypes().addAll(Dialogs.SAVE,
+                Dialogs.CANCEL);
 
         TextField title = new TextField(existing == null ? "" : existing.title);
         ComboBox<LibraryService.Kind> kind = new ComboBox<>();
         kind.getItems().addAll(LibraryService.Kind.values());
         kind.setValue(existing == null ? LibraryService.Kind.BOOK : existing.kind);
-        display(kind, this::kindLabel);
+        Combos.label(kind, this::kindLabel);
         // Status / creator / year / rating removed from the dialog (user-mandated):
         // the model keeps them, new items start PLANNED and progress ticks move
         // them across the shelves.
@@ -321,19 +330,6 @@ public class LibraryView extends View {
         });
     }
 
-    /** Combo cells in Vietnamese (list + button), shared by the two combos. */
-    private <T> void display(ComboBox<T> combo, java.util.function.Function<T, String> name) {
-        javafx.util.Callback<javafx.scene.control.ListView<T>, javafx.scene.control.ListCell<T>> cell =
-                v -> new javafx.scene.control.ListCell<>() {
-                    @Override
-                    protected void updateItem(T item, boolean empty) {
-                        super.updateItem(item, empty);
-                        setText(empty || item == null ? null : name.apply(item));
-                    }
-                };
-        combo.setCellFactory(cell);
-        combo.setButtonCell(cell.call(null));
-    }
 
     /** "Đã đọc (chương)"-style pair per kind; null = progress fields are meaningless. */
     private String[] progressUnit(LibraryService.Kind kind) {

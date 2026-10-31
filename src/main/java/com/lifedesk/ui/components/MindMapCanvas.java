@@ -27,9 +27,12 @@ public class MindMapCanvas extends ScrollPane {
 
     private final Canvas canvas = new Canvas(400, 400);
     private final List<com.lifedesk.ui.panes.NoteOutlinePane.Heading> headings;
+    /** Canvas ignores CSS, so the caller hands the palette over as hex strings. */
+    private final String textColor;
 
-    public MindMapCanvas(String markdownText, String accentColor) {
+    public MindMapCanvas(String markdownText, String accentColor, String textColor) {
         this.headings = com.lifedesk.ui.panes.NoteOutlinePane.parse(markdownText);
+        this.textColor = textColor == null || textColor.isBlank() ? "#1d1d1d" : textColor;
         layoutAndDraw(accentColor == null || accentColor.isBlank() ? "#5b8def" : accentColor);
         VBox box = new VBox(canvas);
         setContent(box);
@@ -85,7 +88,7 @@ public class MindMapCanvas extends ScrollPane {
             double depth = (n.depth() - 1);
             g.setFill(Color.web(accent, Math.max(0.15, 0.55 - depth * 0.12)));
             g.fillRoundRect(n.x(), n.y(), n.w(), NODE_H, 10, 10);
-            g.setFill(Color.web("#1d1d1d", 0.9));
+            g.setFill(Color.web(textColor, 0.95));
             g.fillText(clip(n.text()), n.x() + NODE_PAD_X, n.y() + NODE_H - 7);
         }
     }

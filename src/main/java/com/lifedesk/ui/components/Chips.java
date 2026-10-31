@@ -10,6 +10,11 @@ public final class Chips {
     public static Label chip(String text, String styleClass) {
         Label l = new Label(text);
         l.getStyleClass().addAll("chip", styleClass);
+        // A chip is one fact — "Trung bình", "chuỗi 3 ngày". Left free to shrink, it
+        // loses letters before the sentence beside it does, because a Label's own
+        // minimum is only its longest word. Pinned here, a tight row shortens the
+        // text instead of the status, which is the part the user can still read.
+        l.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
         return l;
     }
 

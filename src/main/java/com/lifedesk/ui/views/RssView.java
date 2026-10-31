@@ -55,10 +55,6 @@ public class RssView extends View {
 
     @Override
     protected Node build() {
-        Label title = new Label("RSS Dashboard");
-        title.getStyleClass().add("title-label");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
         Button refresh = new Button("Làm mới tất cả", new IconView("recycle", 15));
         refresh.getStyleClass().add("primary-btn");
         refresh.setOnAction(e -> refreshAll());
@@ -68,9 +64,7 @@ public class RssView extends View {
         opmlExport.setOnAction(e -> exportOpml());
         Button opmlImport = new Button("Nhập OPML");
         opmlImport.setOnAction(e -> importOpml());
-        HBox header = new HBox(10, title, spacer, opmlImport, opmlExport, addFeed, refresh);
-        header.getStyleClass().add("view-header");
-        header.setAlignment(Pos.CENTER_LEFT);
+        HBox header = toolbar(null, opmlImport, opmlExport, addFeed, refresh);
 
         // ---- left: feeds
         feedList.getStyleClass().add("note-list");
@@ -95,7 +89,6 @@ public class RssView extends View {
                 setText(null);
             }
         });
-        feedList.getItems().setAll(ctx.rss().feeds());
         feedList.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> filterArticles());
         Button delFeed = new Button("", new IconView("trash", 14));
         delFeed.getStyleClass().add("icon-btn");
@@ -109,8 +102,8 @@ public class RssView extends View {
             }
         });
         feedCount.getStyleClass().add("chip");
-        feedList.setPlaceholder(new EmptyState("rss",
-                "Chưa theo dõi feed nào.\nBấm \"Thêm feed\" hoặc nhập OPML."));
+        feedList.setPlaceholder(EmptyState.withAction("rss",
+                "Chưa theo dõi feed nào.", "Thêm feed", () -> addFeed()));
         VBox feedPanel = panel("Feeds", feedCount, delFeed, feedList);
         feedPanel.setMinWidth(190);
         feedPanel.setPrefWidth(230);
@@ -157,9 +150,14 @@ public class RssView extends View {
         columns.setFillHeight(true);
         VBox.setVgrow(columns, Priority.ALWAYS);
 
-        ctx.rss().changes().addListener(this::scheduleRefresh);
-        refreshArticleList();
-        return new VBox(12, header, columns);
+        watch(ctx.rss().changes());
+        return page(header, columns);
+    }
+
+    /** Feed and article lists are read on show only — build() must not paint too. */
+    @Override
+    public void onShow() {
+        refreshWhenChanged(ctx.rss().changes());
     }
 
     /**
@@ -246,8 +244,8 @@ public class RssView extends View {
         articleCount.setText(articles.size() + "");
         feedCount.setText(ctx.rss().feeds().size() + "");
         if (articles.isEmpty()) {
-            articleList.setPlaceholder(new EmptyState("scroll-text",
-                    "Chưa có bài viết. Thêm feed rồi bấm \"Làm mới tất cả\"."));
+            articleList.setPlaceholder(EmptyState.withAction("scroll-text",
+                    "Chưa có bài viết nào.", "Thêm feed", () -> addFeed()));
         }
     }
 

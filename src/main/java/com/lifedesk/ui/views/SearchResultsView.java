@@ -5,9 +5,9 @@ import com.lifedesk.search.SearchDoc;
 import com.lifedesk.search.SearchGroup;
 import com.lifedesk.search.SearchResult;
 import com.lifedesk.ui.MainWindow;
+import com.lifedesk.ui.components.Card;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.EmptyState;
-import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
@@ -16,7 +16,6 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
 import java.util.HashSet;
@@ -41,16 +40,9 @@ public class SearchResultsView extends View {
 
     @Override
     protected Node build() {
-        Label title = new Label("Kết quả tìm kiếm");
-        title.getStyleClass().add("title-label");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
         query.setPromptText("Nhập từ khóa và Enter…");
         query.setOnAction(e -> search(query.getText()));
-        HBox header = new HBox(10, title, spacer, query);
-        header.getStyleClass().add("view-header");
-        header.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(query, Priority.ALWAYS);
+        HBox header = toolbar(query);
 
         // type filter chips
         HBox filters = new HBox(8);
@@ -67,8 +59,8 @@ public class SearchResultsView extends View {
             });
             filters.getChildren().add(cb);
         }
-        Label hint = new Label("Chỉ mục được dựng lại tự động từ dữ liệu gốc (offline).");
-        hint.getStyleClass().add("dim-label");
+        Label hint = Card.dim("Chỉ mục dựng lại tự động từ dữ liệu gốc (offline). "
+                + "Enter để mở kết quả đang chọn, ↑ ↓ để chuyển.");
 
         ListView<SearchResult> results = new ListView<>();
         results.setCellFactory(v -> new ListCell<>() {
@@ -81,8 +73,7 @@ public class SearchResultsView extends View {
                 } else {
                     Label title2 = new Label("[" + SearchDoc.displayType(item.doc().type()) + "] "
                             + item.doc().title());
-                    Label snippet = new Label(snippet(item.doc().content()));
-                    snippet.getStyleClass().add("dim-label");
+                    Label snippet = Card.dim(snippet(item.doc().content()));
                     snippet.setWrapText(true);
                     setGraphic(new VBox(2, title2, snippet));
                     setText(null);
@@ -90,9 +81,21 @@ public class SearchResultsView extends View {
             }
         });
         results.setOnMouseClicked(e -> {
-            if (e.getClickCount() == 2 && results.getSelectionModel().getSelectedItem() != null) {
-                SearchResult hit = results.getSelectionModel().getSelectedItem();
-                main.openRecord(hit.doc().type(), hit.doc().refId());
+            if (e.getClickCount() == 2) {
+                openSelected(results);
+            }
+        });
+        // The keyboard path. Ctrl+K, type, Enter now lands here with the first hit
+        // already chosen; Enter again opens it. Before this, reading a result list
+        // you could not act on without the mouse made the shortcut half a feature.
+        results.setOnKeyReleased(e -> {
+            if (e.getCode() == javafx.scene.input.KeyCode.ENTER) {
+                openSelected(results);
+            } else if (e.getCode() == javafx.scene.input.KeyCode.ESCAPE) {
+                // Focus moved to the list when the search ran, so the shell's
+                // "Esc clears the search box" rule would no longer reach it.
+                // Esc here means "let me rewrite the query".
+                main.focusSearch();
             }
         });
 
@@ -100,7 +103,14 @@ public class SearchResultsView extends View {
         groupsBox.getChildren().add(results);
         VBox.setVgrow(results, Priority.ALWAYS);
 
-        return new VBox(10, header, filters, hint, groupsBox);
+        return page(header, filters, hint, groupsBox);
+    }
+
+    private void openSelected(javafx.scene.control.ListView<SearchResult> results) {
+        SearchResult hit = results.getSelectionModel().getSelectedItem();
+        if (hit != null) {
+            main.openRecord(hit.doc().type(), hit.doc().refId());
+        }
     }
 
     private static String snippet(String content) {
@@ -126,13 +136,14 @@ public class SearchResultsView extends View {
         ListView<SearchResult> results = (ListView<SearchResult>) groupsBox.getChildren().get(0);
         var all = groups.stream().flatMap(g -> g.results().stream()).toList();
         results.getItems().setAll(all);
+        if (!all.isEmpty()) {
+            // The top hit is the one the user most likely meant, and a selection is
+            // what turns the second Enter into an action instead of a no-op.
+            results.getSelectionModel().select(0);
+            results.requestFocus();
+        }
         if (all.isEmpty() && !query.getText().isBlank()) {
             results.setPlaceholder(new EmptyState("search", "Không tìm thấy kết quả nào cho \"" + query.getText() + "\"."));
         }
-    }
-
-    @Override
-    public void onShow() {
-        // keep last results
     }
 }

@@ -3,6 +3,7 @@ package com.lifedesk.ui.views;
 import com.lifedesk.agent.AgentService;
 import com.lifedesk.app.AppContext;
 import com.lifedesk.ui.Fx;
+import com.lifedesk.ui.components.Card;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.IconView;
@@ -18,8 +19,6 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Agent Workflow: the AI operates the app through a tool registry —
@@ -51,14 +50,8 @@ public class AgentView extends View {
 
     @Override
     protected Node build() {
-        Label title = new Label("Agent Workflow");
-        title.getStyleClass().add("title-label");
         modeLabel.getStyleClass().add("dim-label");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox header = new HBox(10, title, spacer, modeLabel);
-        header.getStyleClass().add("view-header");
-        header.setAlignment(Pos.CENTER_LEFT);
+        HBox header = toolbar(modeLabel);
 
         // ---- workflow cards (natural height, no clipping)
         Label sectionLabel = new Label("Workflow có sẵn");
@@ -98,7 +91,6 @@ public class AgentView extends View {
         logScroll = new ScrollPane(logContent);
         logScroll.setFitToWidth(true);
         logScroll.setMinHeight(120);
-        logScroll.setStyle("-fx-background-color: transparent;");
         VBox.setVgrow(logScroll, Priority.ALWAYS);
 
         VBox logPanel = new VBox(8, logHead, logScroll);
@@ -122,7 +114,7 @@ public class AgentView extends View {
         VBox commandPanel = new VBox(8, commandBar, hint);
         commandPanel.getStyleClass().add("panel");
 
-        VBox root = new VBox(12, header, sectionLabel, cards, logPanel, commandPanel);
+        VBox root = page(header, sectionLabel, cards, logPanel, commandPanel);
         VBox.setVgrow(logPanel, Priority.ALWAYS);
         return root;
     }
@@ -130,8 +122,7 @@ public class AgentView extends View {
     private VBox workflowCard(AgentService.Workflow wf) {
         Label name = new Label(wf.name());
         name.getStyleClass().add("card-title");
-        Label desc = new Label(wf.description());
-        desc.getStyleClass().add("dim-label");
+        Label desc = Card.dim(wf.description());
         desc.setWrapText(true);
 
         Label stepCount = new Label(wf.steps().size() + " bước");
@@ -194,8 +185,7 @@ public class AgentView extends View {
             dot.setMinWidth(14);
             Label h = new Label(headline);
             h.getStyleClass().add(ok ? "section-label" : "chat-error");
-            Label d = new Label(detail == null ? "" : detail);
-            d.getStyleClass().add("dim-label");
+            Label d = Card.dim(detail == null ? "" : detail);
             d.setWrapText(true);
             d.setMaxWidth(Double.MAX_VALUE);
             VBox text = new VBox(1, h, d);

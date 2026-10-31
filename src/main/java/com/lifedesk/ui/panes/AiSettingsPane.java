@@ -5,6 +5,7 @@ import com.lifedesk.ai.ModelInfo;
 import com.lifedesk.app.AppContext;
 import com.lifedesk.config.AiConfig;
 import com.lifedesk.ui.Dialogs;
+import com.lifedesk.ui.components.Card;
 import com.lifedesk.ui.Fx;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.components.FormGrid;
@@ -143,9 +144,8 @@ public class AiSettingsPane extends VBox {
                     err -> aiStatusLabel.setText("Kilo lỗi: " + err.getMessage()));
         });
 
-        Label kiloHint = new Label("Chuẩn: https://ai-gateway.kilo.ai/api/v1 — "
+        Label kiloHint = Card.dim("Chuẩn: https://ai-gateway.kilo.ai/api/v1 — "
                 + "danh sách model lấy từ {base}/models, chat từ {base}/chat/completions.");
-        kiloHint.getStyleClass().add("dim-label");
         kiloHint.setWrapText(true);
         Label kiloHeading = new Label("Kilo (cloud, OpenAI-compatible)");
         kiloHeading.getStyleClass().add("section-label");
@@ -165,10 +165,10 @@ public class AiSettingsPane extends VBox {
         fetchModels.getStyleClass().add("primary-btn");
         fetchModels.setOnAction(e -> fetchModels());
         modelSearch.setPromptText("Tìm trong danh sách model…");
-        modelSearch.textProperty().addListener((o, a, b) -> filterModels());
+        Fx.debounced(modelSearch, this::filterModels);
         Button selectModel = new Button("Dùng model đang chọn");
         selectModel.setOnAction(e -> selectModel());
-        Button pullModel = new Button("Tải model Ollama (chỉ khi bạn yêu cầu)", new IconView("download", 15));
+        Button pullModel = new Button("Tải model Ollama", new IconView("download", 15));
         pullModel.setTooltip(new Tooltip(
                 "Chỉ dùng với Ollama: nhập tên model (vd qwen2.5:7b) — ứng dụng KHÔNG tự tải."));
         pullModel.setOnAction(e -> pullModel());
@@ -202,6 +202,9 @@ public class AiSettingsPane extends VBox {
                 modelSearch, selectModel, pullModel);
         modelToolbar.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(modelSearch, Priority.ALWAYS);
+        // The three buttons used to lose letters first ("Lấy danh s…"); the search
+        // field is the one that may get short.
+        Fx.pinFixedWidths(modelToolbar, modelSearch);
 
         VBox box = new VBox(14, enabled, providerRow, ollamaBox, kiloBox,
                 new Separator(), activeModelRow, modelToolbar,

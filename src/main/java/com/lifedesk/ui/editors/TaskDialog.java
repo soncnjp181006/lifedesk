@@ -12,6 +12,7 @@ import com.lifedesk.tasks.Task;
 import com.lifedesk.tasks.TaskStatus;
 import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
+import com.lifedesk.ui.components.Combos;
 import com.lifedesk.ui.components.Chips;
 import com.lifedesk.ui.components.FormGrid;
 import com.lifedesk.ui.components.IconView;
@@ -56,7 +57,7 @@ public final class TaskDialog {
         Dialog<Task> dialog = Dialogs.newDialog();
         dialog.setTitle(existing == null ? "Công việc mới" : "Sửa công việc");
         dialog.setHeaderText(null);
-        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        dialog.getDialogPane().getButtonTypes().addAll(Dialogs.SAVE, Dialogs.CANCEL);
 
         TextField title = new TextField(existing == null ? "" : existing.title);
         TextArea notes = new TextArea(existing == null ? "" : existing.notes);
@@ -65,11 +66,11 @@ public final class TaskDialog {
         ComboBox<Priority> priority = new ComboBox<>();
         priority.getItems().addAll(Priority.values());
         priority.setValue(existing == null ? Priority.MEDIUM : existing.priority);
-        displayAs(priority, p -> Chips.priorityName(((Priority) p).name()));
+        Combos.label(priority, x -> Chips.priorityName(x.name()));
         ComboBox<TaskStatus> status = new ComboBox<>();
         status.getItems().addAll(TaskStatus.values());
         status.setValue(existing == null ? TaskStatus.TODO : existing.status);
-        displayAs(status, s -> Chips.taskStatusName(((TaskStatus) s).name()));
+        Combos.label(status, x -> Chips.taskStatusName(x.name()));
         DatePicker dueDate = new DatePicker(existing == null ? null : existing.dueDate);
         Spinner<Integer> hh = new Spinner<>(0, 23, existing != null && existing.dueTime != null ? existing.dueTime.getHour() : 9);
         Spinner<Integer> mm = new Spinner<>(0, 59, existing != null && existing.dueTime != null ? existing.dueTime.getMinute() : 0);
@@ -119,7 +120,7 @@ public final class TaskDialog {
         ComboBox<RecurrenceType> recType = new ComboBox<>();
         recType.getItems().addAll(RecurrenceType.values());
         recType.setValue(existing == null || existing.recurrence == null ? RecurrenceType.NONE : existing.recurrence.type);
-        displayAs(recType, r -> recurrenceName((RecurrenceType) r));
+        Combos.label(recType, TaskDialog::recurrenceName);
         Spinner<Integer> recInterval = new Spinner<>(1, 52, existing != null && existing.recurrence != null
                 && existing.recurrence.interval > 0 ? existing.recurrence.interval : 1);
         recInterval.setPrefWidth(84);
@@ -341,23 +342,4 @@ public final class TaskDialog {
         };
     }
 
-    /** Render an enum combo with Vietnamese names in both the list and the button. */
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private static void displayAs(ComboBox<?> combo, java.util.function.Function<Object, String> name) {
-        ComboBox raw = combo;
-        raw.setCellFactory(lv -> new ListCell<Object>() {
-            @Override
-            protected void updateItem(Object item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null ? null : name.apply(item));
-            }
-        });
-        raw.setButtonCell(new ListCell<Object>() {
-            @Override
-            protected void updateItem(Object item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null ? null : name.apply(item));
-            }
-        });
-    }
 }

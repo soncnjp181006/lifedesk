@@ -48,7 +48,7 @@ public class NoteOutlinePane extends VBox {
     public NoteOutlinePane(Consumer<Integer> onJump) {
         setSpacing(6);
         search.setPromptText("Lọc đề mục…");
-        search.textProperty().addListener((o, a, b) -> rebuild());
+        com.lifedesk.ui.Fx.debounced(search, this::rebuild);
 
         HBox levelBar = new HBox(2);
         String[] names = {"H1", "H2", "H3", "H4", "H5", "H6"};

@@ -10,6 +10,7 @@ import com.lifedesk.finance.PaymentMethod;
 import com.lifedesk.finance.Transaction;
 import com.lifedesk.finance.TxType;
 import com.lifedesk.ui.Dialogs;
+import com.lifedesk.ui.components.Card;
 import com.lifedesk.ui.components.FormGrid;
 import com.lifedesk.ui.components.NoteLinkPicker;
 import javafx.collections.FXCollections;
@@ -45,7 +46,7 @@ public final class FinanceDialogs {
         Dialog<Transaction> dialog = Dialogs.newDialog();
         dialog.setTitle(existing == null ? "Thêm giao dịch" : "Sửa giao dịch");
         dialog.setHeaderText(null);
-        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        dialog.getDialogPane().getButtonTypes().addAll(Dialogs.SAVE, Dialogs.CANCEL);
 
         DatePicker date = new DatePicker(existing == null ? LocalDate.now() : existing.date);
         ComboBox<TxType> type = new ComboBox<>(FXCollections.observableArrayList(TxType.values()));
@@ -119,7 +120,7 @@ public final class FinanceDialogs {
         Dialog<Budget> dialog = Dialogs.newDialog();
         dialog.setTitle(existing == null ? "Đặt ngân sách" : "Sửa ngân sách");
         dialog.setHeaderText(null);
-        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        dialog.getDialogPane().getButtonTypes().addAll(Dialogs.SAVE, Dialogs.CANCEL);
         ComboBox<YearMonth> month = new ComboBox<>();
         for (int i = -2; i <= 3; i++) {
             month.getItems().add(YearMonth.now().plusMonths(i));
@@ -164,7 +165,7 @@ public final class FinanceDialogs {
         Dialog<Debt> dialog = Dialogs.newDialog();
         dialog.setTitle(existing == null ? "Thêm khoản phải thu / phải trả" : "Sửa khoản");
         dialog.setHeaderText(null);
-        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        dialog.getDialogPane().getButtonTypes().addAll(Dialogs.SAVE, Dialogs.CANCEL);
         ComboBox<DebtDirection> dir = new ComboBox<>(FXCollections.observableArrayList(DebtDirection.values()));
         dir.setValue(existing == null ? DebtDirection.RECEIVABLE : existing.direction);
         TextField party = new TextField(existing == null ? "" : existing.party);
@@ -214,7 +215,7 @@ public final class FinanceDialogs {
         Dialog<Void> dialog = Dialogs.newDialog();
         dialog.setTitle("Quản lý danh mục");
         dialog.setHeaderText("Danh mục thu / chi");
-        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        dialog.getDialogPane().getButtonTypes().add(Dialogs.CLOSE);
 
         ListView<Category> list = new ListView<>();
         list.getItems().setAll(ctx.finance().categories(null));
@@ -227,23 +228,14 @@ public final class FinanceDialogs {
             }
         });
         list.setPrefHeight(280);
+        list.setPlaceholder(new com.lifedesk.ui.components.EmptyState("list",
+                "Chưa có danh mục nào."));
 
         Button rename = new Button("Đổi tên");
-        rename.setOnAction(e -> {
-            Category c = list.getSelectionModel().getSelectedItem();
-            if (c == null) {
-                return;
-            }
-            String newName = Dialogs.prompt("Đổi tên danh mục",
-                    "Tên mới cho \"" + c.name + "\":", c.name).orElse(null);
-            if (newName == null || newName.isBlank()) {
-                return;
-            }
-            try {
-                ctx.finance().renameCategory(c.id, newName);
-                list.getItems().setAll(ctx.finance().categories(null));
-            } catch (RuntimeException ex) {
-                Dialogs.error("Không đổi được tên", ex.getMessage());
+        rename.setOnAction(e -> renameSelected(list, ctx));
+        list.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) {
+                renameSelected(list, ctx);
             }
         });
         Button delete = new Button("Xóa danh mục");
@@ -262,12 +254,31 @@ public final class FinanceDialogs {
                 }
             }
         });
-        Label hint = new Label("Danh mục đang có giao dịch sẽ không xóa được — hãy đổi tên thay thế.");
-        hint.getStyleClass().add("dim-label");
+        Label hint = Card.dim("Danh mục đang có giao dịch sẽ không xóa được — hãy đổi tên thay thế.");
 
         dialog.getDialogPane().setContent(new VBox(10, list, new HBox(8, rename, delete), hint));
         dialog.setResizable(true);
         dialog.showAndWait();
         onSaved.run();
+    }
+
+    /** One rename path for the button and the double-click, so they cannot drift. */
+    private static void renameSelected(javafx.scene.control.ListView<Category> list,
+            com.lifedesk.app.AppContext ctx) {
+        Category c = list.getSelectionModel().getSelectedItem();
+        if (c == null) {
+            return;
+        }
+        String newName = Dialogs.prompt("Đổi tên danh mục",
+                "Tên mới cho \"" + c.name + "\":", c.name).orElse(null);
+        if (newName == null || newName.isBlank()) {
+            return;
+        }
+        try {
+            ctx.finance().renameCategory(c.id, newName);
+            list.getItems().setAll(ctx.finance().categories(null));
+        } catch (RuntimeException ex) {
+            Dialogs.error("Không đổi được tên", ex.getMessage());
+        }
     }
 }

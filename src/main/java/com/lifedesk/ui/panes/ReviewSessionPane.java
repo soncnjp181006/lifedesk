@@ -25,7 +25,7 @@ import java.util.List;
  * markdown + LaTeX so math decks display properly.
  */
 public class ReviewSessionPane extends VBox {
-    private static final String MODE_ALL = "Tất cả thẻ — học ngay";
+    private static final String MODE_ALL = "Tất cả thẻ";
     private static final String MODE_DUE = "Chỉ thẻ đến hạn";
     private static final String ALL_DECKS = "(tất cả các bộ)";
 
@@ -80,9 +80,24 @@ public class ReviewSessionPane extends VBox {
         HBox.setHgrow(spacer, Priority.ALWAYS);
         HBox header = new HBox(10, new Label("Ôn tập spaced repetition"), spacer,
                 modePick, deckPick, shuffleBox, startBtn);
+        // The two pickers take the slack; the checkbox and the primary button keep
+        // their full label (both had lost a letter at the minimum window size).
+        com.lifedesk.ui.Fx.pinFixedWidths(header, modePick, deckPick);
         header.setAlignment(Pos.CENTER_LEFT);
 
-        cardPane.setMinHeight(220);
+        // The card takes the space that is left, and the answer buttons stay where
+        // the hand already is. Two things were wrong at the app's own minimum window
+        // height: the card had no grow priority, and its WebView child's preferred
+        // height is bound to the pane's own height — so the card kept the tall size it
+        // once had in a bigger window, the pane's preferred height never came back
+        // down, and the page ended up taller than the viewport. The flip/answer row
+        // fell below the fold: the primary action of a review session needed scrolling
+        // to reach. A stated preference (240) breaks that feedback loop, and grow lets
+        // the card use the room when the window is big.
+        cardPane.setMinHeight(180);
+        cardPane.setPrefHeight(240);
+        cardPane.setMaxHeight(Double.MAX_VALUE);
+        VBox.setVgrow(cardPane, Priority.ALWAYS);
         cardPane.getStyleClass().add("card");
 
         flipBtn.getStyleClass().add("primary-btn");
@@ -108,6 +123,16 @@ public class ReviewSessionPane extends VBox {
         HBox.setHgrow(statsRow.getChildren().get(1), Priority.ALWAYS);
 
         getChildren().addAll(header, cardPane, answerRow, statsRow);
+        // The flip button has always read "Lật thẻ (Space)" and the answer buttons
+        // promise 1/2, but handleKey() had no caller — the keyboard path was advertised
+        // and never connected. Taking the keys on the pane (not the scene) keeps Space
+        // and the digits away from any text field the user is typing in.
+        setFocusTraversable(true);
+        setOnKeyPressed(e -> {
+            if (handleKey(e)) {
+                e.consume();
+            }
+        });
         startSession();
     }
 
@@ -126,6 +151,17 @@ public class ReviewSessionPane extends VBox {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Point the session at one deck and restart it — used by the deck toolbar, so
+     * "Ôn tập" beside a selected deck means that deck, not the default all-decks pool.
+     */
+    public void studyDeck(String deckName) {
+        if (deckName != null && deckPick.getItems().contains(deckName)) {
+            deckPick.setValue(deckName);
+        }
+        startSession();
     }
 
     private void startSession() {
@@ -171,7 +207,7 @@ public class ReviewSessionPane extends VBox {
         if (queue.isEmpty()) {
             boolean dueOnly = MODE_DUE.equals(modePick.getValue());
             renderCard(dueOnly
-                    ? "**Không có thẻ nào đến hạn ôn.**\n\nChọn chế độ **Tất cả thẻ — học ngay** "
+                    ? "**Không có thẻ nào đến hạn ôn.**\n\nChọn \"" + MODE_ALL + "\" "
                             + "để học mọi thẻ, bất kể đến hạn."
                     : "**Bộ này chưa có thẻ nào.**\n\nThêm thẻ mới ở tab Flashcards.");
             progressLabel.setText("0 thẻ");

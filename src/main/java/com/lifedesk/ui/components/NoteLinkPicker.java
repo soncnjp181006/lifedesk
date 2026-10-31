@@ -1,6 +1,7 @@
 package com.lifedesk.ui.components;
 
 import com.lifedesk.app.AppContext;
+import com.lifedesk.ui.components.Card;
 import com.lifedesk.notes.NoteMeta;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
@@ -29,14 +30,7 @@ public class NoteLinkPicker extends VBox {
         setSpacing(3);
 
         pick.setItems(javafx.collections.FXCollections.observableArrayList(ctx.notes().list()));
-        pick.setCellFactory(v -> new ListCell<>() {
-            @Override
-            protected void updateItem(NoteMeta item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null ? null : item.title);
-            }
-        });
-        pick.setButtonCell(pick.getCellFactory().call(null));
+        Combos.label(pick, note -> note.title);
         pick.setPrefWidth(280);
         pick.setPromptText("Chọn ghi chú…");
 
@@ -52,8 +46,7 @@ public class NoteLinkPicker extends VBox {
 
         HBox row = new HBox(8, pick, toggle);
         row.setAlignment(Pos.CENTER_LEFT);
-        Label cap = new Label(caption);
-        cap.getStyleClass().add("dim-label");
+        Label cap = Card.dim(caption);
         getChildren().addAll(cap, row, countLabel);
         refreshCount();
     }

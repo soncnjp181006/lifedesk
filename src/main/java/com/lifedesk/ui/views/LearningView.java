@@ -8,6 +8,7 @@ import com.lifedesk.learning.Flashcard;
 import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
+import com.lifedesk.ui.components.Combos;
 import com.lifedesk.ui.components.EmptyState;
 import com.lifedesk.ui.components.FormGrid;
 import com.lifedesk.ui.components.IconView;
@@ -58,20 +59,15 @@ public class LearningView extends View {
 
     @Override
     protected Node build() {
-        Label title = new Label("Học tập");
-        title.getStyleClass().add("title-label");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
         reviewBtn = new Button("Ôn tập (" + ctx.learning().dueCount() + " thẻ đến hạn)", new IconView("target", 15));
         reviewBtn.getStyleClass().add("primary-btn");
         reviewBtn.setOnAction(e -> startReview());
-        HBox header = new HBox(12, title, spacer, reviewBtn);
-        header.getStyleClass().add("view-header");
-        header.setAlignment(Pos.CENTER_LEFT);
+        HBox header = toolbar(null, reviewBtn);
 
         // ---- courses
         buildCourseTable();
-        courseTable.setPlaceholder(new EmptyState("library-big", "Chưa có khóa học nào."));
+        courseTable.setPlaceholder(EmptyState.withAction("library-big",
+                "Chưa có khóa học nào.", "Khóa học mới", () -> openCourseEditor(null)));
         Button addCourse = new Button("Khóa học", new IconView("plus", 15));
         addCourse.setOnAction(e -> openCourseEditor(null));
         Button editCourse = new Button("Sửa", new IconView("pencil", 15));
@@ -99,6 +95,11 @@ public class LearningView extends View {
             }
         });
         deckList.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> refreshCards());
+        deckList.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) {
+                renameSelectedDeck();
+            }
+        });
         deckList.setPrefHeight(200);
         VBox.setVgrow(deckList, Priority.ALWAYS);
         deckStats.getStyleClass().add("dim-label");
@@ -108,29 +109,15 @@ public class LearningView extends View {
             String name = Dialogs.prompt("Bộ thẻ mới", "Tên bộ thẻ:", "").orElse(null);
             if (name != null && !name.isBlank()) {
                 ctx.learning().addDeck(name, "");
-                refresh();
+                // No refresh(): the notifier the service fires already queues one repaint.
             }
         });
         Button renameDeck = new Button("Đổi tên");
-        renameDeck.setOnAction(e -> {
-            Deck d = deckList.getSelectionModel().getSelectedItem();
-            if (d == null) {
-                return;
-            }
-            String name = Dialogs.prompt("Đổi tên bộ thẻ", "Tên mới cho \"" + d.name + "\":", d.name).orElse(null);
-            if (name != null && !name.isBlank()) {
-                ctx.learning().renameDeck(d.id, name);
-                refresh();
-            }
-        });
+        renameDeck.setOnAction(e -> renameSelectedDeck());
         Button addCard = new Button("Thẻ", new IconView("plus", 15));
         addCard.setOnAction(e -> addCard());
-        javafx.scene.control.Button editCardBtn = new javafx.scene.control.Button("Sửa thẻ");
+        Button editCardBtn = new Button("Sửa thẻ");
         editCardBtn.setOnAction(e -> editSelectedCard());
-        Button reviewDeckBtn = new Button("Ôn tập", new IconView("target", 15));
-        reviewDeckBtn.getStyleClass().add("primary-btn");
-        reviewDeckBtn.setTooltip(new Tooltip("Ôn tập các thẻ đến hạn của bộ đang chọn"));
-        reviewDeckBtn.setOnAction(e -> startReview());
         Button delCard = new Button("", new IconView("trash", 15));
         delCard.getStyleClass().add("icon-btn");
         delCard.setTooltip(new Tooltip("Xóa thẻ"));
@@ -138,7 +125,7 @@ public class LearningView extends View {
             Flashcard f = cardTable.getSelectionModel().getSelectedItem();
             if (f != null && Dialogs.confirm("Xóa thẻ", "Xóa thẻ này?")) {
                 ctx.learning().deleteCard(f.id);
-                refresh();
+                // No refresh(): the notifier the service fires already queues one repaint.
             }
         });
 
@@ -169,6 +156,19 @@ public class LearningView extends View {
         // content), so their tops and bottoms always align. The deck-stats line
         // used to sit under the left list, lifting that panel's bottom above the
         // table's; it now runs full-width beneath both columns.
+        Button reviewDeckBtn = new Button("Ôn tập", new IconView("target", 15));
+        reviewDeckBtn.getStyleClass().add("primary-btn");
+        // The button sits in the DECK toolbar, so it now does what it looks like it
+        // does: open a session on the selected deck instead of the generic review tab.
+        reviewDeckBtn.setTooltip(new Tooltip("Ôn tập bộ thẻ đang chọn"));
+        reviewDeckBtn.setOnAction(e -> {
+            Deck deck = deckList.getSelectionModel().getSelectedItem();
+            if (deck != null) {
+                reviewPane.studyDeck(deck.name);
+            }
+            startReview();
+        });
+
         HBox deckToolbar = new HBox(8, addDeck, renameDeck, reviewDeckBtn);
         deckToolbar.setAlignment(Pos.CENTER_LEFT);
         deckToolbar.setMinHeight(34);
@@ -200,8 +200,20 @@ public class LearningView extends View {
                 new Tab("Khóa học & tài liệu", new VBox(14, courseToolbar, courseTable, materialsPane)),
                 new Tab("Flashcards", flashcardsTab));
 
-        ctx.learning().changes().addListener(this::scheduleRefresh);
-        return new VBox(10, header, tabs);
+        watch(ctx.learning().changes());
+        // Same as Finance/Habits/Settings: without this the tab area sits at its
+        // preferred height and the space below it stays empty instead of belonging
+        // to the page that is open.
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+        // ...and the preferred height must be stated, not computed. A TabPane's
+        // computed height is the tallest of *all* its tabs — including the Flashcards
+        // tab with two tables that nobody has opened — so this page asked for ~600px
+        // of height whatever tab was showing. At the app's minimum window the page
+        // then overflowed its own scroll area and the review session's answer row
+        // fell below the fold. The tables scroll inside their own tab; they do not
+        // get to size the page.
+        tabs.setPrefHeight(400);
+        return page(header, tabs);
     }
 
     private void buildCourseTable() {
@@ -235,8 +247,8 @@ public class LearningView extends View {
         javafx.scene.control.Dialog<Course> dialog = Dialogs.newDialog();
         dialog.setTitle(existing == null ? "Khóa học mới" : "Sửa khóa học");
         dialog.setHeaderText(null);
-        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
-                javafx.scene.control.ButtonType.CANCEL);
+        dialog.getDialogPane().getButtonTypes().addAll(Dialogs.SAVE,
+                Dialogs.CANCEL);
 
         TextField title = new TextField(existing == null ? "" : existing.title);
         TextField source = new TextField(existing == null ? "" : existing.source);
@@ -245,26 +257,11 @@ public class LearningView extends View {
         status.getItems().addAll(CourseStatus.values());
         status.setValue(existing == null ? CourseStatus.PLANNED : existing.status);
         // Vietnamese names in the list and the button — raw "PLANNED" read as a bug.
-        javafx.util.Callback<javafx.scene.control.ListView<CourseStatus>, ListCell<CourseStatus>> statusCell =
-                v -> new ListCell<>() {
-                    @Override
-                    protected void updateItem(CourseStatus item, boolean empty) {
-                        super.updateItem(item, empty);
-                        setText(empty || item == null ? null : courseStatus(item));
-                    }
-                };
-        status.setCellFactory(statusCell);
-        status.setButtonCell(statusCell.call(null));
+        Combos.label(status, LearningView::courseStatus);
         Spinner<Integer> progress = new Spinner<>(0, 100, existing == null ? 0 : existing.progressPercent);
         ComboBox<com.lifedesk.notes.NoteMeta> notePick = new ComboBox<>();
         notePick.getItems().addAll(ctx.notes().list());
-        notePick.setCellFactory(v -> new ListCell<>() {
-            @Override
-            protected void updateItem(com.lifedesk.notes.NoteMeta item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null ? null : item.title);
-            }
-        });
+        Combos.label(notePick, n -> n.title);
         Label linkedInfo = new Label(existing == null ? "0 ghi chú liên kết"
                 : existing.linkedNoteIds.size() + " ghi chú liên kết");
 
@@ -312,7 +309,7 @@ public class LearningView extends View {
                 } else {
                     ctx.learning().updateCourse(c);
                 }
-                refresh();
+                // No refresh(): the notifier the service fires already queues one repaint.
             } catch (RuntimeException ex) {
                 Dialogs.error("Không lưu được", ex.getMessage());
             }
@@ -326,7 +323,8 @@ public class LearningView extends View {
         pathCol.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue()));
         materialTable.getColumns().setAll(java.util.List.of(pathCol));
         materialTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        materialTable.setPlaceholder(new EmptyState("file-text", "Chưa có tài liệu nào. Bấm \"Thêm tài liệu…\" để gắn file vào khóa."));
+        materialTable.setPlaceholder(EmptyState.withAction("file-text",
+                "Chưa có tài liệu nào.", "Thêm tài liệu…", () -> addMaterialFile()));
         materialTable.setOnMouseClicked(e -> {
             if (e.getClickCount() == 2) {
                 openSelectedMaterial();
@@ -391,6 +389,13 @@ public class LearningView extends View {
         stats.setCellValueFactory(p -> new ReadOnlyObjectWrapper<>(p.getValue().timesCorrect + "/" + p.getValue().timesWrong));
         cardTable.getColumns().setAll(List.of(front, back, box, due, stats));
         cardTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        // Same "double-click opens the editor" the course table already does:
+        // reaching a card's front/back used to be select, then find the pencil.
+        cardTable.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2 && cardTable.getSelectionModel().getSelectedItem() != null) {
+                editSelectedCard();
+            }
+        });
     }
 
     private void addCard() {
@@ -399,35 +404,20 @@ public class LearningView extends View {
             Dialogs.info("Chọn bộ thẻ", "Hãy tạo/chọn một bộ thẻ trước.");
             return;
         }
-        javafx.scene.control.Dialog<Flashcard> dialog = Dialogs.newDialog();
-        dialog.setTitle("Thẻ mới");
-        dialog.setHeaderText(deck.name);
-        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);
-        // A card can be a whole page of notes: wide dialog, tall wrapping areas —
-        // the old 2-row boxes forced vertical AND horizontal scrolling.
-        javafx.scene.control.TextArea front = new TextArea();
-        front.setPromptText("Câu hỏi / mặt trước");
-        front.setPrefRowCount(8);
-        front.setWrapText(true);
-        javafx.scene.control.TextArea back = new TextArea();
-        back.setPromptText("Đáp án / mặt sau");
-        back.setPrefRowCount(8);
-        back.setWrapText(true);
-        VBox fields = new VBox(8,
-                new VBox(2, new Label("Mặt trước *"), front),
-                new VBox(2, new Label("Mặt sau *"), back));
-        fields.setPrefWidth(620);
-        dialog.getDialogPane().setContent(fields);
-        dialog.setResultConverter(bt -> bt.getButtonData() == javafx.scene.control.ButtonBar.ButtonData.OK_DONE
-                ? new Flashcard() : null);
-        dialog.showAndWait().ifPresent(card -> {
-            try {
-                ctx.learning().addCard(deck.id, front.getText(), back.getText());
-                refresh();
-            } catch (RuntimeException e) {
-                Dialogs.error("Không thêm được thẻ", e.getMessage());
-            }
-        });
+        cardEditor(null, deck);
+    }
+
+    /** One rename path for the button and the double-click, so they cannot drift. */
+    private void renameSelectedDeck() {
+        Deck d = deckList.getSelectionModel().getSelectedItem();
+        if (d == null) {
+            return;
+        }
+        String name = Dialogs.prompt("Đổi tên bộ thẻ", "Tên mới cho \"" + d.name + "\":", d.name).orElse(null);
+        if (name != null && !name.isBlank()) {
+            ctx.learning().renameDeck(d.id, name);
+            // No refresh(): the notifier the service fires already queues one repaint.
+        }
     }
 
     private void editSelectedCard() {
@@ -436,32 +426,48 @@ public class LearningView extends View {
             Dialogs.info("Chọn thẻ", "Hãy chọn một thẻ trong bảng để sửa.");
             return;
         }
+        cardEditor(card, null);
+    }
+
+    /**
+     * One card form for creating and editing. The two dialogs were the same two
+     * wrapping text areas, the same 620px width and the same OK handling, written
+     * out twice with different variable names.
+     */
+    private void cardEditor(Flashcard existing, Deck deck) {
         javafx.scene.control.Dialog<Boolean> dialog = Dialogs.newDialog();
-        dialog.setTitle("Sửa thẻ");
-        dialog.setHeaderText(null);
-        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
-                javafx.scene.control.ButtonType.CANCEL);
-        javafx.scene.control.TextArea front = new javafx.scene.control.TextArea(card.front);
+        dialog.setTitle(existing == null ? "Thẻ mới" : "Sửa thẻ");
+        dialog.setHeaderText(existing == null ? deck.name : null);
+        dialog.getDialogPane().getButtonTypes().addAll(Dialogs.SAVE,
+                Dialogs.CANCEL);
+        // A card can be a whole page of notes: wide dialog, tall wrapping areas —
+        // the old 2-row boxes forced vertical AND horizontal scrolling.
+        TextArea front = new TextArea(existing == null ? "" : existing.front);
+        front.setPromptText("Câu hỏi / mặt trước");
         front.setPrefRowCount(8);
         front.setWrapText(true);
-        javafx.scene.control.TextArea back = new javafx.scene.control.TextArea(card.back);
+        TextArea back = new TextArea(existing == null ? "" : existing.back);
+        back.setPromptText("Đáp án / mặt sau");
         back.setPrefRowCount(8);
         back.setWrapText(true);
-        VBox editFields = new VBox(8,
+        VBox fields = new VBox(8,
                 new VBox(2, new Label("Mặt trước *"), front),
                 new VBox(2, new Label("Mặt sau *"), back));
-        editFields.setPrefWidth(620);
-        dialog.getDialogPane().setContent(editFields);
+        fields.setPrefWidth(620);
+        dialog.getDialogPane().setContent(fields);
         dialog.setResultConverter(bt -> bt.getButtonData() == javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
-        boolean[] ok = {false};
-        dialog.showAndWait().ifPresent(v -> ok[0] = v);
-        if (ok[0]) {
-            try {
-                ctx.learning().updateCard(card.id, front.getText(), back.getText());
-                refresh();
-            } catch (RuntimeException e) {
-                Dialogs.error("Không sửa được thẻ", e.getMessage());
+        if (!dialog.showAndWait().orElse(false)) {
+            return;
+        }
+        try {
+            if (existing == null) {
+                ctx.learning().addCard(deck.id, front.getText(), back.getText());
+            } else {
+                ctx.learning().updateCard(existing.id, front.getText(), back.getText());
             }
+            // No refresh(): the notifier the service fires already queues one repaint.
+        } catch (RuntimeException e) {
+            Dialogs.error(existing == null ? "Không thêm được thẻ" : "Không sửa được thẻ", e.getMessage());
         }
     }
 

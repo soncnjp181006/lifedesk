@@ -9,7 +9,7 @@
 /* ---------- scale reference (documentation, not CSS variables) ----------
    spacing   : 4 8 12 16 20 24 32            (sp-1 .. sp-8)
    type      : 11 12 13 14 16 20 26          (overline .. display)
-   radius    : 4 6 8 10 14 999               (xs sm md lg xl full)
+   radius    : 4 6 8 12 999                (xs sm md lg full)
    elevation : flat surfaces use 1px border; dropshadow only for floating
                layers (popup 8, modal 16, menu 20) — Swiss rule: borders
                describe structure, shadows describe altitude.
@@ -44,7 +44,6 @@
     -fx-font-size: 11px;
     -fx-font-weight: bold;
     -fx-text-fill: -ld-text-dim;
-    -fx-opacity: 0.9;
 }
 
 .dim-label {
@@ -52,22 +51,9 @@
     -fx-font-size: 12px;
 }
 
-.title-label {
-    /* 22px, not 24: at 24 the page title competed with the data on a 1700px
-       window, and the gap between it and the 12.5px body read as two documents. */
-    -fx-font-size: 22px;
-    -fx-font-weight: bold;
-    -fx-text-fill: -ld-text;
-}
-
 .page-subtitle {
     -fx-text-fill: -ld-text-dim;
-    -fx-font-size: 12.5px;
-}
-
-/* Page header row (title + actions); extra bottom air separates it from tabs. */
-.view-header {
-    -fx-padding: 0 0 4 0;
+    -fx-font-size: 12px;
 }
 
 .section-label {
@@ -77,7 +63,7 @@
 }
 
 .form-label {
-    -fx-font-size: 12.5px;
+    -fx-font-size: 12px;
     -fx-text-fill: -ld-text-dim;
 }
 
@@ -85,29 +71,24 @@
    numbers beneath them carry the weight. That inversion is what stops a grid of
    cards from reading as a wall of equal-weight boxes. */
 .card-title {
-    -fx-font-size: 11.5px;
+    -fx-font-size: 12px;
     -fx-font-weight: bold;
     -fx-text-fill: -ld-text-dim;
 }
 
 .card-headline {
-    -fx-font-size: 15px;
+    -fx-font-size: 14px;
     -fx-font-weight: bold;
     -fx-text-fill: -ld-text;
 }
 
 /* Numeric data must align: tabular figures via a monospaced fallback face.
-   Applied by Java where money/counters are rendered (.metric-big, .tnum). */
+   Applied by Java for the big counters on metric tiles. */
 .metric-big {
     -fx-font-family: "Segoe UI Variable Display", "Segoe UI", "Arial", sans-serif;
     -fx-font-size: 26px;
     -fx-font-weight: bold;
     -fx-text-fill: -ld-text;
-}
-
-.tnum {
-    -fx-font-family: "Consolas", "Cascadia Mono", "Segoe UI Mono", monospace;
-    -fx-font-size: 12.5px;
 }
 
 .metric-pos { -fx-text-fill: -ld-ok; }
@@ -133,7 +114,6 @@
 .icon-ok     .ld-icon-part { -fx-stroke: -ld-ok; }
 .icon-warn   .ld-icon-part { -fx-stroke: -ld-warn; }
 .icon-danger .ld-icon-part { -fx-stroke: -ld-danger; }
-.icon-info   .ld-icon-part { -fx-stroke: -ld-info; }
 
 /* A button's icon inherits the button's foreground state (hover/pressed/disabled). */
 .button .ld-icon-part, .nav-item .ld-icon-part, .icon-btn .ld-icon-part {
@@ -162,8 +142,8 @@
 .button {
     -fx-background-color: -ld-elev;
     -fx-text-fill: -ld-text;
-    -fx-background-radius: 9;
-    -fx-border-radius: 9;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
     -fx-border-color: derive(-ld-border, -8%);
     -fx-border-width: 1;
     -fx-padding: 6 12 6 12;
@@ -202,8 +182,8 @@
     -fx-background-color: -ld-card;
     -fx-border-color: -ld-border;
     -fx-border-width: 1;
-    -fx-border-radius: 10;
-    -fx-background-radius: 10;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
     -fx-padding: 8;
 }
 
@@ -255,6 +235,33 @@
     -fx-border-color: -ld-danger;
 }
 
+/* Same specificity trap as .ghost-btn: a focused or pressed Delete fell through to
+   .button:focused / .button:pressed and rendered grey with a blue ring — the danger
+   signal disappeared at the moment the user committed it. */
+.danger-btn:focused {
+    -fx-background-color: -ld-danger-soft;
+    -fx-text-fill: -ld-danger;
+    -fx-border-color: -ld-danger;
+    -fx-border-width: 2;
+    -fx-padding: 5 13 5 13;
+}
+
+.danger-btn:pressed {
+    -fx-background-color: derive(-ld-danger-soft, -10%);
+    -fx-border-color: -ld-danger;
+}
+
+.ghost-btn:focused, .ghost-btn:pressed {
+    -fx-background-color: -ld-elev;
+    -fx-border-color: -ld-border;
+}
+
+.card-action:hover, .card-action:focused, .card-action:pressed {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-underline: true;
+}
+
 .ghost-btn {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
@@ -268,8 +275,8 @@
 .icon-btn {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
-    -fx-background-radius: 9;
-    -fx-border-radius: 9;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
     -fx-padding: 0;
     -fx-min-width: 34;                     /* hit area, rule: touch-target-size */
     -fx-min-height: 34;                    /* matches .button rows it sits in */
@@ -288,6 +295,35 @@
     -fx-background-color: -ld-elev;
     -fx-border-color: -ld-accent;
     -fx-border-width: 2;
+}
+
+/* Top-bar theme picker. It sits in a row of 34px icon buttons and names the live
+   theme, so it takes the same footprint and the same hairline treatment. */
+.theme-menu {
+    -fx-background-color: transparent;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 0 8 0 12;
+    -fx-min-height: 34;
+    -fx-alignment: center-left;
+    -fx-font-size: 12px;
+    -fx-text-fill: -ld-text;
+    -fx-cursor: hand;
+}
+
+.theme-menu .label {
+    -fx-text-fill: -ld-text;
+    -fx-font-size: 12px;
+}
+
+.theme-menu .arrow-button { -fx-padding: 0 0 0 8; }
+.theme-menu .arrow { -fx-background-color: -ld-text-dim; }
+
+.theme-menu:hover, .theme-menu:showing, .theme-menu:focused {
+    -fx-background-color: -ld-elev;
+    -fx-border-color: -ld-accent;
 }
 
 /* ======================================================================
@@ -463,8 +499,8 @@
 .table-view {
     -fx-background-color: -ld-card;
     -fx-border-color: -ld-hairline;
-    -fx-border-radius: 11;
-    -fx-background-radius: 11;
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
     -fx-control-inner-background: -ld-card;
     -fx-table-vertical-border-color: transparent;
     -fx-table-header-border-color: -ld-hairline;
@@ -478,7 +514,7 @@
        list wants — readable, and three more rows per screen than before. */
     -fx-padding: 5 12 5 12;
     -fx-border-color: transparent;
-    -fx-font-size: 12.5px;
+    -fx-font-size: 12px;
     -fx-alignment: center-left;
 }
 
@@ -550,7 +586,7 @@
 .list-cell {
     -fx-background-color: transparent;
     -fx-text-fill: -ld-text;
-    -fx-padding: 7 10 7 10;
+    -fx-padding: 8 12 8 12;
 }
 
 .list-cell:filled:hover { -fx-background-color: -ld-elev; }
@@ -563,12 +599,8 @@
 
 /* Note list: a divider per row keeps two-line cells readable. */
 .note-list .list-cell {
-    -fx-padding: 6 10 6 10;
+    -fx-padding: 8 12 8 12;
     -fx-background-insets: 0;
-}
-
-.note-cell-title {
-    -fx-text-fill: -ld-text;
 }
 
 .note-list {
@@ -601,8 +633,7 @@
     -fx-padding: 10 10 8 10;
 }
 
-.notes-search-field,
-.notes-folder-picker {
+.notes-search-field {
     -fx-background-color: -ld-input;
     -fx-border-color: -ld-border;
     -fx-border-radius: 8;
@@ -611,13 +642,6 @@
 
 .notes-editor-pane {
     -fx-background-color: -ld-bg;
-}
-
-.notes-editor-bar {
-    -fx-background-color: -ld-surface;
-    -fx-border-color: -ld-border;
-    -fx-border-width: 0 0 1 0;
-    -fx-padding: 8 12 8 12;
 }
 
 .notes-title-field {
@@ -630,13 +654,6 @@
     -fx-padding: 4 8 4 8;
 }
 
-.notes-tab-row {
-    -fx-background-color: -ld-surface;
-    -fx-border-color: -ld-border;
-    -fx-border-width: 0 0 1 0;
-    -fx-padding: 6 12 6 12;
-}
-
 .icon-tile {
     -fx-background-color: transparent;
     -fx-background-radius: 6;
@@ -647,15 +664,9 @@
     -fx-background-color: -ld-elev;
 }
 
-.notes-tag-field {
-    -fx-max-width: 260px;
-    -fx-min-width: 180px;
-    -fx-pref-width: 220px;
-}
-
 .notes-editor {
     -fx-font-family: "Cascadia Code", "Consolas", "Segoe UI Mono", monospace;
-    -fx-font-size: 13.5px;
+    -fx-font-size: 13px;
     -fx-background-color: -ld-bg;
     -fx-text-fill: -ld-text;
     -fx-prompt-text-fill: -ld-text-dim;
@@ -722,7 +733,25 @@
     -fx-min-width: 244;
     -fx-pref-width: 244;
     -fx-padding: 14 12 14 12;
-    -fx-spacing: 1;
+    -fx-spacing: 4;
+}
+
+/* The rail's scroll wrapper must be invisible: the surface, the border and the
+   padding belong to the sidebar around it, not to a second panel inside it. */
+.nav-scroll, .nav-scroll > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+/* Two pages are not listed in the rail (settings = the gear, search = the field).
+   Since the page stopped painting its own title, the control that opened them is the
+   only on-screen answer to "where am I", so it gets the same accent marker. */
+.origin-active {
+    -fx-background-color: -ld-accent-soft;
+    -fx-border-color: -ld-accent;
+    -fx-border-width: 1;
+    -fx-border-radius: 6;
 }
 
 .brand-row {
@@ -734,7 +763,7 @@
 .brand-mark {
     -fx-background-color: -ld-accent;
     -fx-text-fill: -ld-accent-text;
-    -fx-background-radius: 9;
+    -fx-background-radius: 8;
     -fx-min-width: 28;
     -fx-min-height: 28;
     -fx-max-width: 28;
@@ -747,11 +776,10 @@
 /* Section marker inside the rail: twelve flat rows read as one undifferentiated
    list, three labelled groups read as an information architecture. */
 .nav-group {
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
     -fx-font-weight: bold;
     -fx-text-fill: -ld-text-dim;
-    -fx-opacity: 0.7;
-    -fx-padding: 16 10 5 13;
+    -fx-padding: 16 12 6 12;
 }
 
 .brand-title {
@@ -761,7 +789,7 @@
 }
 
 .brand-subtitle {
-    -fx-font-size: 10.5px;
+    -fx-font-size: 11px;
     -fx-text-fill: -ld-text-dim;
 }
 
@@ -816,7 +844,7 @@
     -fx-background-color: -ld-bg;
     -fx-border-color: -ld-border;
     -fx-border-width: 0 0 1 0;
-    -fx-padding: 11 26 11 26;
+    -fx-padding: 11 28 11 28;
     -fx-spacing: 10;
     -fx-min-height: 56;
 }
@@ -830,7 +858,7 @@
     -fx-background-color: -ld-surface;
     -fx-border-color: -ld-border;
     -fx-border-width: 1 0 0 0;
-    -fx-padding: 5 26 5 26;
+    -fx-padding: 5 28 5 28;
     -fx-font-size: 11px;
     -fx-spacing: 12;
 }
@@ -842,17 +870,16 @@
    ====================================================================== */
 
 .card {
-    /* Double bezel: a 4% top sheen gives the surface a lit edge, and the outline
-       is the hairline token (one step off the surface) rather than the strong
-       border, so twelve cards in a grid read as one calm plane, not a wireframe. */
-    -fx-background-color:
-        linear-gradient(from 0% 0% to 0% 16%, rgba(255,255,255,0.038), transparent),
-        -ld-card;
-    -fx-background-radius: 13;
+    /* One flat surface, outlined by the hairline token (one step off the surface)
+       rather than the strong border, so twelve cards in a grid read as one calm
+       plane. The old second layer (a 4% top sheen) measured deltaL 0.00000 in Light
+       and ~1.11:1 elsewhere: a per-frame composite bought for nothing. */
+    -fx-background-color: -ld-card;
+    -fx-background-radius: 12;
     -fx-border-color: -ld-hairline;
-    -fx-border-radius: 13;
+    -fx-border-radius: 12;
     -fx-border-width: 1;
-    -fx-padding: 17 19 17 19;
+    -fx-padding: 18 20 18 20;
     -fx-spacing: 9;
 }
 
@@ -862,7 +889,7 @@
     -fx-border-color: -ld-hairline;
     -fx-border-radius: 12;
     -fx-border-width: 1;
-    -fx-padding: 15 17 15 17;
+    -fx-padding: 16 18 16 18;
     -fx-spacing: 6;
 }
 
@@ -870,20 +897,33 @@
    One number, one caption, one quiet label. These sit above the widget grid
    so the page answers "how am I doing" before the user reads a single list. */
 .metric-tile {
-    -fx-background-color:
-        linear-gradient(from 0% 0% to 0% 100%, rgba(255,255,255,0.04), transparent),
-        -ld-card;
-    -fx-background-radius: 13;
+    -fx-background-color: -ld-card;
+    -fx-background-radius: 12;
     -fx-border-color: -ld-hairline;
-    -fx-border-radius: 13;
+    -fx-border-radius: 12;
     -fx-border-width: 1;
-    -fx-padding: 14 18 14 18;
-    -fx-spacing: 3;
+    -fx-padding: 16 18 16 18;
+    -fx-spacing: 6;
     -fx-min-height: 86;
+    -fx-cursor: hand;
+}
+
+/* The dashboard tiles are click targets (DashboardView sets a hand cursor), so the
+   pointer has to be answered: a border step plus a fill, neither of which changes
+   the layout bounds — JavaFX cannot interpolate a state change, so anything that
+   resized the tile would snap. */
+.metric-tile:hover {
+    -fx-background-color: -ld-elev;
+    -fx-border-color: -ld-border;
+}
+
+.metric-tile:pressed {
+    -fx-background-color: derive(-ld-elev, -8%);
+    -fx-border-color: -ld-accent;
 }
 
 .metric-caption {
-    -fx-font-size: 11.5px;
+    -fx-font-size: 12px;
     -fx-font-weight: bold;
     -fx-text-fill: -ld-text-dim;
 }
@@ -901,20 +941,20 @@
 }
 
 .metric-note {
-    -fx-font-size: 11.5px;
+    -fx-font-size: 12px;
     -fx-text-fill: -ld-text-dim;
 }
 
 /* Label / value row used inside cards (health, learning, budget): a hairline
    separator does the work that a table border would do, without the weight. */
 .metric-row {
-    -fx-padding: 5 0 5 0;
+    -fx-padding: 8 0 8 0;
     -fx-border-width: 0 0 1 0;
     -fx-border-color: transparent transparent derive(-ld-border, -18%) transparent;
 }
 
 .metric-key {
-    -fx-font-size: 12.5px;
+    -fx-font-size: 12px;
     -fx-text-fill: -ld-text-dim;
 }
 
@@ -931,7 +971,7 @@
 }
 
 .card-empty-text {
-    -fx-font-size: 12.5px;
+    -fx-font-size: 12px;
     -fx-text-fill: -ld-text-dim;
 }
 
@@ -939,7 +979,7 @@
     -fx-background-color: transparent;
     -fx-border-color: transparent;
     -fx-text-fill: -ld-accent;
-    -fx-font-size: 12.5px;
+    -fx-font-size: 12px;
     -fx-font-weight: bold;
     -fx-padding: 2 0 2 0;
     -fx-cursor: hand;
@@ -974,9 +1014,9 @@
 
 .quick-add-bar {
     -fx-background-color: -ld-card;
-    -fx-background-radius: 10;
+    -fx-background-radius: 8;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 10;
+    -fx-border-radius: 8;
     -fx-border-width: 1;
     -fx-padding: 14;
     -fx-spacing: 10;
@@ -995,7 +1035,7 @@
     -fx-background-radius: 6;
     -fx-border-radius: 6;
     -fx-border-width: 0;
-    -fx-padding: 1 7 1 7;
+    -fx-padding: 2 8 2 8;
     -fx-font-size: 11px;
     -fx-font-weight: bold;
     -fx-background-color: -ld-elev;
@@ -1017,9 +1057,9 @@
    instead of floating loose between the page title and the content. */
 .toolbar-strip {
     -fx-background-color: -ld-card;
-    -fx-background-radius: 11;
+    -fx-background-radius: 12;
     -fx-border-color: -ld-hairline;
-    -fx-border-radius: 11;
+    -fx-border-radius: 12;
     -fx-border-width: 1;
     -fx-padding: 8 10 8 10;
     -fx-spacing: 8;
@@ -1036,29 +1076,13 @@
 }
 
 .empty-state .icon {
-    -fx-font-size: 15px;
+    -fx-font-size: 14px;
     -fx-text-fill: -ld-text-dim;
 }
 
 .empty-state .msg {
     -fx-text-fill: -ld-text;
-    -fx-font-size: 13.5px;
-}
-
-.error-banner {
-    -fx-background-color: -ld-danger-soft;
-    -fx-border-color: -ld-danger;
-    -fx-border-radius: 6;
-    -fx-background-radius: 6;
-    -fx-border-width: 1;
-    -fx-padding: 8 12 8 12;
-    -fx-text-fill: -ld-danger;
-    -fx-font-weight: bold;
-}
-
-.loading-pane {
-    -fx-alignment: center;
-    -fx-spacing: 10;
+    -fx-font-size: 13px;
 }
 
 /* ======================================================================
@@ -1160,7 +1184,7 @@
 .tab-pane .tab {
     -fx-background-color: transparent;
     -fx-background-radius: 6;
-    -fx-padding: 4 5 4 5;
+    -fx-padding: 6 8 6 8;
     -fx-border-width: 0;
 }
 
@@ -1173,7 +1197,7 @@
 .tab-pane .tab .tab-label {
     -fx-text-fill: -ld-text-dim;
     -fx-font-weight: normal;
-    -fx-font-size: 12.5px;
+    -fx-font-size: 12px;
     -fx-padding: 5 12 5 12;
     -fx-background-color: transparent;
 }
@@ -1269,6 +1293,7 @@
     -fx-background-color: transparent;
     -fx-border-color: transparent;
     -fx-border-radius: 4;
+    -fx-padding: 4 6 4 6;
     -fx-background-radius: 4;
     -fx-padding: 3 5 3 5;
 }
@@ -1380,15 +1405,15 @@
 
 .chat-surface {
     -fx-background-color: -ld-card;
-    -fx-background-radius: 14;
+    -fx-background-radius: 12;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 14;
+    -fx-border-radius: 12;
     -fx-border-width: 1;
 }
 
 .chat-head {
     -fx-background-color: -ld-surface;
-    -fx-background-radius: 13 13 0 0;
+    -fx-background-radius: 12 12 0 0;
     -fx-border-color: transparent transparent -ld-border transparent;
     -fx-border-width: 0 0 1 0;
     -fx-padding: 9 12 9 14;
@@ -1438,7 +1463,7 @@
 
 .chat-meta {
     -fx-text-fill: -ld-text-dim;
-    -fx-font-size: 10.5px;
+    -fx-font-size: 11px;
 }
 
 .chat-hint {
@@ -1454,7 +1479,7 @@
     -fx-border-radius: 12 12 4 12;
     -fx-border-width: 1;
     -fx-padding: 9 13 9 13;
-    -fx-font-size: 13.5px;
+    -fx-font-size: 13px;
 }
 
 .chat-bubble-user .label, .chat-bubble-user Text {
@@ -1479,7 +1504,7 @@
 
 .chat-error {
     -fx-text-fill: -ld-danger;
-    -fx-font-size: 12.5px;
+    -fx-font-size: 12px;
 }
 
 .chat-footer {
@@ -1491,9 +1516,9 @@
 /* Composer = centered floating card (ChatGPT-style), not a full-width strip. */
 .chat-composer {
     -fx-background-color: -ld-surface;
-    -fx-background-radius: 14;
+    -fx-background-radius: 12;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 14;
+    -fx-border-radius: 12;
     -fx-border-width: 1;
     -fx-padding: 10 12 8 12;
 }
@@ -1528,14 +1553,14 @@
 .chat-input {
     -fx-background-color: -ld-input;
     -fx-border-color: -ld-border;
-    -fx-border-radius: 10;
-    -fx-background-radius: 10;
-    -fx-font-size: 13.5px;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-font-size: 13px;
 }
 
 .chat-input .content {
     -fx-background-color: -ld-input;
-    -fx-background-radius: 10;
+    -fx-background-radius: 8;
     -fx-padding: 8 10 8 10;
 }
 
@@ -1546,7 +1571,7 @@
     -fx-border-radius: 999;
     -fx-background-radius: 999;
     -fx-padding: 6 14 6 14;
-    -fx-font-size: 12.5px;
+    -fx-font-size: 12px;
     -fx-cursor: hand;
 }
 
@@ -1564,31 +1589,31 @@
 
 .md-text {
     -fx-fill: -ld-text;
-    -fx-font-size: 13.5px;
+    -fx-font-size: 13px;
 }
 
-.md-strong  { -fx-fill: -ld-text; -fx-font-weight: bold; -fx-font-size: 13.5px; }
-.md-em      { -fx-fill: -ld-text; -fx-font-style: italic; -fx-font-size: 13.5px; }
-.md-del     { -fx-fill: -ld-text-dim; -fx-strikethrough: true; -fx-font-size: 13.5px; }
-.md-highlight { -fx-fill: -ld-warn; -fx-font-weight: bold; -fx-font-size: 13.5px; }
+.md-strong  { -fx-fill: -ld-text; -fx-font-weight: bold; -fx-font-size: 13px; }
+.md-em      { -fx-fill: -ld-text; -fx-font-style: italic; -fx-font-size: 13px; }
+.md-del     { -fx-fill: -ld-text-dim; -fx-strikethrough: true; -fx-font-size: 13px; }
+.md-highlight { -fx-fill: -ld-warn; -fx-font-weight: bold; -fx-font-size: 13px; }
 .md-inline-code,
 .md-code-block {
     -fx-fill: -ld-text;
     -fx-font-family: "Cascadia Code", "Consolas", "Segoe UI Mono", monospace;
-    -fx-font-size: 12.5px;
+    -fx-font-size: 12px;
 }
 .md-inline-code { -fx-fill: -ld-accent; }
-.md-link    { -fx-fill: -ld-accent; -fx-underline: true; -fx-font-size: 13.5px; }
+.md-link    { -fx-fill: -ld-accent; -fx-underline: true; -fx-font-size: 13px; }
 .md-math    { -fx-fill: -ld-info; -fx-font-family: "Cambria Math", "Consolas", monospace; -fx-font-size: 13px; }
-.md-image   { -fx-fill: -ld-text-dim; -fx-font-style: italic; -fx-font-size: 12.5px; }
-.md-wiki    { -fx-fill: -ld-info; -fx-underline: true; -fx-font-size: 13.5px; }
-.md-caret   { -fx-fill: -ld-accent; -fx-font-size: 13.5px; }
+.md-image   { -fx-fill: -ld-text-dim; -fx-font-style: italic; -fx-font-size: 12px; }
+.md-wiki    { -fx-fill: -ld-info; -fx-underline: true; -fx-font-size: 13px; }
+.md-caret   { -fx-fill: -ld-accent; -fx-font-size: 13px; }
 .md-empty   { -fx-text-fill: transparent; -fx-font-size: 1px; }
 
 .md-h1 { -fx-fill: -ld-text; -fx-font-size: 20px; -fx-font-weight: bold; }
-.md-h2 { -fx-fill: -ld-text; -fx-font-size: 17px; -fx-font-weight: bold; }
-.md-h3 { -fx-fill: -ld-text; -fx-font-size: 15px; -fx-font-weight: bold; }
-.md-h4, .md-h5, .md-h6 { -fx-fill: -ld-text; -fx-font-size: 13.5px; -fx-font-weight: bold; }
+.md-h2 { -fx-fill: -ld-text; -fx-font-size: 16px; -fx-font-weight: bold; }
+.md-h3 { -fx-fill: -ld-text; -fx-font-size: 14px; -fx-font-weight: bold; }
+.md-h4, .md-h5, .md-h6 { -fx-fill: -ld-text; -fx-font-size: 13px; -fx-font-weight: bold; }
 
 .md-heading-block {
     -fx-border-color: transparent transparent -ld-border transparent;
@@ -1613,7 +1638,7 @@
 
 .md-list-marker {
     -fx-text-fill: -ld-accent;
-    -fx-font-size: 12.5px;
+    -fx-font-size: 12px;
     -fx-font-weight: bold;
     -fx-min-width: 15;
 }
@@ -1629,7 +1654,7 @@
 
 .md-code-lang {
     -fx-text-fill: -ld-text-dim;
-    -fx-font-size: 10.5px;
+    -fx-font-size: 11px;
 }
 
 .md-rule {
@@ -1649,7 +1674,7 @@
     -fx-padding: 6 10 6 10;
 }
 
-.md-th .md-text { -fx-fill: -ld-text; -fx-font-weight: bold; -fx-font-size: 12.5px; }
+.md-th .md-text { -fx-fill: -ld-text; -fx-font-weight: bold; -fx-font-size: 12px; }
 
 .md-td {
     -fx-border-color: transparent transparent -ld-border transparent;
@@ -1671,13 +1696,6 @@
 .log-row-err {
     -fx-border-color: transparent transparent transparent -ld-danger;
     -fx-border-width: 0 0 0 2;
-}
-
-.chat-bubble-system {
-    -fx-background-color: transparent;
-    -fx-text-fill: -ld-text-dim;
-    -fx-font-size: 11.5px;
-    -fx-padding: 3 8 3 8;
 }
 
 /* ======================================================================
@@ -1705,7 +1723,7 @@
 
 .chart-title {
     -fx-text-fill: -ld-text;
-    -fx-font-size: 12.5px;
+    -fx-font-size: 12px;
     -fx-font-weight: bold;
 }
 
@@ -1737,7 +1755,7 @@
 .default-color4.chart-pie { -fx-pie-color: -ld-chart-5; }
 .chart-pie-label { -fx-text-fill: -ld-text; -fx-font-size: 11px; }
 .chart-legend { -fx-background-color: transparent; }
-.chart-legend-item { -fx-text-fill: -ld-text; -fx-font-size: 11.5px; }
+.chart-legend-item { -fx-text-fill: -ld-text; -fx-font-size: 12px; }
 
 /* ======================================================================
    17. Markdown preview shell
@@ -1768,8 +1786,186 @@
 
 .separator .line { -fx-border-color: -ld-border; }
 
+/* Collapsed rail. This used to be an inline setStyle on the node, and an inline
+   origin beats any stylesheet rule — so the rail kept .sidebar's 12px lateral
+   padding and the icons had ~20px of room inside a 68px column. */
+.sidebar.collapsed {
+    -fx-min-width: 68;
+    -fx-pref-width: 68;
+    -fx-max-width: 68;
+    -fx-padding: 14 6 14 6;
+}
+
+/* Money columns: right-aligned so the digits line up, bold so the amount is the
+   loudest thing in the row. */
+.num-column {
+    -fx-alignment: center-right;
+    -fx-font-weight: bold;
+}
+
+/* Formatting hints on the markdown toolbar glyphs (B / I / S). */
+.md-fmt-bold { -fx-font-weight: bold; }
+.md-fmt-italic { -fx-font-style: italic; }
+.md-fmt-strike { -fx-strikethrough: true; }
+
+
+/* Choice controls: modena draws the circle/box from -fx-control-inner-background,
+   which our tokens make nearly the same colour as the card, so the empty state had
+   almost no edge to look at. A token border gives the target an outline before it
+   is selected, and the accent takes over once it is. */
+.radio-button .radio, .check-box .box {
+    -fx-background-color: -ld-input;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 1;
+}
+
+.radio-button:selected .radio, .check-box:selected .box {
+    -fx-border-color: -ld-accent;
+}
+
+
+/* ----------------------------------------------------------------------
+   Surfaces and labels that the views ask for by class name. Each of these
+   existed only as addStyleClass(...) in Java with no rule here, so the node
+   silently took the default skin — and several of them had their real value
+   hard-coded in a setStyle("...") string instead, which no palette can reach.
+   ---------------------------------------------------------------------- */
+
+/* Kanban column: the surface the board lanes sit on (was an inline string). */
+.board-column {
+    -fx-background-color: -ld-surface;
+    -fx-background-radius: 8;
+    -fx-border-color: -ld-hairline;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-padding: 10;
+    -fx-spacing: 8;
+}
+
+/* A finished task recedes behind the open ones. The inline -fx-opacity: 0.55 it
+   used to carry composited the text down to ~4.4:1 in Light, so the state is
+   carried by the dim token plus a strike instead of by fading the pixels. */
+.task-done {
+    -fx-text-fill: -ld-text-dim;
+    -fx-strikethrough: true;
+}
+
+.tree-folder { -fx-font-weight: bold; }
+
+.toolbar-label {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ld-text-dim;
+}
+
+/* Dense control variant (widget strips and filter rows). */
+.compact-control {
+    -fx-min-height: 28;
+    -fx-font-size: 12px;
+    -fx-padding: 2 8 2 8;
+}
+
+/* Editor mode switch: three labelled segments in one track, so the current mode
+   is readable without clicking. Only the selected segment carries a fill+border;
+   the others stay quiet so the row never competes with the toolbar icons. */
+.mode-row {
+    -fx-background-color: -ld-elev;
+    -fx-background-radius: 8;
+    -fx-padding: 2;
+    -fx-spacing: 2;
+}
+
+.mode-row .toggle-button {
+    -fx-border-color: transparent;
+    -fx-background-radius: 6;
+    -fx-padding: 2 9 2 9;
+}
+
+.mode-row .toggle-button:hover {
+    -fx-background-color: -ld-surface;
+}
+
+.mode-row .toggle-button:selected {
+    -fx-background-color: -ld-accent-soft;
+    -fx-text-fill: -ld-accent;
+    -fx-border-color: -ld-accent;
+    -fx-font-weight: bold;
+}
+
+.chat-row { -fx-spacing: 6; }
+
+.main-column { -fx-background-color: -ld-bg; }
+
+.dashboard { -fx-spacing: 12; }
+
+.outline-pane {
+    -fx-background-color: -ld-surface;
+    -fx-padding: 8;
+}
+
+.outline-tree { -fx-background-color: transparent; }
+
+.md-paragraph { -fx-line-spacing: 2; }
+.md-table-wrap { -fx-max-width: infinity; }
+.md-preview-scroll { -fx-background-color: transparent; }
+
+.md-code-flow {
+    -fx-background-color: -ld-input;
+    -fx-background-radius: 6;
+    -fx-padding: 6 8 6 8;
+}
+
+
 .menu-bar {
     -fx-background-color: -ld-surface;
     -fx-border-color: -ld-border;
     -fx-border-width: 0 0 1 0;
+}
+
+/* Context and dropdown menus live in their own popup window. Without these rules
+   they fall back to the default light skin — a pale box under a dark theme — so
+   every menu (theme picker, row context menus) is themed here once. */
+.context-menu {
+    -fx-background-color: -ld-card;
+    -fx-background-radius: 8;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-padding: 5;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.32), 20, 0.25, 0, 6);
+}
+
+.menu-item {
+    -fx-background-color: transparent;
+    -fx-background-radius: 6;
+    -fx-padding: 7 12 7 12;
+    -fx-font-size: 12px;
+    -fx-cursor: hand;
+}
+
+.menu-item .label { -fx-text-fill: -ld-text-dim; }
+
+.menu-item:hover, .menu-item:focused {
+    -fx-background-color: -ld-elev;
+    -fx-text-fill: -ld-text;
+}
+
+.menu-item:hover .label, .menu-item:focused .label,
+.menu-item:selected .label { -fx-text-fill: -ld-text; }
+
+/* The tick/radio mark: modena draws it with -fx-mark-color, which follows the
+   tokens; give the surrounding box the same quiet border as our inputs. */
+.radio-menu-item .radio, .check-menu-item .check {
+    -fx-background-color: -ld-input;
+    -fx-background-radius: 8;
+    -fx-border-color: -ld-border;
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+    -fx-mark-color: -ld-accent;
+    -fx-min-width: 14;
+    -fx-min-height: 14;
+}
+
+.radio-menu-item:selected .radio, .check-menu-item:selected .check {
+    -fx-border-color: -ld-accent;
+    -fx-mark-color: -ld-accent;
 }

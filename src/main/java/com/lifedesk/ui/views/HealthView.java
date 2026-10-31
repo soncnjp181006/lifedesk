@@ -5,6 +5,7 @@ import com.lifedesk.health.HealthEntry;
 import com.lifedesk.health.HealthService;
 import com.lifedesk.health.MetricDef;
 import com.lifedesk.ui.Dialogs;
+import com.lifedesk.ui.Fx;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.Card;
@@ -26,7 +27,6 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
@@ -78,16 +78,11 @@ public class HealthView extends View {
 
     @Override
     protected Node build() {
-        Label title = new Label("Sức khỏe");
-        title.getStyleClass().add("title-label");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
+        applyRingPalette();
         Button manageMetrics = new Button("Chỉ số tùy chọn…");
         manageMetrics.setTooltip(new javafx.scene.control.Tooltip("Thêm/bỏ chỉ số bạn tự theo dõi"));
         manageMetrics.setOnAction(e -> showMetricManager());
-        HBox header = new HBox(10, title, spacer, manageMetrics);
-        header.getStyleClass().add("view-header");
-        header.setAlignment(Pos.CENTER_LEFT);
+        HBox header = toolbar(null, manageMetrics);
 
         // ---- vitals: today's rings, one caption line per ring (inside)
         HBox rings = new HBox(40, sleepRing, exerciseRing, logRing);
@@ -129,11 +124,15 @@ public class HealthView extends View {
         weightField.setMaxWidth(Double.MAX_VALUE);
         noteField.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(sleepField, Priority.ALWAYS);
-        HBox.setHgrow(exerciseField, Priority.ALWAYS);
-        HBox.setHgrow(weightField, Priority.ALWAYS);
+        // Only the note takes the spare width. Three numeric fields grew as well, so
+        // every one of them (and the Lưu button) got squeezed on a narrow window.
+        sleepField.setPrefWidth(120);
+        exerciseField.setPrefWidth(120);
+        weightField.setPrefWidth(120);
         HBox.setHgrow(noteField, Priority.ALWAYS);
         HBox entryRow = new HBox(8, entryDate, sleepField, exerciseField, weightField, noteField, save, delete);
         entryRow.setAlignment(Pos.CENTER_LEFT);
+        Fx.pinFixedWidths(entryRow, noteField);
 
         dayNoteLinks = new com.lifedesk.ui.components.NoteLinkPicker(ctx, "health",
                 "date:" + entryDate.getValue(), "Sổ tay, đơn thuốc, kết quả khám…");
@@ -149,11 +148,10 @@ public class HealthView extends View {
         Card historyCard = new Card("Lịch sử");
         historyCard.content(historyTable);
 
-        Label disclaimer = new Label(HealthService.DISCLAIMER);
-        disclaimer.getStyleClass().add("dim-label");
+        Label disclaimer = Card.dim(HealthService.DISCLAIMER);
         disclaimer.setWrapText(true);
 
-        VBox root = new VBox(12, header, vitalsCard, chartsRow, heatmapCard, entryCard, historyCard, disclaimer);
+        VBox root = page(header, vitalsCard, chartsRow, heatmapCard, entryCard, historyCard, disclaimer);
         loadEntry();
         refreshHistory();
         renderCharts();
@@ -349,7 +347,10 @@ public class HealthView extends View {
                 values.put(e.date, (double) e.exerciseMinutes);
             }
         }
-        heatmap.render(hmFrom, today, values, "#4caf7d");
+        // Exercise keeps its own green: the dashboard heatmap is notes activity, and
+        // two different series must not read as the same metric.
+        var hmPalette = ctx.themeManager().previewPalette(ctx.config().theme);
+        heatmap.render(hmFrom, today, values, "#4caf7d", hmPalette.text(), hmPalette.border());
         heatmap.installHoverTracking(values::get, hmFrom);
     }
 
@@ -370,7 +371,7 @@ public class HealthView extends View {
         javafx.scene.control.Dialog<MetricDef> dialog = Dialogs.newDialog();
         dialog.setTitle("Chỉ số sức khỏe tùy chọn");
         dialog.setHeaderText("Thêm chỉ số bạn muốn theo dõi (tự nguyện, không mang tính y tế)");
-        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);
+        dialog.getDialogPane().getButtonTypes().addAll(Dialogs.SAVE, Dialogs.CANCEL);
         TextField name = new TextField();
         name.setPromptText("VD: Huyết áp tâm thu");
         TextField unit = new TextField();
@@ -415,5 +416,22 @@ public class HealthView extends View {
                     refreshHistory();
                     renderCharts();
                 });
+    }
+
+    /**
+     * The rings are drawn on a Canvas, which CSS cannot reach, so their text and
+     * track follow the palette by hand. Without this the caption color was guessed
+     * from a stylesheet file name and went unreadable on any user-supplied theme.
+     */
+    private void applyRingPalette() {
+        String text = ctx.themeManager().previewPalette(ctx.config().theme).text();
+        sleepRing.setPaletteColors(null, text);
+        exerciseRing.setPaletteColors(null, text);
+        logRing.setPaletteColors(null, text);
+    }
+
+    @Override
+    public void onThemeChanged() {
+        applyRingPalette();
     }
 }

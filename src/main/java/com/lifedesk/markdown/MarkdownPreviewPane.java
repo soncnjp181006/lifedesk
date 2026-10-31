@@ -87,11 +87,6 @@ public class MarkdownPreviewPane extends VBox {
         }
     }
 
-    /** True when this pane renders with WebKit (false means the native fallback is active). */
-    public boolean isWebViewAvailable() {
-        return webView != null;
-    }
-
     /** Carries the failure out of the construction attempt so it can be logged once. */
     private static final class Warn {
         Throwable error;
@@ -155,6 +150,42 @@ public class MarkdownPreviewPane extends VBox {
      */
     public void renderPresentation(String markdownText, ThemeManager.PreviewPalette palette) {
         load(markdownText, palette, target -> null, true);
+    }
+
+    /**
+     * The rendered page's own numbers: {@code [scrollHeight, clientHeight,
+     * window.innerHeight]} in CSS pixels, or null when there is no WebKit engine or no
+     * page yet. The third value is what makes the first two trustworthy: WebKit keeps
+     * laying out the document on its own clock, so right after a window resize it can
+     * still report the viewport it had before. Comparing the engine's inner height with
+     * the node's height says whether the page has caught up — and a check that ignores
+     * that reports a scroll that no user ever saw.
+     */
+    public double[] pageMetrics() {
+        if (webView == null) {
+            return null;
+        }
+        Object r = webView.getEngine().executeScript(
+                "[document.documentElement.scrollHeight, document.documentElement.clientHeight,"
+                        + " window.innerHeight].join(',')");
+        if (!(r instanceof String s)) {
+            return null;
+        }
+        String[] parts = s.split(",");
+        if (parts.length != 3) {
+            return null;
+        }
+        try {
+            return new double[]{Double.parseDouble(parts[0]), Double.parseDouble(parts[1]),
+                    Double.parseDouble(parts[2])};
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** The WebView node itself, or null when this JVM fell back to the native renderer. */
+    public javafx.scene.web.WebView webViewNode() {
+        return webView;
     }
 
     private void load(String markdownText, ThemeManager.PreviewPalette palette,

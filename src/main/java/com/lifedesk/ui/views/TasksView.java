@@ -1,18 +1,17 @@
 package com.lifedesk.ui.views;
 
 import com.lifedesk.app.AppContext;
-import com.lifedesk.notes.NoteMeta;
 import com.lifedesk.tasks.Priority;
 import com.lifedesk.tasks.Task;
 import com.lifedesk.tasks.TaskQuickAdd;
 import com.lifedesk.tasks.TaskStatus;
+import com.lifedesk.ui.Fx;
 import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
 import com.lifedesk.ui.View;
-import com.lifedesk.common.Tags;
+import com.lifedesk.ui.components.Combos;
 import com.lifedesk.ui.components.Chips;
 import com.lifedesk.ui.components.EmptyState;
-import com.lifedesk.ui.components.FormGrid;
 import com.lifedesk.ui.editors.TaskDialog;
 import com.lifedesk.ui.components.IconView;
 import javafx.beans.property.ReadOnlyObjectWrapper;
@@ -34,20 +33,17 @@ import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.FlowPane;
-import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /** Tasks module: list + board views, full editor with checklist/recurrence/links. */
 public class TasksView extends View {
@@ -63,7 +59,7 @@ public class TasksView extends View {
     private final ComboBox<String> priorityFilter = new ComboBox<>();
     private Button deleteSelectedBtn;
     private Task selected;
-    /** Live count line under the page title — the same header pattern other views use. */
+    /** Live count line on the action row: rewrites itself on every refresh. */
     private final Label subtitle = new Label();
 
     public TasksView(AppContext ctx, MainWindow main) {
@@ -77,11 +73,8 @@ public class TasksView extends View {
 
     @Override
     protected Node build() {
-        Label title = new Label("Công việc");
-        title.getStyleClass().add("title-label");
-
         searchField.setPromptText("Tìm công việc…");
-        searchField.textProperty().addListener((o, a, b) -> refresh());
+        Fx.debounced(searchField, this::refresh);
         groupFilter.getItems().add("(tất cả)");
         groupFilter.setValue("(tất cả)");
         statusFilter.getItems().addAll("(tất cả)", "TODO", "IN_PROGRESS", "DONE", "CANCELLED");
@@ -90,8 +83,9 @@ public class TasksView extends View {
         priorityFilter.setValue("(tất cả)");
         // Filters keep the raw enum values as keys but display Vietnamese, like the
         // task chips and the editor dialog — raw "URGENT"/"TODO" read as a bug.
-        displayVietnamese(statusFilter, Chips::taskStatusName);
-        displayVietnamese(priorityFilter, Chips::priorityName);
+        // "(tất cả)" is this filter's own sentinel, so the pass-through lives here.
+        Combos.label(statusFilter, v -> v.startsWith("(") ? v : Chips.taskStatusName(v));
+        Combos.label(priorityFilter, v -> v.startsWith("(") ? v : Chips.priorityName(v));
         groupFilter.setOnAction(e -> refresh());
         statusFilter.setOnAction(e -> refresh());
         priorityFilter.setOnAction(e -> refresh());
@@ -127,36 +121,42 @@ public class TasksView extends View {
         quickAdd.setPromptText("Thêm việc nhanh: \"nộp báo cáo @mai 9h #work !cao\" — Enter để thêm");
         quickAdd.setOnAction(e -> quickAddTask(quickAdd));
 
+        // Same segmented look as the note editor's mode switch, and the same reason:
+        // loose toggle buttons were squeezed to "Li…" / "Bo…" on a narrow window.
+        // It lives in the header now, so the filter strip keeps its own width.
+        HBox viewModeRow = new HBox();
+        viewModeRow.getStyleClass().add("mode-row");
+        viewModeRow.setMaxHeight(Region.USE_PREF_SIZE);
+        viewModeRow.getChildren().addAll(listToggle, boardToggle);
+
         // Two rows instead of one crowded line: the page header answers "what is
         // this screen", the filter strip answers "which slice am I looking at".
-        // Everything had previously been fought over in a single 49px row.
-        subtitle.getStyleClass().add("page-subtitle");
-        VBox titleBlock = new VBox(1, title, subtitle);
-        Region headerSpacer = new Region();
-        HBox.setHgrow(headerSpacer, javafx.scene.layout.Priority.ALWAYS);
-        HBox headerRow = new HBox(10, titleBlock, headerSpacer, deleteSelectedBtn, newBtn);
-        headerRow.setAlignment(Pos.CENTER_LEFT);
+        HBox headerRow = toolbar(subtitle, deleteSelectedBtn, newBtn);
 
         searchField.setMinWidth(240);
-        HBox filterRow = new HBox(8, searchField,
-                new Label("Nhóm:"), groupFilter, new Label("Trạng thái:"), statusFilter,
-                new Label("Ưu tiên:"), priorityFilter, new Region(), listToggle, boardToggle);
-        filterRow.getStyleClass().add("toolbar-strip");
+        // FlowPane, not HBox: with every filter pinned to its real label width the
+        // strip could not shrink below 825px and pushed the page sideways at the
+        // minimum window size. Wrapping keeps every label readable and costs one
+        // extra row only on a narrow window.
+        javafx.scene.layout.FlowPane filterRow = new javafx.scene.layout.FlowPane(8, 8);
         filterRow.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(searchField, javafx.scene.layout.Priority.ALWAYS);
-        HBox.setHgrow(filterRow.getChildren().get(filterRow.getChildren().size() - 3),
-                javafx.scene.layout.Priority.NEVER);
+        filterRow.getStyleClass().add("toolbar-strip");
+        filterRow.getChildren().addAll(searchField,
+                new Label("Nhóm:"), groupFilter, new Label("Trạng thái:"), statusFilter,
+                new Label("Ưu tiên:"), priorityFilter, viewModeRow);
+        searchField.setPrefWidth(520);
 
         buildTable();
-        table.setPlaceholder(new EmptyState("clipboard-list", "Chưa có công việc nào."));
+        table.setPlaceholder(EmptyState.withAction("clipboard-list",
+                "Chưa có công việc nào.", "Thêm việc đầu tiên", () -> openEditor(null)));
 
         buildBoard();
 
         HBox.setHgrow(listPane, javafx.scene.layout.Priority.ALWAYS);
-        VBox root = new VBox(12, headerRow, quickAdd, filterRow, listPane);
+        VBox root = page(headerRow, quickAdd, filterRow, listPane);
         VBox.setVgrow(listPane, javafx.scene.layout.Priority.ALWAYS);
 
-        ctx.tasks().changes().addListener(this::scheduleRefresh);
+        watch(ctx.tasks().changes());
         return root;
     }
 
@@ -174,7 +174,7 @@ public class TasksView extends View {
             return;
         }
         quickAdd.clear();
-        refresh();
+        // No refresh(): the notifier the service fires already queues one repaint.
         main.status("Đã thêm: " + p.title());
     }
 
@@ -189,13 +189,21 @@ public class TasksView extends View {
                     setText(null);
                     setGraphic(null);
                 } else {
-                    Label l = new Label(item.title);
+                    // The title is the flexible part of this cell; the chip is not.
+                    // With both left at their computed minimum, a narrow window
+                    // squeezed the chip too and the row read "quá h…". It may shorten,
+                    // but the whole title has to stay readable — a task list where the
+                    // only way to finish reading a line is to open the editor is a list
+                    // you cannot skim.
+                    Label l = com.lifedesk.ui.Fx.shrinkable(new Label(item.title));
                     if (item.status == TaskStatus.DONE) {
-                        l.setStyle("-fx-opacity: 0.55;");
+                        l.getStyleClass().add("task-done");
                     }
                     HBox box = new HBox(6, l);
                     if (item.isOverdue(LocalDate.now())) {
-                        box.getChildren().add(Chips.overdue("quá hạn"));
+                        Label chip = Chips.overdue("quá hạn");
+                        chip.setMinWidth(Region.USE_PREF_SIZE);
+                        box.getChildren().add(chip);
                     }
                     box.setAlignment(Pos.CENTER_LEFT);
                     setGraphic(box);
@@ -299,6 +307,16 @@ public class TasksView extends View {
         });
 
         table.getColumns().setAll(List.of(titleCol, statusCol, prioCol, dueCol, groupCol, progressCol, actionsCol));
+        // JavaFX leaves a column's floor at its preferred width, so the table asked
+        // for ~810px even though every column here holds a short chip or a date.
+        for (TableColumn<Task, ?> c : table.getColumns()) {
+            // Measured, not guessed: the narrow-window probe reports the width each
+            // cell label needs ("Hoàn thành" 76px, "Trung bình" 73px). A column
+            // narrower than its content does not wrap, it writes "Hoàn …" — a
+            // status the user has to guess at.
+            c.setMinWidth(c == titleCol ? 180 : c == statusCol ? 96 : c == prioCol ? 92
+                    : c == groupCol ? 88 : 64);
+        }
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
             selected = b;
@@ -335,11 +353,15 @@ public class TasksView extends View {
                 default -> status.name();
             });
             header.getStyleClass().add("section-label");
-            VBox column = new VBox(8, header);
-            column.setStyle("-fx-background-color: -ld-surface; -fx-background-radius: 10; -fx-padding: 10;");
+            VBox column = new VBox(header);
+            column.getStyleClass().add("board-column");
             column.setPrefWidth(300);
             tasks.stream().filter(t -> t.status == status).limit(30).forEach(t -> {
-                VBox cardNode = new VBox(4, new Label(t.title),
+                // A board column is 300px wide, so a long title lost its tail with no
+                // way to read it. The card keeps one line and the whole title rides on
+                // the hover.
+                Label cardTitle = com.lifedesk.ui.Fx.shrinkable(new Label(t.title));
+                VBox cardNode = new VBox(4, cardTitle,
                         new HBox(4, Chips.priority(t.priority.name()),
                                 new Label(t.dueDate == null ? "" : t.dueDate.format(DF))));
                 cardNode.getStyleClass().add("board-card");
@@ -407,7 +429,7 @@ public class TasksView extends View {
                 deleteSelectedBtn.setDisable(true);
             }
             table.getSelectionModel().clearSelection();
-            refresh();
+            // No refresh(): the notifier the service fires already queues one repaint.
         }
     }
 
@@ -453,19 +475,4 @@ public class TasksView extends View {
         TaskDialog.open(ctx, main, existing, this::refresh);
     }
 
-    /** Combo keeps raw enum values as keys but shows Vietnamese names; "(…)" items pass through. */
-    private static void displayVietnamese(ComboBox<String> combo,
-            java.util.function.UnaryOperator<String> name) {
-        javafx.util.Callback<javafx.scene.control.ListView<String>, javafx.scene.control.ListCell<String>> cell =
-                v -> new javafx.scene.control.ListCell<>() {
-                    @Override
-                    protected void updateItem(String item, boolean empty) {
-                        super.updateItem(item, empty);
-                        setText(empty || item == null ? null
-                                : item.startsWith("(") ? item : name.apply(item));
-                    }
-                };
-        combo.setCellFactory(v -> cell.call(v));
-        combo.setButtonCell(cell.call(null));
-    }
 }
