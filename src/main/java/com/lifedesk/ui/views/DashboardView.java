@@ -641,15 +641,21 @@ public class DashboardView extends View {
             checks.add(cb);
             box.getChildren().add(cb);
         }
-        Label hint = new Label("Thứ tự hiển thị = thứ tự danh sách. Tắt/bật rồi bấm Lưu.");
+        Label hint = new Label("Tích = hiện trên dashboard, bỏ tick = ẩn. Bấm OK để áp dụng.");
         hint.getStyleClass().add("dim-label");
 
-        javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.CONFIRMATION);
-        alert.setTitle("Quản lý widget dashboard");
-        alert.setHeaderText(null);
-        alert.getDialogPane().setContent(new VBox(8, hint, box));
-        alert.showAndWait().ifPresent(bt -> {
-            if (bt.getButtonData() == javafx.scene.control.ButtonBar.ButtonData.OK_DONE) {
+        // Dialogs.newDialog() = themed + owned; the raw Alert rendered as a white
+        // system dialog floating over the dark dashboard.
+        javafx.scene.control.Dialog<Boolean> dialog = com.lifedesk.ui.Dialogs.newDialog();
+        dialog.setTitle("Quản lý widget dashboard");
+        dialog.setHeaderText(null);
+        dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK,
+                javafx.scene.control.ButtonType.CANCEL);
+        dialog.getDialogPane().setContent(new VBox(8, hint, box));
+        dialog.setResultConverter(bt ->
+                bt.getButtonData() == javafx.scene.control.ButtonBar.ButtonData.OK_DONE ? Boolean.TRUE : null);
+        dialog.showAndWait().ifPresent(ok -> {
+            if (ok) {
                 for (var cb : checks) {
                     enabled.put((String) cb.getUserData(), cb.isSelected());
                 }

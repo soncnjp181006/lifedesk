@@ -929,6 +929,13 @@ public final class SmokeMain {
                 });
                 System.out.println("AI chat send: " + sent.get(10, java.util.concurrent.TimeUnit.SECONDS));
                 Thread.sleep(2500);
+                javafx.application.Platform.runLater(() -> {
+                    var root = LifeDeskApp.primaryStageRef.getScene().getRoot();
+                    var cells = root.lookupAll(".chat-sidebar .list-cell");
+                    System.out.println("SIDEBAR cells=" + cells.size()
+                            + " labels=" + root.lookupAll(".chat-sidebar .label").size());
+                });
+                Thread.sleep(300);
                 java.util.concurrent.CompletableFuture<java.awt.image.BufferedImage> chatShotFuture =
                         new java.util.concurrent.CompletableFuture<>();
                 javafx.application.Platform.runLater(() -> {

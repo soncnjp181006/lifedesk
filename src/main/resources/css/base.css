@@ -1498,6 +1498,33 @@
     -fx-padding: 10 12 8 12;
 }
 
+/* History sidebar: the conversation list lives here, page never scrolls. */
+.chat-sidebar {
+    -fx-background-color: -ld-surface;
+    -fx-border-color: -ld-border;
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+    -fx-border-width: 1;
+    -fx-padding: 12;
+}
+
+.chat-sidebar .list-view {
+    -fx-background-color: transparent;
+}
+
+.chat-sidebar .list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 6 8 6 8;
+    -fx-background-radius: 8;
+    -fx-cursor: hand;
+}
+
+.chat-sidebar .list-cell:filled:hover { -fx-background-color: -ld-elev; }
+
+.chat-sidebar .list-cell:filled:selected {
+    -fx-background-color: -ld-accent-soft;
+}
+
 .chat-input {
     -fx-background-color: -ld-input;
     -fx-border-color: -ld-border;

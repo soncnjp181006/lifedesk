@@ -53,6 +53,7 @@ public class AppContext {
     private final SearchService searchService;
     private final BackupService backupService = new BackupService();
     private final AiManager aiManager;
+    private final com.lifedesk.ai.AiConversationService aiConversationService;
     private final com.lifedesk.agent.AgentService agentService;
     private final com.lifedesk.rss.RssService rssService;
     private final com.lifedesk.library.LibraryService libraryService;
@@ -83,6 +84,7 @@ public class AppContext {
         this.ruleBasedEngine = new RuleBasedEngine(taskService, notesService, financeService,
                 habitService, learningService, searchService, markdownService, healthService);
         this.aiManager = new AiManager(config.ai, ruleBasedEngine);
+        this.aiConversationService = new com.lifedesk.ai.AiConversationService(store);
         this.agentService = new com.lifedesk.agent.AgentService(this);
         this.rssService = new com.lifedesk.rss.RssService(store);
         this.libraryService = new com.lifedesk.library.LibraryService(store);
@@ -238,6 +240,11 @@ public class AppContext {
 
     public AiManager ai() {
         return aiManager;
+    }
+
+    /** Persisted chat history (the AI sidebar). */
+    public com.lifedesk.ai.AiConversationService aiConversations() {
+        return aiConversationService;
     }
 
     /** Agent that operates the app through tools (Agent Workflow). */

@@ -53,6 +53,12 @@ public class AiChatView extends View {
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm");
 
     private final List<com.lifedesk.ai.ChatMessage> history = new ArrayList<>();
+    /** Persisted conversation currently open (null = fresh, unsaved chat). */
+    private String currentConvId;
+    private boolean updatingSelection;
+    private final javafx.scene.control.ListView<com.lifedesk.ai.AiConversationService.Conversation> convList =
+            new javafx.scene.control.ListView<>();
+    private final Label chatTitleLabel = new Label("Hội thoại");
     /** Context items attached via "@". */
     private final List<ContextItem> contextItems = new ArrayList<>();
 
@@ -64,7 +70,6 @@ public class AiChatView extends View {
     private final Label modelChip = new Label();
     private final Label countChip = new Label();
     private final Button sendBtn = new Button();
-    private final Button stopBtn = new Button();
     private final VBox composer = new VBox(8);
 
     /** Throttled re-render of the in-flight reply. */
@@ -119,22 +124,70 @@ public class AiChatView extends View {
 
     @Override
     protected Node build() {
-        // ---- page header
-        Label title = new Label("Trợ lý AI");
-        title.getStyleClass().add("title-label");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
+        // ---- history sidebar (ChatGPT-style conversation list)
+        Label sidebarBrand = new Label("Trợ lý AI");
+        sidebarBrand.getStyleClass().add("section-label");
         Button newChatBtn = new Button("Hội thoại mới", new IconView("plus", 15));
+        newChatBtn.getStyleClass().add("primary-btn");
+        newChatBtn.setMaxWidth(Double.MAX_VALUE);
         newChatBtn.setOnAction(e -> startNewChat());
-        Button settingsBtn = new Button("Cài đặt AI", new IconView("settings", 15));
-        settingsBtn.setOnAction(e -> main.showView(MainWindow.ViewId.SETTINGS));
-        providerStatus.getStyleClass().add("dim-label");
-        HBox header = new HBox(10, title, spacer, providerStatus, newChatBtn, settingsBtn);
-        header.getStyleClass().add("view-header");
-        header.setAlignment(Pos.CENTER_LEFT);
+        Label recentLabel = new Label("Gần đây");
+        recentLabel.getStyleClass().add("dim-label");
+        convList.setCellFactory(v -> new javafx.scene.control.ListCell<>() {
+            private final Button removeBtn = new Button("", new IconView("trash", 13));
 
-        // ---- conversation surface ("khung chat")
-        Label chatTitle = new Label("Hội thoại");
+            {
+                removeBtn.getStyleClass().add("icon-btn");
+                removeBtn.setTooltip(new Tooltip("Xóa hội thoại này"));
+                removeBtn.setOnAction(e -> {
+                    com.lifedesk.ai.AiConversationService.Conversation conv = getItem();
+                    if (conv != null && Dialogs.confirm("Xóa hội thoại",
+                            "Xóa \"" + conv.title + "\"?")) {
+                        ctx.aiConversations().delete(conv.id);
+                        if (conv.id.equals(currentConvId)) {
+                            startNewChat();
+                        }
+                    }
+                });
+            }
+
+            @Override
+            protected void updateItem(com.lifedesk.ai.AiConversationService.Conversation conv, boolean empty) {
+                super.updateItem(conv, empty);
+                if (empty || conv == null) {
+                    setGraphic(null);
+                    setText(null);
+                    return;
+                }
+                Label titleLabel = new Label(conv.title);
+                titleLabel.getStyleClass().add("form-label");
+                titleLabel.setMaxWidth(150);
+                Label timeLabel = new Label(relateTime(conv.updatedAt));
+                timeLabel.getStyleClass().add("chat-meta");
+                Region spring = new Region();
+                HBox.setHgrow(spring, Priority.ALWAYS);
+                HBox box = new HBox(6, new VBox(1, titleLabel, timeLabel), spring, removeBtn);
+                box.setAlignment(Pos.CENTER_LEFT);
+                setGraphic(box);
+                setText(null);
+            }
+        });
+        convList.getSelectionModel().selectedItemProperty().addListener((o, a, sel) -> {
+            // updatingSelection: programmatic re-select during refresh must not
+            // reload the transcript (and sel.id can be null for legacy rows).
+            if (sel != null && !updatingSelection && sel.id != null && !sel.id.equals(currentConvId)) {
+                loadConversation(sel.id);
+            }
+        });
+        ctx.aiConversations().changes().addListener(this::refreshConvList);
+        VBox sidebar = new VBox(10, sidebarBrand, newChatBtn, recentLabel, convList);
+        sidebar.getStyleClass().add("chat-sidebar");
+        sidebar.setPrefWidth(250);
+        sidebar.setMinWidth(210);
+        VBox.setVgrow(convList, Priority.ALWAYS);
+
+        // ---- chat column: top bar, messages (the ONLY page scroller), composer
+        Label chatTitle = chatTitleLabel;
         chatTitle.getStyleClass().add("section-label");
         modelChip.getStyleClass().addAll("chip", "chip-info");
         modelChip.setVisible(false);
@@ -144,6 +197,9 @@ public class AiChatView extends View {
         countChip.setManaged(false);
         Region headSpacer = new Region();
         HBox.setHgrow(headSpacer, Priority.ALWAYS);
+        Button settingsBtn = new Button("Cài đặt AI", new IconView("settings", 15));
+        settingsBtn.setOnAction(e -> main.showView(MainWindow.ViewId.SETTINGS));
+        providerStatus.getStyleClass().add("dim-label");
         Button clearBtn = new Button("", new IconView("trash", 14));
         clearBtn.getStyleClass().add("icon-btn");
         clearBtn.setTooltip(new Tooltip("Xóa toàn bộ hội thoại"));
@@ -153,7 +209,7 @@ public class AiChatView extends View {
             }
         });
         HBox frameHead = new HBox(8, new IconView("bot", 15, "icon-accent"), chatTitle,
-                modelChip, countChip, headSpacer, clearBtn);
+                modelChip, countChip, headSpacer, providerStatus, settingsBtn, clearBtn);
         frameHead.setAlignment(Pos.CENTER_LEFT);
         frameHead.getStyleClass().add("chat-head");
 
@@ -182,7 +238,12 @@ public class AiChatView extends View {
                 e.consume();
                 send();
             } else if (e.getCode() == KeyCode.ESCAPE) {
-                hidePicker();
+                e.consume();
+                if (busy) {
+                    stopChat(); // Esc = the red button, keyboard parity
+                } else {
+                    hidePicker();
+                }
             }
         });
         input.textProperty().addListener((o, old, now) -> {
@@ -196,14 +257,14 @@ public class AiChatView extends View {
         sendBtn.setText("");
         sendBtn.getStyleClass().add("primary-btn");
         sendBtn.setTooltip(new Tooltip("Gửi (Enter)"));
-        sendBtn.setOnAction(e -> send());
-        stopBtn.setGraphic(new IconView("circle-x", 15));
-        stopBtn.setText("");
-        stopBtn.getStyleClass().add("danger-btn");
-        stopBtn.setTooltip(new Tooltip("Dừng tạo"));
-        stopBtn.setVisible(false);
-        stopBtn.setManaged(false);
-        stopBtn.setOnAction(e -> stopChat());
+        // One dual-mode button: blue = send, red = stop (tap again to stop).
+        sendBtn.setOnAction(e -> {
+            if (busy) {
+                stopChat();
+            } else {
+                send();
+            }
+        });
         HBox.setHgrow(input, Priority.ALWAYS);
         HBox inputRow = new HBox(8, input);
 
@@ -216,7 +277,7 @@ public class AiChatView extends View {
         Label privacy = new Label("Chỉ gửi dữ liệu khi bạn bật \"đọc dữ liệu\" trong Cài đặt → AI");
         privacy.getStyleClass().add("chat-hint");
         privacy.setWrapText(false);
-        HBox composerBottom = new HBox(10, hint, hintSpacer, stopBtn, sendBtn);
+        HBox composerBottom = new HBox(10, hint, hintSpacer, sendBtn);
         composerBottom.setAlignment(Pos.CENTER_LEFT);
 
         composer.getStyleClass().add("chat-composer");
@@ -235,15 +296,116 @@ public class AiChatView extends View {
 
         VBox frame = new VBox(0, frameHead, chatScroll, composerWrap);
         frame.getStyleClass().add("chat-surface");
-        VBox.setVgrow(frame, Priority.ALWAYS);
+        HBox.setHgrow(frame, Priority.ALWAYS);
 
         showEmptyState();
         refreshStatus();
         setBusy(false);
+        refreshConvList();
 
-        VBox root = new VBox(12, header, frame);
-        VBox.setVgrow(frame, Priority.ALWAYS);
+        // Sidebar + chat column fill the viewport: the page itself never scrolls,
+        // only the message area does (ChatGPT layout).
+        HBox root = new HBox(12, sidebar, frame);
+        root.setMaxHeight(Double.MAX_VALUE);
+        VBox.setVgrow(root, Priority.ALWAYS);
         return root;
+    }
+
+    // ------------------------------------------------------------------ history sidebar
+
+    /** Refresh the sidebar list, keeping the current conversation selected. */
+    private void refreshConvList() {
+        convList.getItems().setAll(ctx.aiConversations().list());
+        if (currentConvId != null) {
+            convList.getItems().stream()
+                    .filter(c -> c.id.equals(currentConvId))
+                    .findFirst()
+                    .ifPresent(c -> {
+                        updatingSelection = true;
+                        convList.getSelectionModel().select(c);
+                        updatingSelection = false;
+                    });
+        }
+    }
+
+    private void persistConversation() {
+        if (history.isEmpty()) {
+            return;
+        }
+        com.lifedesk.ai.AiConversationService.Conversation conv =
+                currentConvId == null
+                        ? new com.lifedesk.ai.AiConversationService.Conversation()
+                        : ctx.aiConversations().get(currentConvId)
+                                .orElseGet(com.lifedesk.ai.AiConversationService.Conversation::new);
+        currentConvId = conv.id;
+        conv.title = history.stream()
+                .filter(m -> m.role().equals("user"))
+                .findFirst()
+                .map(m -> m.content().length() > 48 ? m.content().substring(0, 48) + "…" : m.content())
+                .orElse("Hội thoại mới");
+        conv.messages = history.stream()
+                .map(m -> new com.lifedesk.ai.AiConversationService.Message(m.role(), m.content()))
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+        ctx.aiConversations().upsert(conv);
+        chatTitleLabel.setText(conv.title);
+        refreshConvList();
+    }
+
+    /** Open a stored conversation and rebuild the transcript on screen. */
+    private void loadConversation(String id) {
+        if (busy) {
+            stopChat();
+        }
+        chatGen++;
+        var stored = ctx.aiConversations().get(id).orElse(null);
+        if (stored == null) {
+            return;
+        }
+        currentConvId = stored.id;
+        history.clear();
+        contextItems.clear();
+        active = null;
+        setBusy(false);
+        messages.getChildren().clear();
+        HBox lastUserRow = null;
+        for (var m : stored.messages) {
+            if (m.role.equals("user")) {
+                lastUserRow = addUserMessage(m.content);
+                history.add(com.lifedesk.ai.ChatMessage.user(m.content));
+            } else {
+                Exchange ex = addAssistantMessage(lastUserRow, "");
+                ex.flow.render(m.content, false);
+                ex.bubble.getChildren().remove(ex.bubble.getChildren().size() - 1);
+                ex.bubble.getChildren().add(assistantFooter(m.content));
+                history.add(com.lifedesk.ai.ChatMessage.assistant(m.content));
+            }
+        }
+        // history already holds assistant messages; user messages replayed above
+        refreshContextBar();
+        updateCount();
+        chatTitleLabel.setText(stored.title);
+        refreshConvList();
+        scrollToEnd();
+        if (messages.getChildren().isEmpty()) {
+            showEmptyState();
+        }
+    }
+
+    /** "5 phút trước"-style label for the sidebar. */
+    private String relateTime(java.time.Instant t) {
+        long minutes = java.time.Duration.between(t, java.time.Instant.now()).toMinutes();
+        if (minutes < 1) {
+            return "vừa xong";
+        }
+        if (minutes < 60) {
+            return minutes + " phút trước";
+        }
+        long hours = minutes / 60;
+        if (hours < 24) {
+            return hours + " giờ trước";
+        }
+        return java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm")
+                .withZone(java.time.ZoneId.systemDefault()).format(t);
     }
 
     private void growInput() {
@@ -523,9 +685,12 @@ public class AiChatView extends View {
 
     private void setBusy(boolean running) {
         busy = running;
-        sendBtn.setDisable(running || !ctx.ai().enabled());
-        stopBtn.setVisible(running);
-        stopBtn.setManaged(running);
+        // Dual-mode button: blue send ↔ red stop.
+        sendBtn.getStyleClass().removeAll("primary-btn", "danger-btn");
+        sendBtn.getStyleClass().add(running ? "danger-btn" : "primary-btn");
+        sendBtn.setGraphic(new IconView(running ? "circle-x" : "send", 15));
+        sendBtn.setTooltip(new Tooltip(running ? "Dừng tạo" : "Gửi (Enter)"));
+        sendBtn.setDisable(!running && !ctx.ai().enabled());
     }
 
     private void updateCount() {
@@ -597,6 +762,7 @@ public class AiChatView extends View {
         history.add(com.lifedesk.ai.ChatMessage.user(exchange.question));
         history.add(com.lifedesk.ai.ChatMessage.assistant(text));
         trimHistory();
+        persistConversation();
         active = null;
         setBusy(false);
         updateCount();
@@ -731,6 +897,7 @@ public class AiChatView extends View {
                 history.add(com.lifedesk.ai.ChatMessage.user(active.question));
                 history.add(com.lifedesk.ai.ChatMessage.assistant(partial));
                 trimHistory();
+                persistConversation();
                 updateCount();
             }
         }
@@ -750,6 +917,11 @@ public class AiChatView extends View {
         history.clear();
         contextItems.clear();
         active = null;
+        currentConvId = null;
+        chatTitleLabel.setText("Hội thoại");
+        updatingSelection = true;
+        convList.getSelectionModel().clearSelection();
+        updatingSelection = false;
         refreshContextBar();
         showEmptyState();
         setBusy(false);
