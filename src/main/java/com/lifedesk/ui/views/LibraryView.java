@@ -229,13 +229,9 @@ public class LibraryView extends View {
         kind.getItems().addAll(LibraryService.Kind.values());
         kind.setValue(existing == null ? LibraryService.Kind.BOOK : existing.kind);
         display(kind, this::kindLabel);
-        ComboBox<LibraryService.Status> status = new ComboBox<>();
-        status.getItems().addAll(LibraryService.Status.values());
-        status.setValue(existing == null ? LibraryService.Status.PLANNED : existing.status);
-        display(status, this::statusLabel);
-        TextField creator = new TextField(existing == null ? "" : existing.creator);
-        Spinner<Integer> year = new Spinner<>(0, 2100, existing == null ? java.time.YearMonth.now().getYear() : existing.year);
-        Spinner<Integer> rating = new Spinner<>(0, 10, existing == null ? 0 : existing.rating);
+        // Status / creator / year / rating removed from the dialog (user-mandated):
+        // the model keeps them, new items start PLANNED and progress ticks move
+        // them across the shelves.
         TextField cover = new TextField(existing == null ? "" : existing.coverUrl);
         cover.setPromptText("URL ảnh bìa (tùy chọn)");
         // Where the item actually lives: a local file (ebook, video, save…) or a URL.
@@ -281,9 +277,7 @@ public class LibraryView extends View {
 
         VBox content = new VBox(10,
                 FormGrid.labeled("Tiêu đề *", title),
-                new HBox(10, FormGrid.labeled("Loại", kind), FormGrid.labeled("Trạng thái", status)),
-                new HBox(10, FormGrid.labeled("Tác giả/nhà sản xuất", creator),
-                        FormGrid.labeled("Năm", year), FormGrid.labeled("Đánh giá (0-10)", rating)),
+                FormGrid.labeled("Loại", kind),
                 FormGrid.labeled("Ảnh bìa (URL)", cover),
                 FormGrid.labeled("Tệp / liên kết", linkRow),
                 progressRow,
@@ -297,10 +291,6 @@ public class LibraryView extends View {
             LibraryService.Item item = existing == null ? new LibraryService.Item() : existing;
             item.title = title.getText().trim();
             item.kind = kind.getValue();
-            item.status = status.getValue();
-            item.creator = creator.getText();
-            item.year = year.getValue();
-            item.rating = rating.getValue();
             item.coverUrl = cover.getText();
             item.link = link.getText().trim();
             item.progressCurrent = progressCurrent.getValue();
@@ -314,9 +304,9 @@ public class LibraryView extends View {
                     // add() returns the persisted record; copy the dialog-only
                     // fields onto it instead of updating the unparsed instance.
                     LibraryService.Item created = ctx.library().add(item.title, item.kind,
-                            item.creator, item.year, item.coverUrl);
-                    created.status = item.status;
-                    created.rating = item.rating;
+                            existing == null ? "" : existing.creator,
+                            existing == null ? java.time.YearMonth.now().getYear() : existing.year,
+                            item.coverUrl);
                     created.progressCurrent = item.progressCurrent;
                     created.progressTotal = item.progressTotal;
                     created.link = item.link;
@@ -343,15 +333,6 @@ public class LibraryView extends View {
                 };
         combo.setCellFactory(cell);
         combo.setButtonCell(cell.call(null));
-    }
-
-    private String statusLabel(LibraryService.Status s) {
-        return switch (s) {
-            case PLANNED -> "Kế hoạch";
-            case IN_PROGRESS -> "Đang dùng";
-            case DONE -> "Hoàn thành";
-            case DROPPED -> "Tạm bỏ";
-        };
     }
 
     /** "Đã đọc (chương)"-style pair per kind; null = progress fields are meaningless. */

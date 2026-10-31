@@ -46,7 +46,6 @@ import java.util.List;
 public class NotesView extends View {
     private final TextField searchField = new TextField();
     private final TextField titleField = new TextField();
-    private final TextField tagsField = new TextField();
     private final TextArea editor = new TextArea();
     private final com.lifedesk.markdown.MarkdownPreviewPane preview = new com.lifedesk.markdown.MarkdownPreviewPane();
     private final Label statusHint = new Label("");
@@ -260,10 +259,7 @@ public class NotesView extends View {
         // ---- right: editor + preview
         titleField.setPromptText("Tiêu đề");
         titleField.getStyleClass().add("notes-title-field");
-        tagsField.setPromptText("tags…");
-        tagsField.getStyleClass().add("notes-tag-field");
         titleField.textProperty().addListener((o, a, b) -> queueAutosave());
-        tagsField.textProperty().addListener((o, a, b) -> queueAutosave());
         editor.getStyleClass().add("notes-editor");
         editor.setWrapText(true); // long markdown lines flow — never scroll sideways
         editor.setPromptText("");
@@ -296,12 +292,11 @@ public class NotesView extends View {
         mediaBtn.setTooltip(new Tooltip("Media note (Ctrl+I chèn timestamp)"));
         mediaBtn.setOnAction(e -> editMediaLink());
 
-        // Tab row: tên ghi chú + tags + chế độ xem —Obsidian-style header.
+        // Header (user-mandated): NO tags field on top — the markdown toolbar sits
+        // first, then the wide title row; the eye joins the action buttons at the
+        // toolbar's right end.
         Region tabSpring = new Region();
         HBox.setHgrow(tabSpring, Priority.ALWAYS);
-        HBox tabRow = new HBox(8, titleField, tabSpring, tagsField, previewToggle);
-        tabRow.getStyleClass().add("notes-tab-row");
-        tabRow.setAlignment(Pos.CENTER_LEFT);
 
         // Heading levels Ctrl+1..6 (editing-toolbar convention).
         for (int i = 1; i <= 6; i++) {
@@ -320,13 +315,15 @@ public class NotesView extends View {
         buildMarkdownToolbar();
         Region toolbarSpring = new Region();
         HBox.setHgrow(toolbarSpring, Priority.ALWAYS);
-        HBox actionRow = new HBox(2, mediaBtn, latexToggle, outlineToggle, saveBtn);
+        HBox actionRow = new HBox(2, mediaBtn, latexToggle, outlineToggle, previewToggle, saveBtn);
         actionRow.setAlignment(Pos.CENTER_RIGHT);
         mdToolbar.getChildren().add(0, toolbarSpring);
         mdToolbar.getChildren().add(actionRow);
         HBox.setHgrow(actionRow, Priority.NEVER);
-        this.headerStack = new VBox(tabRow, mdToolbar);
-        this.editorBar = tabRow; // legacy reference (empty-state guard)
+        HBox titleRow = new HBox(titleField);
+        HBox.setHgrow(titleField, Priority.ALWAYS);
+        this.headerStack = new VBox(mdToolbar, titleRow);
+        this.editorBar = titleRow; // legacy reference (empty-state guard)
         editorPane.getStyleClass().add("notes-editor-pane");
         editorPane.setTop(headerStack);
         layoutEditorSplit();
@@ -884,7 +881,6 @@ public class NotesView extends View {
         outlinePane.update(meta.id, content);
         refreshMediaBar();
         titleField.setText(meta.title);
-        tagsField.setText(String.join(", ", meta.tags));
         statusHint.setText("");
         renderPreview();
     }
@@ -954,7 +950,9 @@ public class NotesView extends View {
         try {
             SaveResult result = ctx.notes().saveContent(current.id, editor.getText(), loadedHash);
             String titleNew = titleField.getText();
-            var tags = Tags.parse(tagsField.getText());
+            // The tags field is gone from the header (user-mandated); tags stay
+            // untouched on save instead of being wiped by an empty parse.
+            var tags = current.tags;
             boolean metaChanged = (!titleNew.isBlank() && !titleNew.equals(current.title))
                     || !tags.equals(current.tags);
             if (metaChanged) {

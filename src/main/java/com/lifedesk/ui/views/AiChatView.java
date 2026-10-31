@@ -200,16 +200,10 @@ public class AiChatView extends View {
         Button settingsBtn = new Button("Cài đặt AI", new IconView("settings", 15));
         settingsBtn.setOnAction(e -> main.showView(MainWindow.ViewId.SETTINGS));
         providerStatus.getStyleClass().add("dim-label");
-        Button clearBtn = new Button("", new IconView("trash", 14));
-        clearBtn.getStyleClass().add("icon-btn");
-        clearBtn.setTooltip(new Tooltip("Xóa toàn bộ hội thoại"));
-        clearBtn.setOnAction(e -> {
-            if (messages.getChildren().stream().anyMatch(n -> n != emptyState)) {
-                startNewChat();
-            }
-        });
+        // No trash button here: clearing a chat = "Hội thoại mới" in the sidebar —
+        // a second path to the same action read as a delete button.
         HBox frameHead = new HBox(8, new IconView("bot", 15, "icon-accent"), chatTitle,
-                modelChip, countChip, headSpacer, providerStatus, settingsBtn, clearBtn);
+                modelChip, countChip, headSpacer, providerStatus, settingsBtn);
         frameHead.setAlignment(Pos.CENTER_LEFT);
         frameHead.getStyleClass().add("chat-head");
 
@@ -939,6 +933,34 @@ public class AiChatView extends View {
     public void onShow() {
         refreshStatus();
         scrollToEnd();
+        pinToViewport();
+        refreshConvList();
+    }
+
+    private boolean viewportPinned;
+
+    /**
+     * Pin this view's height to the outer content viewport. The chat ScrollPane's
+     * pref height grows with its content, which used to push the whole view past
+     * the viewport and let the PAGE scroll. With the cap, the page never scrolls —
+     * only the message area does; the deficit is absorbed by the chat ScrollPane
+     * (min height 0) and the conversation list.
+     */
+    private void pinToViewport() {
+        if (viewportPinned || getScene() == null) {
+            return;
+        }
+        for (javafx.scene.Node n = this; n != null; n = n.getParent()) {
+            if (n instanceof javafx.scene.control.ScrollPane sp) {
+                javafx.beans.InvalidationListener pin = obs ->
+                        setMaxHeight(sp.getViewportBounds().getHeight());
+                sp.viewportBoundsProperty().addListener(pin);
+                pin.invalidated(sp.viewportBoundsProperty());
+                convList.setMinHeight(0);
+                viewportPinned = true;
+                return;
+            }
+        }
     }
 
     @Override

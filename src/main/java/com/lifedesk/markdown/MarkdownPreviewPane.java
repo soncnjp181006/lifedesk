@@ -54,6 +54,12 @@ public class MarkdownPreviewPane extends VBox {
         if (view != null) {
             this.fallback = null;
             getChildren().add(view);
+            // The WebView's own pref is 800x600 — left unbound it either sat in a
+            // corner of a bigger pane or overflowed a narrower one (text clipped
+            // mid-word). Bind it to fill this pane exactly.
+            view.prefWidthProperty().bind(widthProperty());
+            view.prefHeightProperty().bind(heightProperty());
+            VBox.setVgrow(view, javafx.scene.layout.Priority.ALWAYS);
             view.getEngine().getLoadWorker().stateProperty().addListener((obs, old, state) -> {
                 if (state == javafx.concurrent.Worker.State.SUCCEEDED) {
                     Document doc = view.getEngine().getDocument();
