@@ -20,19 +20,28 @@ public final class RootGrants {
      * template whose {@code %s} receives the chosen absolute path. Returns
      * the granted path, or null when cancelled. Persisting config afterwards
      * is the caller's job (it also refreshes its own UI).
+     *
+     * <p>The returned path is normalised because that is what the service stores:
+     * comparing a chooser's raw string against {@code allowedRoots()} used to fail on
+     * paths that differ only by a separator, and the caller then refreshed to a
+     * different folder than the one the user had just confirmed.
      */
-    public static Path grantViaDialog(AppContext ctx, MainWindow main, String chooserTitle, String confirmTemplate) {
+    public static Path grantViaDialog(AppContext ctx, MainWindow main, String chooserTitle,
+            String confirmTitle, String confirmTemplate) {
         javafx.stage.DirectoryChooser chooser = new javafx.stage.DirectoryChooser();
         chooser.setTitle(chooserTitle);
         java.io.File dir = chooser.showDialog(main.stage());
         if (dir == null) {
             return null;
         }
-        if (!Dialogs.confirm("Cấp quyền", String.format(confirmTemplate, dir.getAbsolutePath()))) {
+        Path granted = dir.toPath().toAbsolutePath().normalize();
+        if (!Dialogs.confirm(confirmTitle, String.format(confirmTemplate, granted))) {
             return null;
         }
-        ctx.config().allowedRoots.add(dir.getAbsolutePath());
+        if (!ctx.config().allowedRoots.contains(granted.toString())) {
+            ctx.config().allowedRoots.add(granted.toString());
+        }
         ctx.files().setAllowedRoots(ctx.config().allowedRoots);
-        return dir.toPath();
+        return granted;
     }
 }

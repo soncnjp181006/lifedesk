@@ -89,7 +89,10 @@ public class FileManagerService {
         try (Stream<Path> children = Files.list(dir)) {
             children.forEach(p -> out.add(toHit(p)));
         } catch (IOException e) {
-            throw new com.lifedesk.common.AppException("Không đọc được thư mục: " + e.getMessage(), e);
+            // The path and the reason, never the words "không đọc được thư mục" — the
+            // caller already says that as the title, and repeating it in the body is how
+            // one dialog ended up reading the same sentence twice.
+            throw new com.lifedesk.common.AppException(dir + " — " + readFailure(e), e);
         }
         out.sort((a, b) -> {
             if (a.directory() != b.directory()) {
@@ -98,6 +101,22 @@ public class FileManagerService {
             return a.name().compareToIgnoreCase(b.name());
         });
         return out;
+    }
+
+    /**
+     * Why a directory could not be read, phrased as something to act on.
+     * "NoSuchFileException: C:\..." is a stack-trace word; the two cases that actually
+     * happen here are a folder that no longer exists and a folder Windows will not open.
+     */
+    private static String readFailure(java.io.IOException e) {
+        if (e instanceof java.nio.file.NoSuchFileException) {
+            return "thư mục không còn tồn tại";
+        }
+        if (e instanceof java.nio.file.AccessDeniedException) {
+            return "không có quyền đọc";
+        }
+        String m = e.getMessage();
+        return m == null || m.isBlank() ? e.getClass().getSimpleName() : m;
     }
 
     /**

@@ -88,7 +88,8 @@ public class NotesView extends View {
      * buttons forced JavaFX to squeeze labels until they truncated.
      */
     private final VBox mdToolbar = new VBox(2);
-    private final HBox mdFormatRow = new HBox(2);
+    private final FlowPane mdFormatRow =
+            new FlowPane(javafx.geometry.Orientation.HORIZONTAL, 2, 2);
     /** Quiet-outline side panel (quiet-outline port). */
     private final com.lifedesk.ui.panes.NoteOutlinePane outlinePane =
             new com.lifedesk.ui.panes.NoteOutlinePane(pos -> {
@@ -257,6 +258,10 @@ public class NotesView extends View {
         VBox left = new VBox(8, searchRow, folderToolbar, folderTree, listActions);
         left.getStyleClass().add("notes-sidebar");
         VBox.setVgrow(folderTree, Priority.ALWAYS);
+        // A TreeView reports the height of every row it could show, which on a library of
+        // notes is taller than the window — and that number is what used to drag the whole
+        // page into scrolling. It has its own scroller; let it use it.
+        folderTree.setMinHeight(0);
         searchField.setMinWidth(0);
         searchField.getStyleClass().add("notes-search-field");
 
@@ -347,13 +352,16 @@ public class NotesView extends View {
         HBox actionRow = new HBox(2, mediaBtn, latexToggle, outlineToggle, modeRow, saveBtn);
         actionRow.setAlignment(Pos.CENTER_RIGHT);
         actionRow.setMinWidth(Region.USE_PREF_SIZE);
-        // The mode switch and save belong to the formatting row: they act on what
-        // you just typed. Inserts stay on their own line below.
-        Region toolbarSpring = new Region();
-        HBox.setHgrow(toolbarSpring, Priority.ALWAYS);
-        mdFormatRow.getChildren().addAll(toolbarSpring, actionRow);
         HBox titleRow = new HBox(titleField);
         HBox.setHgrow(titleField, Priority.ALWAYS);
+        // The mode switch and save belong to the document's own line, beside its title:
+        // they act on the note, not on the selection. They used to sit at the end of the
+        // formatting row, where their fixed ~400px width left the wrapping button flow
+        // with ~80px on a minimum-size window — the toolbar grew to six rows and the
+        // editor was squeezed down to a single unusable line.
+        Region titleSpring = new Region();
+        HBox.setHgrow(titleSpring, Priority.ALWAYS);
+        titleRow.getChildren().addAll(titleSpring, actionRow);
         this.headerStack = new VBox(mdToolbar, titleRow);
         editorPane.getStyleClass().add("notes-editor-pane");
         editorPane.setTop(headerStack);
@@ -389,8 +397,10 @@ public class NotesView extends View {
         left.setPrefWidth(300);
         left.setMaxWidth(340);
         // A TextArea and a WebView both report a wide computed minimum, and that is
-        // what pushed the whole notes shell past the viewport on a narrow window.
+        // what pushed the whole notes shell past the viewport on a narrow window. The
+        // same is true vertically: the editor's own scroller is the point of it.
         editor.setMinWidth(160);
+        editor.setMinHeight(0);
         preview.setMinWidth(160);
         // The list column is a fixed 320px; a long folder or note name must not be
         // able to widen it (the cells elide, which is what the column is for).
@@ -763,16 +773,13 @@ public class NotesView extends View {
     private void buildMarkdownToolbar() {
         mdToolbar.getStyleClass().add("md-toolbar");
         mdToolbar.setAlignment(Pos.CENTER_LEFT);
-        // Row 1: inline formatting + the action buttons. Row 2: block inserts.
-        // Both rows are FlowPanes: at 1920px they sit on one line each, and on a
-        // narrow window they wrap instead of cutting "H▾" down to "H…".
-        FlowPane formatButtons = new FlowPane(javafx.geometry.Orientation.HORIZONTAL, 2, 2);
-        formatButtons.setAlignment(Pos.CENTER_LEFT);
-        formatButtons.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(formatButtons, Priority.ALWAYS);
+        // Row 1: inline formatting. Row 2: block inserts. Both are FlowPanes: at 1920px
+        // they sit on one line each, and on a narrow window they wrap instead of cutting
+        // "H▾" down to "H…". Nothing with a fixed width may share these rows — a
+        // non-shrinkable neighbour is what used to force the wrap into six rows.
         mdFormatRow.setAlignment(Pos.CENTER_LEFT);
-        mdFormatRow.getChildren().add(formatButtons);
-        formatButtons.getChildren().addAll(
+        mdFormatRow.setMaxWidth(Double.MAX_VALUE);
+        mdFormatRow.getChildren().addAll(
                 mdButton("B", "Đậm (Ctrl+B vùng chọn không bắt buộc)", "md-fmt-bold",
                         () -> MarkdownEditor.wrapSelection(editor, "**", "**", "đậm")),
                 mdButton("I", "Nghiêng", "md-fmt-italic",
@@ -1101,6 +1108,10 @@ public class NotesView extends View {
         // One rebuild is enough: this used to run twice per visit, which is the
         // main reason switching to Notes felt sluggish.
         refreshNoteList();
+        // The editor and the preview scroll their own content; the page must not
+        // scroll on top of them. Without this the last third of a long note sat
+        // below the window edge and the save row was off screen.
+        pinHeightToViewport();
     }
 
     @Override

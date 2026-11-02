@@ -527,6 +527,57 @@ public final class SmokeMain {
     }
 
     /**
+     * The notes page measured the way the chat page is: the window must not scroll
+     * (the editor and the preview own their scrolling), the editor must be fully on
+     * screen, and neither pane may sit in a bordered box. The last number says whether
+     * the note on screen was long enough for the first three to mean anything.
+     */
+    private static String[] notesPageState(javafx.scene.control.ScrollPane sp) {
+        var scene = LifeDeskApp.primaryStageRef.getScene();
+        double viewportH = sp.getViewportBounds().getHeight();
+        double contentH = sp.getContent().getLayoutBounds().getHeight();
+        String scroll = contentH <= viewportH + 1 ? ""
+                : "contentH=" + Math.round(contentH) + " > viewportH=" + Math.round(viewportH)
+                        + " — " + heightChain(sp.getContent());
+        javafx.scene.Node editor = scene.lookup(".notes-editor");
+        String inside = "không tìm thấy ô soạn thảo";
+        String edges = "không tìm thấy ô soạn thảo";
+        if (editor != null) {
+            var eb = editor.localToScene(editor.getBoundsInLocal());
+            var vb = sp.localToScene(sp.getViewportBounds());
+            boolean visible = eb.getMaxY() <= vb.getMaxY() + 1 && eb.getMinY() >= vb.getMinY() - 1;
+            // The height guard is part of the same claim: a page that is pinned can also
+            // be pinned by squeezing the editor to nothing, which is inside the viewport
+            // and useless at the same time.
+            boolean usable = eb.getHeight() >= 120;
+            inside = (visible && usable) ? ""
+                    : "ô soạn thảo ở " + Math.round(eb.getMinY()) + "–" + Math.round(eb.getMaxY())
+                            + " (cao " + Math.round(eb.getHeight()) + "px), khung nhìn tới "
+                            + Math.round(vb.getMaxY()) + (usable ? " — phải cuộn cả trang mới gõ hết"
+                                    : " — quá thấp để gõ");
+            edges = paintedEdges(editor);
+        }
+        String previewEdge = paintedEdges(scene.lookup(".md-preview-wrap"));
+        if (!previewEdge.isEmpty()) {
+            edges = (edges.isEmpty() ? "" : edges + ", ") + "preview: " + previewEdge;
+        }
+        String longEnough = "không có bản xem trước trên màn hình";
+        javafx.scene.Node pane = findNode(scene.getRoot(),
+                n -> n instanceof com.lifedesk.markdown.MarkdownPreviewPane);
+        if (pane instanceof com.lifedesk.markdown.MarkdownPreviewPane mp) {
+            double[] m = mp.pageMetrics();
+            if (m == null) {
+                longEnough = "engine chưa trả số đo";
+            } else {
+                longEnough = m[0] > m[1] + 20 ? "dài"
+                        : "ngắn [trang " + Math.round(m[0]) + "px trong khung "
+                                + Math.round(m[1]) + "px]";
+            }
+        }
+        return new String[]{scroll, inside, edges, longEnough};
+    }
+
+    /**
      * Where the vertical space actually went: follow the tallest child at every level
      * and print height / stated preference / minimum. A page that scrolls when it
      * should not is otherwise a guess between five containers.
@@ -628,6 +679,142 @@ public final class SmokeMain {
             return c.getOpacity() > 0.01;
         }
         return true;
+    }
+
+    /**
+     * Rows that do not belong to the folder the picker names. The Files page shows one
+     * table for whichever root is selected, so a stale row is the user reading folder A
+     * while believing it is folder B — the exact confusion the grant flow produced.
+     * "" means every row starts inside {@code root}; an empty table says so instead of
+     * passing silently, because a failed read also leaves zero rows.
+     */
+    private static String rowsOutside(javafx.scene.control.TableView<?> table, String root) {
+        if (table.getItems().isEmpty()) {
+            return "bảng trống khi chọn " + root;
+        }
+        int outside = 0;
+        for (Object item : table.getItems()) {
+            if (item instanceof com.lifedesk.files.FileHit hit
+                    && !hit.path().toString().startsWith(root)) {
+                outside++;
+            }
+        }
+        return outside == 0 ? "" : outside + " dòng không thuộc " + root;
+    }
+
+    /** The line the Files page uses to name the folder its list came from. */
+    private static String crumbText(javafx.scene.Scene scene) {
+        if (scene.lookup("#files-crumb") instanceof javafx.scene.control.Labeled l) {
+            return l.getText();
+        }
+        return "";
+    }
+
+    /** A control the user could actually press inside a subtree, found by its label. */
+    private static javafx.scene.control.Button buttonIn(javafx.scene.Node node, String text) {
+        if (node == null) {
+            return null;
+        }
+        if (node instanceof javafx.scene.control.Button b && text.equals(b.getText())) {
+            return b;
+        }
+        if (node instanceof javafx.scene.Parent p) {
+            for (javafx.scene.Node c : p.getChildrenUnmodifiable()) {
+                javafx.scene.control.Button found = buttonIn(c, text);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Everything a subtree says out loud — the words, not the widget tree. */
+    private static String placeholderText(javafx.scene.Node node) {
+        StringBuilder sb = new StringBuilder();
+        collectText(node, sb);
+        return sb.toString().trim();
+    }
+
+    private static void collectText(javafx.scene.Node node, StringBuilder sb) {
+        if (node == null) {
+            return;
+        }
+        if (node instanceof javafx.scene.control.Labeled l) {
+            sb.append(l.getText()).append(' ');
+        }
+        if (node instanceof javafx.scene.Parent p) {
+            for (javafx.scene.Node c : p.getChildrenUnmodifiable()) {
+                collectText(c, sb);
+            }
+        }
+    }
+
+    private static boolean hasRowNamed(javafx.scene.control.TableView<?> table, String name) {
+        for (Object item : table.getItems()) {
+            if (item instanceof com.lifedesk.files.FileHit hit && hit.name().equals(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** A two-click mouse event, for the handlers that only answer to a double-click. */
+    private static javafx.scene.input.MouseEvent doubleClick() {
+        return new javafx.scene.input.MouseEvent(javafx.scene.input.MouseEvent.MOUSE_CLICKED,
+                0, 0, 0, 0, javafx.scene.input.MouseButton.PRIMARY, 2,
+                false, false, false, false, true, false, false, false, false, false, null);
+    }
+
+    /**
+     * Double-click the subfolder row and check the page both goes deeper and leaves a way
+     * back. Going deeper without a way out is how a read-only browser becomes a trap, and
+     * letting visited subfolders into the picker turns "thư mục đã thêm" into browsing
+     * history.
+     */
+    private static String goIntoSub(javafx.scene.control.TableView<?> shown,
+            javafx.scene.control.ComboBox<?> picker, javafx.scene.Scene scene,
+            java.nio.file.Path sub) {
+        int at = -1;
+        for (int i = 0; i < shown.getItems().size(); i++) {
+            if (shown.getItems().get(i) instanceof com.lifedesk.files.FileHit h
+                    && h.name().equals(sub.getFileName().toString())) {
+                at = i;
+            }
+        }
+        if (at < 0) {
+            return "không thấy thư mục con trong danh sách để mở";
+        }
+        shown.getSelectionModel().select(at);
+        if (shown.getOnMouseClicked() == null) {
+            return "bảng Tệp không còn đáp ứng nháy đúp";
+        }
+        shown.getOnMouseClicked().handle(doubleClick());
+        if (!crumbText(scene).contains(sub.toString())) {
+            return "đã vào thư mục con mà dòng \"đang xem\" vẫn là \"" + crumbText(scene) + "\"";
+        }
+        if (!hasRowNamed(shown, "trong-sub.txt")) {
+            return "vào thư mục con mà không thấy file của nó";
+        }
+        if (sub.toString().equals(String.valueOf(picker.getSelectionModel().getSelectedItem()))) {
+            return "thư mục con bị lẫn vào danh sách thư mục đã thêm";
+        }
+        boolean wayBack = false;
+        for (javafx.scene.Node n : scene.getRoot().lookupAll(".button")) {
+            if (n instanceof javafx.scene.control.Button b && b.getText().startsWith("Về ")
+                    && b.isVisible() && b.isManaged()) {
+                b.fire();
+                wayBack = true;
+            }
+        }
+        if (!wayBack) {
+            return "đang ở thư mục con mà không có nút quay lại thư mục đã thêm";
+        }
+        String backTo = sub.getParent().toString();
+        if (!crumbText(scene).contains(backTo) || crumbText(scene).contains(sub.toString())) {
+            return "bấm nút quay lại rồi mà vẫn ở \"" + crumbText(scene) + "\"";
+        }
+        return "";
     }
 
     /**
@@ -859,6 +1046,75 @@ public final class SmokeMain {
             Thread.sleep(200);
         }
         return "trang thẻ không theo kịp cỡ cửa sổ (engine vẫn lệch sau 2 giây)";
+    }
+
+    /**
+     * Where the review card's words sit horizontally against the middle of the card.
+     *
+     * <p>The presentation page asks WebKit to centre its body, and still inherits the
+     * document page's reading measure (74ch) — a box that wide starts at the left edge of a
+     * wide card, so the text centres inside a column nobody can see and reads as
+     * left-aligned. Only the rendered page knows this; the JavaFX node looks fine.
+     */
+    private static String measureCardCentre() throws Exception {
+        for (int i = 0; i < 10; i++) {
+            java.util.concurrent.CompletableFuture<String> f =
+                    new java.util.concurrent.CompletableFuture<>();
+            javafx.application.Platform.runLater(() -> {
+                try {
+                    javafx.scene.Node card = findNode(
+                            LifeDeskApp.primaryStageRef.getScene().getRoot(),
+                            n -> n instanceof com.lifedesk.markdown.MarkdownPreviewPane);
+                    if (!(card instanceof com.lifedesk.markdown.MarkdownPreviewPane mp)) {
+                        f.complete("không tìm thấy thẻ ôn tập");
+                        return;
+                    }
+                    javafx.scene.web.WebView wv = mp.webViewNode();
+                    if (wv == null) {
+                        f.complete("thẻ ôn tập không có WebView để đo");
+                        return;
+                    }
+                    Object r = wv.getEngine().executeScript(
+                            "var b=document.body.getBoundingClientRect();"
+                                    + "[Math.round(b.left+b.width/2), Math.round(window.innerWidth/2),"
+                                    + " Math.round(b.width), Math.round(window.innerWidth),"
+                                    + " (document.body.innerText||'').replace(/\\s+/g,'').length]"
+                                    + ".join(',')");
+                    String[] p = String.valueOf(r).split(",");
+                    if (p.length != 5) {
+                        f.complete("đo thẻ không trả về số liệu: " + r);
+                        return;
+                    }
+                    double bodyCentre = Double.parseDouble(p[0]);
+                    double viewCentre = Double.parseDouble(p[1]);
+                    double pageW = Double.parseDouble(p[3]);
+                    if (Math.abs(pageW - wv.getWidth()) > 4) {
+                        f.complete("PENDING engine=" + Math.round(pageW)
+                                + " node=" + Math.round(wv.getWidth()));
+                        return;
+                    }
+                    if (Integer.parseInt(p[4]) == 0) {
+                        f.complete("thẻ đang trống, không có chữ nào để căn giữa");
+                        return;
+                    }
+                    double off = Math.abs(bodyCentre - viewCentre);
+                    // Printed either way: a centring check that passes on a card too narrow
+                    // for the measure to bind is a check that measured nothing.
+                    System.out.println("CARD CENTRE bodyCentre=" + p[0] + " viewCentre=" + p[1]
+                            + " bodyW=" + p[2] + " pageW=" + p[3] + " chars=" + p[4]);
+                    f.complete(off <= 2 ? "" : "chữ căn giữa ở cột rộng " + p[2] + "px giữa thẻ "
+                            + p[3] + "px → lệch " + Math.round(off) + "px");
+                } catch (Throwable t) {
+                    f.completeExceptionally(t);
+                }
+            });
+            String res = f.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            if (!res.startsWith("PENDING")) {
+                return res;
+            }
+            Thread.sleep(200);
+        }
+        return "trang thẻ không theo kịp bề rộng cửa sổ khi đo";
     }
 
     /** First 40 characters of a label, single line: enough to name the offender. */
@@ -1102,6 +1358,14 @@ public final class SmokeMain {
                                 }
                             }
                         }
+                        if ("NOTES".equals(want)) {
+                            // The same page at the app's own floor, where the editor's
+                            // toolbar wraps to several rows and the editor is whatever is
+                            // left over — the wide-window numbers say nothing about that.
+                            String[] ns = notesPageState(sp);
+                            reach = (ns[0].isEmpty() && ns[1].isEmpty())
+                                    ? "-" : ns[0] + " | " + ns[1];
+                        }
                         probe.complete(new String[]{
                                 contentW <= viewport + 1 ? "" : "tràn " + Math.round(contentW)
                                         + ">" + Math.round(viewport)
@@ -1135,9 +1399,9 @@ public final class SmokeMain {
                 check(width + "px: " + want + " chữ bị cắt đều còn chỗ đọc"
                         + (res[6].isEmpty() || res[6].equals("-") ? "" : " — " + res[6]),
                         res[6].isEmpty() || res[6].equals("-"));
-                if ("LEARNING".equals(want) || "AI".equals(want)) {
-                    // Asked only of the two views that own their scrolling: thirteen
-                    // no-op passes would inflate the count without measuring anything.
+                if ("LEARNING".equals(want) || "AI".equals(want) || "NOTES".equals(want)) {
+                    // Asked only of the three views that own their scrolling: the rest
+                    // would add no-op passes that inflate the count without measuring.
                     check(width + "px: " + want + " điều khiển chính nằm trong khung nhìn, không phải cuộn cả trang"
                             + (res[7].isEmpty() || res[7].equals("-") ? "" : " — " + res[7]),
                             res[7].isEmpty() || res[7].equals("-"));
@@ -1177,6 +1441,10 @@ public final class SmokeMain {
                         check(width + "px: " + want
                                         + " thẻ ôn tập không hiện thanh cuộn vô nghĩa"
                                         + (cs.isEmpty() ? "" : " — " + cs), cs.isEmpty());
+                        String cc = measureCardCentre();
+                        check(width + "px: " + want
+                                        + " chữ thẻ ôn tập nằm giữa thẻ"
+                                        + (cc.isEmpty() ? "" : " — " + cc), cc.isEmpty());
                     } catch (Exception e) {
                         check(width + "px: " + want + " đọc được trang thẻ ôn tập", false);
                         System.out.println("CARD MEASURE FAILED: " + e);
@@ -1324,7 +1592,53 @@ public final class SmokeMain {
         }
 
         String[][] notes = {
-                {"Kế hoạch tháng 11", "# Kế hoạch tháng 11\n\n## Mục tiêu\n- Hoàn thành báo cáo Q4\n- Chạy 40km trong tháng\n- Đọc xong *Thinking, Fast and Slow*\n\n## Ghi chú\n> Tuần đầu tiên chỉ tập trung vào việc quan trọng nhất.\n\n| Tuần | Trọng tâm |\n|---|---|\n| 1 | Báo cáo |\n| 2 | Ôn thi |\n"},
+                // Deliberately long, and deliberately first: the Notes capture below opens
+                // the note this list returns, and a two-line note fits any window — the
+                // "page must not scroll" measurement would then be true of an empty page.
+                // Real notes are meeting minutes and plans that run past the screen.
+                {"Kế hoạch tháng 11", """
+                        # Kế hoạch tháng 11
+
+                        ## Mục tiêu
+                        - Hoàn thành báo cáo Q4
+                        - Chạy 40km trong tháng
+                        - Đọc xong *Thinking, Fast and Slow*
+
+                        ## Ghi chú
+                        > Tuần đầu tiên chỉ tập trung vào việc quan trọng nhất.
+
+                        | Tuần | Trọng tâm | Ghi chú |
+                        |---|---|---|
+                        | 1 | Báo cáo | Nộp trước thứ Sáu |
+                        | 2 | Ôn thi | Hai buổi mỗi ngày |
+                        | 3 | Chạy bộ | Tăng dần 10km mỗi tuần |
+                        | 4 | Tổng kết | Rà lại toàn bộ đầu việc |
+
+                        ## Chi tiết theo tuần
+                        Tuần 1: dựng khung báo cáo, lấy số liệu tài chính từ app, đối chiếu
+                        với bảng tiến độ của nhóm. Nếu số liệu lệch quá 5% thì phải truy lại
+                        nguồn trước khi viết phần nhận định.
+
+                        Tuần 2: ôn thi giữa kỳ. Hai khung giờ cố định 8h-10h và 20h-21h30,
+                        tuyệt đối không dời sang sau 22h vì ảnh hưởng giấc ngủ.
+
+                        Tuần 3: tăng dần cường độ chạy, giữ nhịp 6:00 mỗi km, thêm một buổi
+                        tập sức mạnh. Nghỉ nếu nhịp tim vượt 165.
+
+                        Tuần 4: tổng kết tháng, cập nhật lại danh sách thói quen, chuyển
+                        những việc chưa xong sang tháng 12 và ghi rõ lý do.
+
+                        ## Rủi ro đã biết
+                        - Báo cáo Q4 phụ thuộc số liệu của phòng tài chính, dễ trễ 2 ngày.
+                        - Lịch họp dày vào tuần 2, cần giữ lại ít nhất 3 khung giờ ôn thi.
+                        - Thời tiết có thể làm hỏng kế hoạch chạy bộ, chuẩn bị phương án
+                          tập trong nhà.
+
+                        ## việc đã chốt
+                        - [x] Đặt lịch họp tổng kết
+                        - [ ] Gửi bản nháp báo cáo cho sếp trước thứ Tư
+                        - [ ] Đăng ký giải chạy giữa tháng 12
+                        """},
                 {"Công thức nấu ăn nhanh", "# Món dưới 20 phút\n\n1. Mì trứng cà chua\n2. Cơm rang dưa bò\n3. Salad ức gà\n\n`nước mắm 1 thìa` + `đường 1/2 thìa`\n"},
                 {"Ghi chú họp 28/10", "## Quyết định\n- Dời deadline sang 05/11\n- Họp lại thứ Sáu 9h\n\n## Việc cần làm\n- [x] Gửi biên bản\n- [ ] Cập nhật bảng tiến độ\n"},
                 {"Ý tưởng dự án cá nhân", "# Ý tưởng\n\n- Ứng dụng theo dõi thói quen cho người mới bắt đầu\n- Newsletter tổng hợp tin công nghệ hằng tuần\n"},
@@ -1670,6 +1984,33 @@ public final class SmokeMain {
                                                 ? "" : " — surface: " + surfaceEdges + ", head: " + headEdges),
                                         surfaceEdges.isEmpty() && headEdges.isEmpty());
                             }
+                            if ("AGENT".equals(v[0])) {
+                                // Same complaint, same shape: a transcript with a composer
+                                // under it does not need a card around either — and the card
+                                // was stealing width from the log.
+                                String logEdges = paintedEdges(scene.lookup(".agent-log"));
+                                String cmdEdges = paintedEdges(scene.lookup(".agent-command"));
+                                check("khung agent không còn viền bọc"
+                                        + (logEdges.isEmpty() && cmdEdges.isEmpty()
+                                                ? "" : " — log: " + logEdges + ", lệnh: " + cmdEdges),
+                                        logEdges.isEmpty() && cmdEdges.isEmpty());
+                                double viewportH = sp.getViewportBounds().getHeight();
+                                double contentH = sp.getContent().getLayoutBounds().getHeight();
+                                check("trang agent không cuộn cả trang [contentH="
+                                        + Math.round(contentH) + " viewportH=" + Math.round(viewportH)
+                                        + "]", contentH <= viewportH + 1);
+                            }
+                            if ("NOTES".equals(v[0])) {
+                                String[] ns = notesPageState(sp);
+                                check("bài ghi chú đo dài hơn khung xem trước [" + ns[3] + "]",
+                                        "dài".equals(ns[3]));
+                                check("trang ghi chú không cuộn cả trang"
+                                        + (ns[0].isEmpty() ? "" : " — " + ns[0]), ns[0].isEmpty());
+                                check("ô soạn thảo ghi chú còn trong khung nhìn"
+                                        + (ns[1].isEmpty() ? "" : " — " + ns[1]), ns[1].isEmpty());
+                                check("hai cột ghi chú không còn khung bọc ngoài"
+                                        + (ns[2].isEmpty() ? "" : " — " + ns[2]), ns[2].isEmpty());
+                            }
                             // A squeezed toolbar cuts control text to "Chia …", "Thẻ li…".
                             // That was found by eye once; it should not need an eye again.
                             java.util.List<String> clipped = new java.util.ArrayList<>();
@@ -1680,6 +2021,8 @@ public final class SmokeMain {
                                     + " children=" + ((javafx.scene.layout.Pane) sp.getContent()).getChildren().size()
                                     + " viewport=" + Math.round(viewport)
                                     + " content=" + Math.round(contentW)
+                                    + " | H viewport=" + Math.round(sp.getViewportBounds().getHeight())
+                                    + " content=" + Math.round(sp.getContent().getLayoutBounds().getHeight())
                                     + (contentW > viewport + 1 ? "  <== OVERFLOW" : "  ok"));
                             if (System.getProperty("lifedesk.debug.ui") != null) {
                                 dump(sp.getContent(), 0);
@@ -2045,6 +2388,12 @@ public final class SmokeMain {
                 });
                 onLearning.get(10, java.util.concurrent.TimeUnit.SECONDS);
                 Thread.sleep(1200); // let the card finish painting in the starting theme
+                // The wide window is where a card's centring can fail quietly: the page
+                // inherits a 74ch reading measure, and at 1080px that measure is wider than
+                // the card, so the text looks perfectly centred at exactly one size.
+                String ccWide = measureCardCentre();
+                check("cửa sổ rộng: chữ thẻ ôn tập nằm giữa thẻ"
+                        + (ccWide.isEmpty() ? "" : " — " + ccWide), ccWide.isEmpty());
                 String darkCss = reviewCardBackground();
                 java.awt.image.BufferedImage darkShot = captureScene();
                 long darkPatch = cardPatchBrightness(darkShot);
@@ -2434,6 +2783,162 @@ public final class SmokeMain {
                 System.out.println("PERF " + perf.get(120, java.util.concurrent.TimeUnit.SECONDS));
             } catch (Exception e) {
                 System.out.println("PERF measurement FAILED: " + e);
+            }
+        }
+        // ---- Files: the folder the selector names must be the folder the table shows.
+        // Confirming a grant used to leave the page browsing the FIRST folder on the list,
+        // so the error that popped up named a path nobody had picked in that step — and an
+        // unreadable folder answered with a modal whose only button was "Đồng ý".
+        if (captured && LifeDeskApp.mainWindowRef != null) {
+            try {
+                java.nio.file.Path dirA = java.nio.file.Files.createTempDirectory("lifedesk-a");
+                java.nio.file.Path dirB = java.nio.file.Files.createTempDirectory("lifedesk-b");
+                java.nio.file.Files.writeString(dirA.resolve("ao.txt"), "a");
+                java.nio.file.Files.writeString(dirB.resolve("be.txt"), "b");
+                java.nio.file.Path dirDead = java.nio.file.Files.createTempDirectory("lifedesk-dead");
+                java.nio.file.Files.delete(dirDead);
+                final String a = dirA.toAbsolutePath().normalize().toString();
+                final String b = dirB.toAbsolutePath().normalize().toString();
+                final String dead = dirDead.toAbsolutePath().normalize().toString();
+                java.util.concurrent.CompletableFuture<String[]> filesProbe =
+                        new java.util.concurrent.CompletableFuture<>();
+                javafx.application.Platform.runLater(() -> {
+                    try {
+                        com.lifedesk.app.AppContext live = LifeDeskApp.mainWindowRef.context();
+                        live.config().allowedRoots.clear();
+                        live.config().allowedRoots.add(a);
+                        live.config().allowedRoots.add(b);
+                        live.config().allowedRoots.add(dead);
+                        live.files().setAllowedRoots(live.config().allowedRoots);
+                        LifeDeskApp.mainWindowRef.showView(com.lifedesk.ui.MainWindow.ViewId.FILES);
+                        var scene = LifeDeskApp.primaryStageRef.getScene();
+                        scene.getRoot().applyCss();
+                        scene.getRoot().layout();
+                        // Inside the page, not the scene: the theme picker in the top bar is
+                        // a ComboBox too, and scene.lookup would find it first.
+                        Object combo = scene.lookup(".content-area .combo-box");
+                        Object table = scene.lookup(".content-area .table-view");
+                        if (!(combo instanceof javafx.scene.control.ComboBox<?> picked)
+                                || !(table instanceof javafx.scene.control.TableView<?> shown)) {
+                            filesProbe.complete(new String[]{"không thấy ô chọn thư mục hoặc bảng",
+                                    "-", "-", "-", "-"});
+                            return;
+                        }
+                        // The selection is moved programmatically, so the page's handler is
+                        // called too — a skin is free to fire onAction or not for that.
+                        Runnable go = () -> {
+                            if (picked.getOnAction() != null) {
+                                picked.getOnAction().handle(new javafx.event.ActionEvent());
+                            }
+                        };
+                        int windowsBefore = javafx.stage.Window.getWindows().size();
+                        picked.getSelectionModel().select(1);
+                        go.run();
+                        String wrongB = rowsOutside(shown, b);
+                        picked.getSelectionModel().select(0);
+                        go.run();
+                        String wrongA = rowsOutside(shown, a);
+                        // The page has to say which folder its list came from — that line is
+                        // most of the answer to "chức năng Tệp là gì" once folders exist.
+                        String crumbAfterA = crumbText(scene);
+                        if (!crumbAfterA.contains(a)) {
+                            wrongA += " (dòng \"đang xem\" là \"" + crumbAfterA + "\")";
+                        }
+                        picked.getSelectionModel().select(2);
+                        go.run();
+                        String stale = shown.getItems().isEmpty() ? ""
+                                : "bảng vẫn còn " + shown.getItems().size()
+                                        + " dòng của thư mục khác khi thư mục đang chọn đọc không được";
+                        int extraWindows = javafx.stage.Window.getWindows().size() - windowsBefore;
+                        String modal = extraWindows > 0
+                                ? "vẫn bật " + extraWindows + " hộp thoại chặn thao tác" : "";
+                        // The failure answer lives in the table itself, not in a dialog, so
+                        // it is read from the placeholder the now-empty list shows.
+                        javafx.scene.Node fail = shown.getPlaceholder();
+                        String where = placeholderText(fail);
+                        String inline = "";
+                        if (!where.contains(dead)) {
+                            inline = "bảng không nói thư mục nào đọc không được"
+                                    + (where.isBlank() ? "" : " (chữ hiện ra: " + where + ")");
+                        } else if (buttonIn(fail, "Bỏ khỏi danh sách") == null) {
+                            inline = "không có nút 'Bỏ khỏi danh sách'";
+                        } else if (buttonIn(fail, "Thử lại") == null) {
+                            inline = "không có nút 'Thử lại'";
+                        } else {
+                            buttonIn(fail, "Bỏ khỏi danh sách").fire();
+                            if (live.config().allowedRoots.contains(dead)) {
+                                inline = "nút bỏ không xoá được thư mục chết khỏi cấu hình";
+                            }
+                        }
+                        int afterRevoke = picked.getItems().size();
+                        // Granting is the step that was reported: confirming one folder left
+                        // the page browsing another. RootGrants writes the config and hands the
+                        // folder to the page; that half is mirrored here, the chooser is not.
+                        java.nio.file.Path dirNew =
+                                java.nio.file.Files.createTempDirectory("lifedesk-grant");
+                        java.nio.file.Files.writeString(dirNew.resolve("cy.txt"), "c");
+                        java.nio.file.Path sub = dirNew.resolve("sub");
+                        java.nio.file.Files.createDirectory(sub);
+                        java.nio.file.Files.writeString(sub.resolve("trong-sub.txt"), "s");
+                        String c = dirNew.toAbsolutePath().normalize().toString();
+                        live.config().allowedRoots.add(c);
+                        live.files().setAllowedRoots(live.config().allowedRoots);
+                        String grant = "không lấy được trang Tệp để cấp quyền";
+                        String subBad = "";
+                        if (LifeDeskApp.mainWindowRef.openedView(
+                                com.lifedesk.ui.MainWindow.ViewId.FILES)
+                                instanceof com.lifedesk.ui.views.FilesView page) {
+                            page.showGranted(dirNew);
+                            Object shownRoot = picked.getSelectionModel().getSelectedItem();
+                            if (!c.equals(String.valueOf(shownRoot))) {
+                                grant = "vừa cấp quyền " + c + " mà ô chọn vẫn là " + shownRoot;
+                            } else if (shown.getItems().isEmpty()) {
+                                grant = "cấp quyền xong bảng vẫn trống";
+                            } else if (buttonIn(shown.getPlaceholder(), "Bỏ khỏi danh sách") != null) {
+                                grant = "thư mục đọc được vẫn bị báo lỗi đọc";
+                            } else if (!hasRowNamed(shown, "cy.txt")) {
+                                grant = "bảng không hiện file cy.txt của thư mục vừa cấp";
+                            } else {
+                                grant = rowsOutside(shown, c);
+                                if (grant.isEmpty() && !crumbText(scene).contains(c)) {
+                                    grant = "dòng \"đang xem\" không theo thư mục vừa cấp ("
+                                            + crumbText(scene) + ")";
+                                }
+                                if (grant.isEmpty()) {
+                                    subBad = goIntoSub(shown, picked, scene, sub);
+                                }
+                            }
+                        }
+                        filesProbe.complete(new String[]{wrongA + wrongB, stale, modal, inline,
+                                String.valueOf(afterRevoke), grant, subBad});
+                    } catch (Throwable t) {
+                        filesProbe.completeExceptionally(t);
+                    }
+                });
+                String[] fr = filesProbe.get(20, java.util.concurrent.TimeUnit.SECONDS);
+                check("bảng Tệp hiện đúng thư mục đang chọn"
+                        + (fr[0].isEmpty() ? "" : " — " + fr[0]), fr[0].isEmpty());
+                check("thư mục đọc không được không để lại danh sách cũ trên bảng"
+                        + (fr[1].isEmpty() ? "" : " — " + fr[1]), fr[1].isEmpty());
+                check("lỗi đọc thư mục không còn là hộp thoại chỉ có nút Đồng ý"
+                        + (fr[2].isEmpty() ? "" : " — " + fr[2]), fr[2].isEmpty());
+                check("lỗi đọc thư mục có cách xử lý ngay tại chỗ"
+                        + (fr[3].isEmpty() ? "" : " — " + fr[3]), fr[3].isEmpty());
+                check("nút bỏ loại đúng thư mục chết khỏi danh sách (còn " + fr[4] + ")",
+                        "2".equals(fr[4]));
+                check("cấp quyền thư mục nào thì hiện đúng thư mục đó"
+                        + (fr[5].isEmpty() ? "" : " — " + fr[5]), fr[5].isEmpty());
+                check("nháy đúp thư mục con thì vào được, và còn đường quay lại"
+                        + (fr[6].isEmpty() ? "" : " — " + fr[6]), fr[6].isEmpty());
+                // The shot is for a person: the checks above say the numbers are right,
+                // this one shows what the page looks like with a folder actually open.
+                Path grantedShot = screenshot.toAbsolutePath().getParent()
+                        .resolve("ui-smoke-files-granted.png");
+                javax.imageio.ImageIO.write(captureScene(), "png", grantedShot.toFile());
+                System.out.println("Files granted snapshot: " + grantedShot);
+            } catch (Exception e) {
+                check("đo được trang Tệp", false);
+                System.out.println("FILES probe FAILED: " + e);
             }
         }
         // ---- AI chat round-trip: ask several questions in a row, then measure and

@@ -61,7 +61,7 @@ public class AgentView extends View {
             cards.getChildren().add(workflowCard(wf));
         }
 
-        // ---- step log inside a panel that owns the remaining height
+        // ---- step log: the region that owns the remaining height
         Label logTitle = new Label("Nhật ký thao tác");
         logTitle.getStyleClass().add("section-label");
         logCount.getStyleClass().add("chip");
@@ -94,7 +94,7 @@ public class AgentView extends View {
         VBox.setVgrow(logScroll, Priority.ALWAYS);
 
         VBox logPanel = new VBox(8, logHead, logScroll);
-        logPanel.getStyleClass().add("panel");
+        logPanel.getStyleClass().add("agent-log");
         VBox.setVgrow(logPanel, Priority.ALWAYS);
 
         // ---- command bar
@@ -112,7 +112,7 @@ public class AgentView extends View {
         hint.getStyleClass().add("chat-hint");
 
         VBox commandPanel = new VBox(8, commandBar, hint);
-        commandPanel.getStyleClass().add("panel");
+        commandPanel.getStyleClass().add("agent-command");
 
         VBox root = page(header, sectionLabel, cards, logPanel, commandPanel);
         VBox.setVgrow(logPanel, Priority.ALWAYS);
@@ -135,18 +135,10 @@ public class AgentView extends View {
         HBox actions = new HBox(10, stepCount, spacer, run);
         actions.setAlignment(Pos.CENTER_LEFT);
 
-        StringBuilder stepsText = new StringBuilder();
-        for (AgentService.WorkflowStep step : wf.steps()) {
-            if (stepsText.length() > 0) {
-                stepsText.append("  ·  ");
-            }
-            stepsText.append(step.label());
-        }
-        Label steps = new Label(stepsText.toString());
-        steps.getStyleClass().add("chat-hint");
-        steps.setWrapText(true);
-
-        VBox card = new VBox(6, name, desc, steps, actions);
+        // The steps are the description split in two, and every one of them is printed in
+        // the log the moment the workflow runs. Listing them a third time before the click
+        // made each card three lines taller to say nothing new.
+        VBox card = new VBox(6, name, desc, actions);
         card.getStyleClass().add("card");
         card.setMaxWidth(Double.MAX_VALUE);
         return card;

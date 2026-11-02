@@ -136,10 +136,15 @@ public class MarkdownService {
     public String wrapPresentationPage(String bodyHtml, ThemeManager.PreviewPalette palette) {
         return wrap(bodyHtml, palette, """
                   html, body { height: 100%%; }
+                  /* The card centres its text inside a column that is itself centred: the
+                     document page's 74ch measure is inherited, and a capped box with
+                     "margin: 0" sits against the left edge of a wide card — the words then
+                     centre inside a column nobody can see. Auto margins keep the readable
+                     measure and put it in the middle. */
                   body { box-sizing: border-box; display: flex; flex-direction: column;
                          align-items: center;
                          justify-content: center; font-size: 30px; line-height: 1.5;
-                         text-align: center; margin: 0; padding: 0 40px; }
+                         text-align: center; margin: 0 auto; padding: 0 40px; }
                   h1, h2, h3, h4 { border-bottom: none; margin: 10px 0; }
                   p { margin: 8px 0; }
                   img.math-display { margin: 18px auto; }

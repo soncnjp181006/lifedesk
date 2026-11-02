@@ -5,6 +5,7 @@ import com.lifedesk.files.FileHit;
 import com.lifedesk.files.FileSearchOptions;
 import com.lifedesk.ui.Dialogs;
 import com.lifedesk.ui.MainWindow;
+import com.lifedesk.ui.RootGrants;
 import com.lifedesk.ui.View;
 import com.lifedesk.ui.components.EmptyState;
 import com.lifedesk.ui.components.IconView;
@@ -42,7 +43,17 @@ public class FilesView extends View {
     private final TableView<FileHit> table = new TableView<>();
     private final TextField nameQuery = new TextField();
     private final Label scopeNote = new Label();
+    /** The folder on screen — the page answers "where am I looking?" before anything else. */
+    private final Label crumb = new Label();
+    /** Appears only inside a subfolder, and names the granted folder it goes back to. */
+    private final Button crumbUp = new Button();
     private javafx.concurrent.Task<List<FileHit>> searchTask;
+    /** The "nothing added yet" placeholder — the one state with no folder to name. */
+    private Node emptyPlaceholder;
+    /** Shown only while a search is actually running. */
+    private Button searchCancelBtn;
+    /** The folder whose files are on screen; null when the table shows nothing. */
+    private Path shownDir;
 
     public FilesView(AppContext ctx, MainWindow main) {
         super(ctx, main);
@@ -55,16 +66,28 @@ public class FilesView extends View {
 
     @Override
     protected Node build() {
-        Button addRoot = new Button("Cấp quyền thư mục", new IconView("plus", 15));
+        // "Cấp quyền thư mục" is security vocabulary. The button adds a folder to look
+        // in; the consent it implies is spelled out in the dialog that follows, where it
+        // can be read before anything is stored.
+        Button addRoot = new Button("Thêm thư mục", new IconView("plus", 15));
+        addRoot.getStyleClass().add("primary-btn");
         addRoot.setOnAction(e -> addAllowedRoot());
-        // Title echoes the rail label ("Tệp") and the subtitle carries the read-only
-        // scope that used to live in the title itself.
-        HBox header = toolbar(null, addRoot);
+        // The line that used to sit here restated the rail label. What a file page needs
+        // at the top is where it is looking, so the spot now carries the folder on screen.
+        HBox location = new HBox(8, crumb, crumbUp);
+        location.setAlignment(Pos.CENTER_LEFT);
+        crumb.getStyleClass().add("dim-label");
+        crumb.setWrapText(true);
+        crumb.setId("files-crumb");
+        crumbUp.setVisible(false);
+        crumbUp.setManaged(false);
+        crumbUp.setOnAction(e -> browse(rootCombo.getValue()));
+        HBox header = toolbar(location, addRoot);
 
         scopeNote.getStyleClass().add("dim-label");
         scopeNote.setWrapText(true);
-        scopeNote.setText("LifeDesk CHỈ đọc các thư mục bạn cấp quyền. Không xóa/đổi tên/di chuyển file; "
-                + "không quét toàn bộ ổ đĩa; không thu thập nội dung file.");
+        scopeNote.setText("LifeDesk chỉ liệt kê file trong những thư mục bạn thêm ở đây"
+                + " — không xóa, không đổi tên, không di chuyển, và không quét cả ổ đĩa.");
 
         rootCombo.setCellFactory(v -> new ListCell<>() {
             @Override
@@ -78,7 +101,6 @@ public class FilesView extends View {
         nameQuery.setPromptText("Tên file chứa…");
         nameQuery.setPrefColumnCount(16);
         rootCombo.setPrefWidth(240);
-        rootCombo.setPromptText("Thư mục đã cấp quyền");
         Button searchBtn = new Button("Tìm kiếm", new IconView("search", 15));
         searchBtn.getStyleClass().add("primary-btn");
         searchBtn.setOnAction(e -> runSearch());
@@ -88,6 +110,11 @@ public class FilesView extends View {
                 searchTask.cancel(true);
             }
         });
+        // A cancel button that cancels nothing is a button that teaches the user to
+        // ignore buttons. It appears with the search it belongs to.
+        cancelSearch.setVisible(false);
+        cancelSearch.setManaged(false);
+        searchCancelBtn = cancelSearch;
 
         HBox searchRow = new HBox(8, rootCombo, nameQuery, searchBtn, cancelSearch);
         searchRow.setAlignment(Pos.CENTER_LEFT);
@@ -95,8 +122,11 @@ public class FilesView extends View {
         HBox.setHgrow(rootCombo, Priority.SOMETIMES);
 
         buildTable();
-        table.setPlaceholder(EmptyState.withAction("folder",
-                "Chưa chọn thư mục nào để duyệt.", "Cấp quyền thư mục", () -> addAllowedRoot()));
+        emptyPlaceholder = EmptyState.withAction("folder",
+                "Chưa có thư mục nào. Thêm một thư mục (Tài liệu, Downloads…) để xem và tìm"
+                        + " file ở đó — trợ lý AI cũng tìm được file trong thư mục này.",
+                "Thêm thư mục", this::addAllowedRoot);
+        table.setPlaceholder(emptyPlaceholder);
 
         VBox.setVgrow(table, Priority.ALWAYS);
         refreshRoots();
@@ -159,30 +189,56 @@ public class FilesView extends View {
     }
 
     private void refreshRoots() {
-        Path selected = rootCombo.getValue();
+        refreshRoots(shownDir != null ? shownDir : rootCombo.getValue());
+    }
+
+    /**
+     * Re-read the granted folders and put back the one the user is looking at.
+     *
+     * <p>Falling back to the first entry is what made a grant look like a different
+     * folder: the dialog confirmed "…\New folder", the selector then jumped to "…\User"
+     * (the first root on the list) and the error that followed named a path nobody had
+     * picked in that step.
+     */
+    private void refreshRoots(Path prefer) {
         rootCombo.getItems().setAll(ctx.files().allowedRoots());
-        if (selected != null && rootCombo.getItems().contains(selected)) {
-            rootCombo.getSelectionModel().select(selected);
+        if (prefer != null && rootCombo.getItems().contains(prefer)) {
+            rootCombo.getSelectionModel().select(prefer);
         } else if (!rootCombo.getItems().isEmpty()) {
             rootCombo.getSelectionModel().selectFirst();
         }
         // An empty root list used to leave a dropdown that silently opened nothing.
         boolean none = rootCombo.getItems().isEmpty();
         rootCombo.setDisable(none);
-        rootCombo.setPromptText(none ? "Chưa cấp quyền thư mục nào" : "Thư mục đã cấp quyền");
+        rootCombo.setPromptText(none ? "Chưa thêm thư mục nào" : "Thư mục đã thêm");
+        if (none) {
+            table.setPlaceholder(emptyPlaceholder);
+        }
     }
 
     private void addAllowedRoot() {
-        java.nio.file.Path granted = com.lifedesk.ui.RootGrants.grantViaDialog(ctx, main,
-                "Cấp quyền truy cập thư mục cho LifeDesk",
-                "Cho phép LifeDesk đọc file trong:\n" + "%s"
-                        + "\n(Đồng nghĩa với cho phép agent tìm kiếm file trong thư mục này)");
-        if (granted == null) {
-            return;
+        Path granted = RootGrants.grantViaDialog(ctx, main,
+                "Chọn thư mục để LifeDesk đọc được",
+                "Cho phép đọc thư mục này?",
+                "LifeDesk sẽ liệt kê được file trong:\n%s\n\n"
+                        + "Trợ lý AI cũng tìm được file ở đó khi bạn hỏi. LifeDesk không xóa,"
+                        + " không đổi tên và không di chuyển file.");
+        if (granted != null) {
+            showGranted(granted);
         }
+    }
+
+    /**
+     * A folder has just been allowed: keep it and put it on screen.
+     *
+     * <p>One step, not two, because the halves used to disagree — the selector fell back to
+     * the first folder on the list while the table was meant to show the chosen one, so
+     * confirming "…\New folder" could browse (and then error about) "…\User".
+     */
+    public void showGranted(Path granted) {
         saveConfig();
-        refreshRoots();
-        browse();
+        refreshRoots(granted);
+        browse(granted);
     }
 
     private void browse() {
@@ -193,31 +249,99 @@ public class FilesView extends View {
     }
 
     private void browse(Path dir) {
+        Path root = rootCombo.getValue();
+        showLocation(dir, root);
         if (!ctx.files().isAllowed(dir)) {
-            Dialogs.warn("Ngoài phạm vi", "Thư mục này chưa được cấp quyền truy cập.");
+            Dialogs.warn("Ngoài phạm vi", "Thư mục này nằm ngoài những thư mục bạn đã thêm.");
             return;
         }
         try {
-            table.getItems().setAll(ctx.files().list(dir));
-            if (!rootCombo.getItems().contains(dir)) {
-                rootCombo.getItems().add(dir);
-                rootCombo.getSelectionModel().select(dir);
-            }
+            List<FileHit> rows = ctx.files().list(dir);
+            table.getItems().setAll(rows);
+            shownDir = dir;
+            // The sentence under an empty list has to match why it is empty: a folder with
+            // nothing in it is not a folder that cannot be read, and an error left over from
+            // the previous folder would say the wrong one.
+            table.setPlaceholder(rows.isEmpty()
+                    ? new EmptyState("folder", dir + " chưa có file nào.")
+                    : emptyPlaceholder);
         } catch (RuntimeException e) {
-            Dialogs.error("Không đọc được thư mục", e.getMessage());
+            // Never leave the previous folder's list on screen under a different name:
+            // the failure takes its place, with the way out of it.
+            table.getItems().clear();
+            shownDir = null;
+            showReadFailure(dir, e.getMessage());
         }
+    }
+
+    /**
+     * What the table is showing, in one line, plus the way back.
+     *
+     * <p>Subfolders deliberately do not go into the picker: that list is the folders the
+     * user allowed, and filling it with every folder visited turned it into history. The
+     * picker keeps naming the granted folder, this line names the one on screen.
+     */
+    private void showLocation(Path dir, Path root) {
+        if (dir == null) {
+            crumb.setText("");
+            crumbUp.setVisible(false);
+            crumbUp.setManaged(false);
+            return;
+        }
+        crumb.setText("Đang xem: " + dir);
+        boolean insideSub = root != null && !root.equals(dir);
+        if (root != null) {
+            // A drive root has no last name element, so fall back to the path itself.
+            Object name = root.getFileName();
+            crumbUp.setText("Về " + (name != null ? name : root));
+        }
+        crumbUp.setVisible(insideSub);
+        crumbUp.setManaged(insideSub);
+    }
+
+    /**
+     * A grant that no longer reads — folder deleted, moved, or refused by Windows — used
+     * to answer with a modal whose only button was "Đồng ý": the user acknowledged a
+     * problem they could not act on, and the page behind it still showed some other
+     * folder. The reason and the two ways out now sit in the list the failure replaced.
+     */
+    private void showReadFailure(Path dir, String reason) {
+        String why = reason == null || reason.isBlank() ? "không rõ lý do" : reason;
+        Button forget = new Button("Bỏ khỏi danh sách", new IconView("trash", 14));
+        forget.setOnAction(e -> revoke(dir));
+        Button retry = new Button("Thử lại");
+        retry.setOnAction(e -> browse(dir));
+        table.setPlaceholder(new EmptyState("triangle-alert",
+                "Không đọc được " + dir + "\n" + why, forget, retry));
+        main.status("Không đọc được " + dir.getFileName() + " — " + why);
+    }
+
+    /** Drop a dead grant, then show whatever still works. */
+    private void revoke(Path dir) {
+        ctx.config().allowedRoots.remove(dir.toString());
+        ctx.files().setAllowedRoots(ctx.config().allowedRoots);
+        saveConfig();
+        table.getItems().clear();
+        shownDir = null;
+        showLocation(null, null);
+        refreshRoots();
+        if (!rootCombo.getItems().isEmpty()) {
+            browse(rootCombo.getValue());
+        }
+        main.status("Đã bỏ " + dir.getFileName() + " khỏi danh sách thư mục");
     }
 
     private void runSearch() {
         Path root = rootCombo.getValue();
         if (root == null) {
-            Dialogs.info("Chọn thư mục", "Hãy chọn một thư mục đã cấp quyền.");
+            Dialogs.info("Chọn thư mục", "Thêm một thư mục trước đã, rồi tìm trong đó.");
             return;
         }
         FileSearchOptions options = new FileSearchOptions();
         options.root = root;
         options.nameQuery = nameQuery.getText();
         main.status("Đang tìm kiếm trong " + root + "…");
+        searchRunning(true);
 
         searchTask = new javafx.concurrent.Task<>() {
             @Override
@@ -228,11 +352,31 @@ public class FilesView extends View {
         searchTask.setOnSucceeded(e -> {
             List<FileHit> hits = searchTask.getValue();
             table.getItems().setAll(hits);
+            if (hits.isEmpty()) {
+                table.setPlaceholder(new EmptyState("search",
+                        "Không có file nào tên chứa \"" + options.nameQuery + "\" trong "
+                                + root + "."));
+            }
+            searchRunning(false);
             main.status("Tìm kiếm xong: " + hits.size() + " kết quả (giới hạn " + options.maxResults + ")");
         });
-        searchTask.setOnFailed(e -> main.status("Tìm kiếm lỗi: " + searchTask.getException()));
-        searchTask.setOnCancelled(e -> main.status("Đã hủy tìm kiếm"));
+        searchTask.setOnFailed(e -> {
+            searchRunning(false);
+            main.status("Tìm kiếm lỗi: " + searchTask.getException());
+        });
+        searchTask.setOnCancelled(e -> {
+            searchRunning(false);
+            main.status("Đã hủy tìm kiếm");
+        });
         ctx.executors().io().execute(searchTask);
+    }
+
+    /** The cancel button belongs to a running search, and to nothing else. */
+    private void searchRunning(boolean running) {
+        if (searchCancelBtn != null) {
+            searchCancelBtn.setVisible(running);
+            searchCancelBtn.setManaged(running);
+        }
     }
 
     private void openSelected() {

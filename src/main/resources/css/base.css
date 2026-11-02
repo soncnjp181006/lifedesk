@@ -664,16 +664,28 @@
     -fx-background-color: -ld-elev;
 }
 
+/* The editor is the page, not a field standing on it: it fills its whole column, so
+   the box the shared .text-area rule draws was a second frame inside the window's own.
+   The 1px edge stays (transparent until focused) because a border that appears on focus
+   also moves the text by a pixel — the ring is wanted, the jiggle is not. */
 .notes-editor {
     -fx-font-family: "Cascadia Code", "Consolas", "Segoe UI Mono", monospace;
     -fx-font-size: 13px;
-    -fx-background-color: -ld-bg;
+    -fx-background-color: transparent;
     -fx-text-fill: -ld-text;
     -fx-prompt-text-fill: -ld-text-dim;
+    -fx-border-color: transparent;
+    -fx-border-width: 1;
+}
+
+.notes-editor:focused {
+    -fx-border-color: -ld-accent;
+    -fx-border-width: 1;
+    -fx-padding: 7 11 7 11;
 }
 
 .notes-editor .content {
-    -fx-background-color: -ld-bg;
+    -fx-background-color: transparent;
     -fx-padding: 18 26 18 26;
 }
 
@@ -1139,11 +1151,14 @@
 .tree-view .tree-cell .arrow { -fx-background-color: -ld-text-dim; }
 
 /* Markdown formatting toolbar above the note editor */
+/* The editor's action row: no filled band (that was a box on top of the page's own
+   frame), but the hairline stays — it is what separates the controls from the document
+   below, the same job the split's divider and the list's edge do. */
 .md-toolbar {
-    -fx-background-color: -ld-surface;
+    -fx-background-color: transparent;
     -fx-border-color: -ld-border;
     -fx-border-width: 0 0 1 0;
-    -fx-padding: 4 10 4 10;
+    -fx-padding: 4 10 6 10;
 }
 
 .md-toolbar-btn {
@@ -1683,6 +1698,24 @@
     -fx-padding: 6 10 6 10;
 }
 
+/* The agent page is a transcript over a composer — the same shape as chat. Each log row
+   already carries its own fill and status line, so a card around the whole column drew a
+   frame inside a frame and cost the page its width. */
+.agent-log,
+.agent-command {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 0;
+}
+
+/* The log's own scroll pane has to stop painting the default control well, or the card
+   that went away simply comes back as the pane's background. */
+.agent-log .scroll-pane,
+.agent-log .scroll-pane > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+}
+
 .log-row {
     -fx-background-color: -ld-surface;
     -fx-background-radius: 8;
@@ -1762,12 +1795,13 @@
    17. Markdown preview shell
    ====================================================================== */
 
+/* The rendered note carries its own page background from the palette, so a card around
+   it was a frame around a page. The split's hairline already says where the markdown
+   source ends and the rendering begins. */
 .md-preview-wrap {
-    -fx-background-color: -ld-card;
-    -fx-border-color: -ld-border;
-    -fx-border-radius: 8;
-    -fx-border-width: 1;
-    -fx-background-radius: 8;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-border-width: 0;
 }
 
 /* ======================================================================

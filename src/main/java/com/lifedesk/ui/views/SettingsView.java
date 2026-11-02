@@ -158,17 +158,19 @@ public class SettingsView extends View {
     private Node buildRootsTab() {
         VBox list = new VBox(6);
         rebuildRootsList(list);
-        Button add = new Button("Cấp quyền thư mục", new IconView("plus", 15));
+        Button add = new Button("Thêm thư mục", new IconView("plus", 15));
         add.getStyleClass().add("primary-btn");
         add.setOnAction(e -> {
             if (com.lifedesk.ui.RootGrants.grantViaDialog(ctx, main,
-                    "Cấp quyền đọc cho LifeDesk",
-                    "Cho phép đọc file trong:\n%s") != null) {
+                    "Chọn thư mục để LifeDesk đọc được",
+                    "Cho phép đọc thư mục này?",
+                    "LifeDesk sẽ liệt kê được file trong:\n%s\n\n"
+                            + "LifeDesk không xóa, không đổi tên và không di chuyển file.") != null) {
                 saveConfig();
                 rebuildRootsList(list);
             }
         });
-        VBox box = new VBox(10, Fx.wrapped("Các thư mục được cấp quyền (trình quản lý tệp):"),
+        VBox box = new VBox(10, Fx.wrapped("Những thư mục LifeDesk được đọc (trình quản lý tệp):"),
                 add, list);
         return wrapScroll(box);
     }

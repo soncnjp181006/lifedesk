@@ -30,7 +30,7 @@ public final class PathGuard {
     /** Returns the candidate or throws IllegalArgumentException when outside allowed roots. */
     public static Path requireInside(List<Path> roots, Path candidate) {
         if (!isInside(roots, candidate)) {
-            throw new IllegalArgumentException("Đường dẫn nằm ngoài các thư mục được cấp quyền: " + candidate);
+            throw new IllegalArgumentException("Đường dẫn nằm ngoài những thư mục đã cho phép: " + candidate);
         }
         return candidate.toAbsolutePath().normalize();
     }
