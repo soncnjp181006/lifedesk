@@ -1,7 +1,7 @@
 package com.lifedesk.markdown;
 
-import com.lifedesk.theme.ThemeManager;
 import org.commonmark.Extension;
+import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension;
 import org.commonmark.ext.gfm.tables.TablesExtension;
 import org.commonmark.ext.task.list.items.TaskListItemsExtension;
 import org.commonmark.node.Node;
@@ -28,7 +28,8 @@ public class MarkdownService {
 
     private final List<Extension> extensions = List.of(
             TablesExtension.create(),
-            TaskListItemsExtension.create());
+            TaskListItemsExtension.create(),
+            StrikethroughExtension.create());
     private final Parser parser = Parser.builder().extensions(extensions).build();
     private final HtmlRenderer renderer = HtmlRenderer.builder()
             .escapeHtml(true)
@@ -121,81 +122,5 @@ public class MarkdownService {
         }
         m.appendTail(sb);
         return sb.toString();
-    }
-
-    /** Wrap rendered HTML in a themed page for the preview WebView. No scripts are included. */
-    public String wrapPage(String bodyHtml, ThemeManager.PreviewPalette palette) {
-        return wrap(bodyHtml, palette, "");
-    }
-
-    /**
-     * Presentation variant for the flashcard board: the content is large and
-     * centered in the viewport (Quizlet-style), instead of a document flowing
-     * from the top-left of a huge empty card.
-     */
-    public String wrapPresentationPage(String bodyHtml, ThemeManager.PreviewPalette palette) {
-        return wrap(bodyHtml, palette, """
-                  html, body { height: 100%%; }
-                  /* The card centres its text inside a column that is itself centred: the
-                     document page's 74ch measure is inherited, and a capped box with
-                     "margin: 0" sits against the left edge of a wide card — the words then
-                     centre inside a column nobody can see. Auto margins keep the readable
-                     measure and put it in the middle. */
-                  body { box-sizing: border-box; display: flex; flex-direction: column;
-                         align-items: center;
-                         justify-content: center; font-size: 30px; line-height: 1.5;
-                         text-align: center; margin: 0 auto; padding: 0 40px; }
-                  h1, h2, h3, h4 { border-bottom: none; margin: 10px 0; }
-                  p { margin: 8px 0; }
-                  img.math-display { margin: 18px auto; }
-                  pre { text-align: left; }
-                  table { text-align: left; margin: 14px auto; }
-                  blockquote { border-left: none; color: %s; font-style: italic; }
-                """.formatted(palette.accent()));
-    }
-
-    private String wrap(String bodyHtml, ThemeManager.PreviewPalette palette, String extraCss) {
-        return """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                <meta charset="utf-8">
-                <style>
-                  body { background: %s; color: %s; font-family: "Segoe UI", sans-serif;
-                         font-size: 14px; line-height: 1.6; padding: 16px 22px;
-                         max-width: 74ch; margin: 0 auto; }
-                  h1 { font-size: 26px; } h2 { font-size: 20px; }
-                  h3 { font-size: 16px; } h4 { font-size: 14px; }
-                  h1,h2,h3,h4 { color: %s; padding-bottom: 4px; margin: 18px 0 8px; }
-                  h1, h2 { border-bottom: 1px solid %s; }
-                  p { margin: 10px 0; }
-                  li { margin: 3px 0; }
-                  a { color: %s; }
-                  code { background: %s; padding: 1px 5px; border-radius: 4px;
-                         font-family: Consolas, monospace; font-size: 13px; }
-                  pre { background: %s; padding: 10px 12px; border-radius: 8px; overflow-x: auto;
-                        border: 1px solid %s; }
-                  pre code { background: transparent; padding: 0; }
-                  table { border-collapse: collapse; margin: 8px 0; }
-                  th, td { border: 1px solid %s; padding: 5px 10px; }
-                  th { background: %s; }
-                  blockquote { border-left: 3px solid %s; margin-left: 0; padding-left: 12px; color: %s; }
-                  input[type=checkbox] { margin-right: 6px; }
-                  hr { border: 0; border-top: 1px solid %s; }
-                  img.math-inline { vertical-align: middle; margin: 0 1px; }
-                  img.math-display { display: block; margin: 8px auto; }
-                  img { max-width: 100%%; }
-                  %s
-                </style>
-                </head>
-                <body>
-                %s
-                </body>
-                </html>
-                """.formatted(
-                palette.background(), palette.text(), palette.accent(), palette.border(),
-                palette.accent(), palette.codeBg(), palette.codeBg(), palette.border(),
-                palette.border(), palette.codeBg(), palette.accent(), palette.textDim(),
-                palette.border(), extraCss, bodyHtml);
     }
 }

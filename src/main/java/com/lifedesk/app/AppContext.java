@@ -18,7 +18,6 @@ import com.lifedesk.storage.JsonStore;
 import com.lifedesk.storage.StorageIssueLog;
 import com.lifedesk.tasks.JsonTaskRepository;
 import com.lifedesk.tasks.TaskService;
-import com.lifedesk.theme.ThemeManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,7 +38,6 @@ public class AppContext {
     private final AppExecutors executors = new AppExecutors();
     private final StorageIssueLog issueLog = new StorageIssueLog();
     private final JsonStore store;
-    private final ThemeManager themeManager;
     private final MarkdownService markdownService = new MarkdownService();
 
     private final TaskService taskService;
@@ -64,7 +62,6 @@ public class AppContext {
         this.dataDir = dataDir;
         this.config = config;
         this.store = new JsonStore(dataDir, issueLog);
-        this.themeManager = new ThemeManager(dataDir);
 
         // Core productivity services
         this.taskService = new TaskService(new JsonTaskRepository(store));
@@ -187,9 +184,6 @@ public class AppContext {
         return store;
     }
 
-    public ThemeManager themeManager() {
-        return themeManager;
-    }
 
     public MarkdownService markdownService() {
         return markdownService;

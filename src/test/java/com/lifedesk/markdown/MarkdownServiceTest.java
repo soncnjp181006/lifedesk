@@ -65,13 +65,4 @@ class MarkdownServiceTest {
         assertFalse(text.contains("**"));
         assertFalse(text.contains("<"));
     }
-
-    @Test
-    void wrappedPageContainsThemeColorsAndNoScripts() {
-        var palette = new com.lifedesk.theme.ThemeManager.PreviewPalette("#fff", "#000", "#666", "#00f", "#ccc", "#eee");
-        String page = md.wrapPage(md.toHtml("hello <b>world</b>"), palette);
-        assertTrue(page.contains("<!DOCTYPE html>"));
-        assertTrue(page.contains("#fff"));
-        assertFalse(page.toLowerCase().contains("<script"));
-    }
 }

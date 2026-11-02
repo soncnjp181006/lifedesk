@@ -95,6 +95,12 @@
       <version>${commonmark.version}</version>
     </dependency>
 
+    <dependency>
+      <groupId>org.commonmark</groupId>
+      <artifactId>commonmark-ext-gfm-strikethrough</artifactId>
+      <version>${commonmark.version}</version>
+    </dependency>
+
     <!-- LaTeX rendering (offline, pure Java) -->
     <dependency>
       <groupId>org.scilab.forge</groupId>

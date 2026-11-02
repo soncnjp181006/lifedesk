@@ -2,7 +2,6 @@ package com.lifedesk.app;
 
 import com.lifedesk.config.AppConfig;
 import com.lifedesk.config.ConfigService;
-import com.lifedesk.ui.MainWindow;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
@@ -15,18 +14,16 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * JavaFX bootstrap: config load, data-dir lock, AppContext build, MainWindow.
+ * JavaFX bootstrap: config load, data-dir lock, AppContext build, WebView shell.
  */
 public class LifeDeskApp extends Application {
     private static final Logger LOG = LoggerFactory.getLogger(LifeDeskApp.class);
 
     private AppContext context;
     private SingleInstanceLock dataLock;
-    private MainWindow mainWindow;
+    private com.lifedesk.api.ApiServer apiServer;
     /** Set in start(); used by the UI smoke test to snapshot the real scene. */
     public static volatile Stage primaryStageRef;
-    /** Set in start(); used by the UI smoke test to navigate between views. */
-    public static volatile com.lifedesk.ui.MainWindow mainWindowRef;
 
     /** Set once so a repeating failure cannot stack dialogs on top of each other. */
     private static final java.util.concurrent.atomic.AtomicBoolean CRASH_REPORTED =
@@ -71,7 +68,6 @@ public class LifeDeskApp extends Application {
                         + (origin.isEmpty() ? "" : "\nTại: " + origin);
                 alert.setContentText(detail
                         + "\n\nDữ liệu của bạn vẫn được lưu. Chi tiết kỹ thuật nằm trong thư mục logs.");
-                com.lifedesk.ui.Dialogs.style(alert);
                 alert.show();
             } catch (RuntimeException ignored) {
                 // UI not ready — the log entry is the record of the failure.
@@ -164,25 +160,36 @@ public class LifeDeskApp extends Application {
 
     private void startUi(Stage stage) {
         primaryStageRef = stage;
-        Scene scene = new Scene(new javafx.scene.layout.StackPane(), context.config().windowWidth,
-                context.config().windowHeight);
-        mainWindow = new MainWindow(stage, scene, context);
-        mainWindowRef = mainWindow;
-        scene.setRoot(mainWindow.root());
-        stage.setScene(scene);
-        applyWindowSettings(stage);
-        stage.setTitle("LifeDesk — Trợ lý năng suất cá nhân");
-        stage.setMinWidth(1080);
-        stage.setMinHeight(680);
-        stage.setOnCloseRequest(e -> saveWindowSettings(stage));
-        stage.show();
-        // Surface failures instead of a silent exit (the crash dialog re-arms per session).
-        Thread.currentThread().setUncaughtExceptionHandler((t, e) -> {
-            LOG.error("Uncaught exception on the JavaFX thread", e);
-            reportCrash(e);
-        });
-        context.startBackgroundServices();
-        mainWindow.onReady();
+        startWebUi(stage);
+    }
+
+    /** WebView shell: React SPA served by the local API (Tauri-like desktop shell). */
+    private void startWebUi(Stage stage) {
+        try {
+            apiServer = new com.lifedesk.api.ApiServer(context);
+            int port = apiServer.start();
+            javafx.scene.web.WebView webView = new javafx.scene.web.WebView();
+            webView.getEngine().load("http://127.0.0.1:" + port + "/");
+            javafx.scene.layout.StackPane shell = new javafx.scene.layout.StackPane(webView);
+            Scene scene = new Scene(shell, context.config().windowWidth, context.config().windowHeight);
+            stage.setScene(scene);
+            applyWindowSettings(stage);
+            stage.setTitle("LifeDesk — Trợ lý năng suất cá nhân");
+            stage.setMinWidth(1080);
+            stage.setMinHeight(680);
+            stage.setOnCloseRequest(e -> saveWindowSettings(stage));
+            stage.show();
+            Thread.currentThread().setUncaughtExceptionHandler((t, e) -> {
+                LOG.error("Uncaught exception on the JavaFX thread", e);
+                reportCrash(e);
+            });
+            context.startBackgroundServices();
+            LOG.info("LifeDesk WebView shell loaded http://127.0.0.1:{}/", port);
+        } catch (Throwable error) {
+            LOG.error("Web UI start failed", error);
+            showStartupFailure(error);
+            Platform.exit();
+        }
     }
 
     private void applyWindowSettings(Stage stage) {
@@ -207,6 +214,9 @@ public class LifeDeskApp extends Application {
     @Override
     public void stop() {
         try {
+            if (apiServer != null) {
+                apiServer.stop();
+            }
             if (context != null) {
                 context.shutdown();
             }
