@@ -516,9 +516,10 @@ select.input { cursor: pointer; }
 .chat-scroll { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .bubble { max-width: 78%; padding: 10px 13px; border-radius: 12px; background: var(--panel-2); }
 .bubble.user { align-self: flex-end; background: var(--accent-soft); border: 1px solid rgba(91, 157, 255, 0.3); }
-.bubble.ai { align-self: flex-start; }
 .bubble-role { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 3px; }
 .bubble-text { white-space: pre-wrap; }
+/* Assistant replies are markdown documents, so they take the full column with no bubble chrome. */
+.ai-answer { align-self: stretch; font-size: 13px; line-height: 1.6; }
 .chat-input { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border-soft); }
 
 /* agent / rss / library / search */

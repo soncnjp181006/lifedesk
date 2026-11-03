@@ -117,14 +117,20 @@ export default function AiChat() {
             {messages.length === 0 ? (
               <Empty title="Hỏi trợ lý về việc hôm nay, chi tiêu, thói quen…" />
             ) : (
-              messages.map((m, i) => (
-                <div key={i} className={'bubble ' + (m.role === 'user' ? 'user' : 'ai')}>
-                  <div className="bubble-role">{m.role === 'user' ? 'Bạn' : 'Trợ lý'}</div>
-                  <div className="bubble-text">{m.content}</div>
-                </div>
-              ))
+              messages.map((m, i) =>
+                m.role === 'user' ? (
+                  <div key={i} className="bubble user">
+                    <div className="bubble-role">Bạn</div>
+                    <div className="bubble-text">{m.content}</div>
+                  </div>
+                ) : (
+                  <div key={i} className="ai-answer">
+                    <Markdown source={m.content} />
+                  </div>
+                )
+              )
             )}
-            {sending && <div className="bubble ai"><div className="bubble-text muted">Đang trả lời…</div></div>}
+            {sending && <div className="ai-answer muted">Đang trả lời…</div>}
             <div ref={endRef} />
           </div>
           <form className="chat-input" onSubmit={send}>
@@ -141,4 +147,33 @@ export default function AiChat() {
       </div>
     </Page>
   );
+}
+
+const rendered = new Map();
+
+/* Assistant text is markdown, so it goes through the same server-side renderer the
+   notes preview uses instead of showing literal ## and ** markers. */
+function Markdown({ source }) {
+  const [html, setHtml] = useState(() => rendered.get(source));
+  useEffect(() => {
+    if (rendered.has(source)) {
+      setHtml(rendered.get(source));
+      return undefined;
+    }
+    let alive = true;
+    api
+      .post('/api/markdown', { text: source })
+      .then((d) => {
+        rendered.set(source, d.html);
+        if (alive) setHtml(d.html);
+      })
+      .catch(() => {
+        if (alive) setHtml(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [source]);
+  if (!html) return <div className="md">{source}</div>;
+  return <div className="md" dangerouslySetInnerHTML={{ __html: html }} />;
 }
