@@ -250,12 +250,14 @@ public final class ApiServer {
             String q = query(ex, "q", "");
             String status = query(ex, "status", "");
             String priority = query(ex, "priority", "");
+            String group = query(ex, "group", "");
             LocalDate today = LocalDate.now();
             List<Task> all = ctx.tasks().all().stream()
                     .filter(t -> q.isBlank() || t.title.toLowerCase().contains(q.toLowerCase())
                             || (t.notes != null && t.notes.toLowerCase().contains(q.toLowerCase())))
                     .filter(t -> status.isBlank() || t.status.name().equalsIgnoreCase(status))
                     .filter(t -> priority.isBlank() || t.priority.name().equalsIgnoreCase(priority))
+                    .filter(t -> group.isBlank() || group.equalsIgnoreCase(t.group))
                     .filter(t -> switch (scope) {
                         case "today" -> t.isDueToday(today);
                         case "overdue" -> t.isOverdue(today);
@@ -278,6 +280,43 @@ public final class ApiServer {
                     date(b, "dueDate"), time(b, "dueTime"),
                     str(b, "group", ""), new ArrayList<>(tags(b)), recurrence(b));
             sendJson(ex, 200, taskJson(created, LocalDate.now()));
+            return;
+        }
+        // Must precede the /api/tasks/{id} branch: "groups" would otherwise read as an id.
+        if (p.size() == 2 && p.get(1).equals("groups") && method.equals("GET")) {
+            JsonArray arr = new JsonArray();
+            for (String g : ctx.tasks().groups()) {
+                JsonObject o = new JsonObject();
+                o.addProperty("name", g);
+                o.addProperty("tasks", ctx.tasks().groupUsage(g));
+                arr.add(o);
+            }
+            sendJson(ex, 200, arr);
+            return;
+        }
+        if (p.size() == 2 && p.get(1).equals("groups") && method.equals("POST")) {
+            synchronized (moduleLock) {
+                ctx.tasks().addGroup(str(body(ex), "name", ""));
+            }
+            sendJson(ex, 200, okJson());
+            return;
+        }
+        if (p.size() == 2 && p.get(1).equals("groups") && method.equals("PUT")) {
+            JsonObject b = body(ex);
+            synchronized (moduleLock) {
+                ctx.tasks().renameGroup(str(b, "from", ""), str(b, "to", ""));
+            }
+            sendJson(ex, 200, okJson());
+            return;
+        }
+        if (p.size() == 2 && p.get(1).equals("groups") && method.equals("DELETE")) {
+            // Name arrives as a query param, not a path segment: URI.getPath() decodes
+            // %-escapes byte-by-byte and mangles Vietnamese group names.
+            String name = query(ex, "name", "");
+            synchronized (moduleLock) {
+                ctx.tasks().deleteGroup(name);
+            }
+            sendJson(ex, 200, okJson());
             return;
         }
         if (p.size() >= 2) {

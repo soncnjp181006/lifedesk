@@ -366,6 +366,11 @@ select.input { cursor: pointer; }
 .inline-form.wrap { flex-wrap: wrap; }
 .inline-form .input { width: auto; min-width: 120px; flex: 1; }
 .tx-form .input { min-width: 100px; }
+/* .date-field is a wrapper, not the field itself: its width:100% is meant for modal
+   rows. As a flex item that made it swallow the whole line and left the picker button
+   stranded at the far edge, so inside an inline row it shares space like its siblings. */
+.inline-form > .date-field { flex: 1; width: auto; }
+.inline-form .date-input { width: 100%; flex: none; }
 
 .month-nav { display: flex; align-items: center; gap: 8px; }
 .month-nav strong { min-width: 76px; text-align: center; }
@@ -380,6 +385,10 @@ select.input { cursor: pointer; }
 .row-meta { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--muted); margin-top: 2px; flex-wrap: wrap; }
 .due { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .due.overdue { color: var(--danger); }
+
+/* Groups manager: add row on top, one line per saved name with how many tasks use it. */
+.group-box { display: flex; flex-direction: column; gap: 14px; }
+.group-note { margin: 0; font-size: 11px; line-height: 1.55; color: var(--muted); }
 .check {
   width: 22px; height: 22px; flex: 0 0 22px; border-radius: 6px; border: 1px solid var(--border);
   background: transparent; color: #071120; display: grid; place-items: center; cursor: pointer;

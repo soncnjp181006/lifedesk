@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Check, FolderPlus, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api, qs } from '../api.js';
 import { useDebounced, useLoad } from '../hooks.js';
 import {
@@ -51,12 +51,17 @@ export default function Tasks() {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const [priority, setPriority] = useState('');
+  const [group, setGroup] = useState('');
   const q = useDebounced(query);
   const [editing, setEditing] = useState(null);
+  const [managing, setManaging] = useState(false);
   const { data, loading, error, reload } = useLoad(
-    () => api.get('/api/tasks' + qs({ scope, q, status, priority })),
-    [scope, q, status, priority]
+    () => api.get('/api/tasks' + qs({ scope, q, status, priority, group })),
+    [scope, q, status, priority, group]
   );
+  /* [{name, tasks}] — saved names merged with whatever the tasks already carry. */
+  const { data: groupRows, reload: reloadGroups } = useLoad(() => api.get('/api/tasks/groups'), []);
+  const groups = groupRows || [];
 
   const toggle = async (t) => {
     try {
@@ -124,6 +129,7 @@ export default function Tasks() {
       }
       setEditing(null);
       reload();
+      reloadGroups();
     } catch (e) {
       notify(e.message, 'error');
     }
@@ -147,6 +153,13 @@ export default function Tasks() {
               <option key={k} value={k}>{v.label}</option>
             ))}
           </Select>
+          <Select value={group} onChange={(e) => setGroup(e.target.value)}>
+            <option value="">Mọi nhóm</option>
+            {groups.map((g) => (
+              <option key={g.name} value={g.name}>{g.name}</option>
+            ))}
+          </Select>
+          <Btn icon={FolderPlus} onClick={() => setManaging(true)}>Nhóm</Btn>
           <Btn variant="primary" icon={Plus} onClick={openNew}>Thêm công việc</Btn>
         </div>
       </div>
@@ -185,12 +198,26 @@ export default function Tasks() {
         </div>
       )}
 
-      {editing && <TaskModal initial={editing} onClose={() => setEditing(null)} onSave={save} />}
+      {editing && (
+        <TaskModal
+          initial={editing}
+          groups={groups}
+          onClose={() => setEditing(null)}
+          onSave={save}
+        />
+      )}
+      {managing && (
+        <GroupsModal
+          groups={groups}
+          onClose={() => setManaging(false)}
+          onChanged={() => { reloadGroups(); reload(); }}
+        />
+      )}
     </Page>
   );
 }
 
-function TaskModal({ initial, onClose, onSave }) {
+function TaskModal({ initial, groups, onClose, onSave }) {
   const [form, setForm] = useState(initial);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   return (
@@ -228,8 +255,17 @@ function TaskModal({ initial, onClose, onSave }) {
         <Field label="Giờ">
           <Input type="time" value={form.dueTime} onChange={set('dueTime')} />
         </Field>
-        <Field label="Nhóm">
-          <Input value={form.group} onChange={set('group')} placeholder="Công việc, Học tập…" />
+        <Field label="Nhóm" hint="Thêm nhóm ở nút “Nhóm” trên thanh công cụ">
+          <Select value={form.group} onChange={set('group')}>
+            <option value="">Chưa có nhóm</option>
+            {/* keeps a group typed before this change visible while editing */}
+            {form.group && !groups.some((g) => g.name === form.group) && (
+              <option value={form.group}>{form.group}</option>
+            )}
+            {groups.map((g) => (
+              <option key={g.name} value={g.name}>{g.name}</option>
+            ))}
+          </Select>
         </Field>
         <Field label="Tags">
           <Input value={form.tags} onChange={set('tags')} placeholder="tag1, tag2" />
@@ -248,6 +284,119 @@ function TaskModal({ initial, onClose, onSave }) {
         <Field label="Ghi chú" wide>
           <Textarea rows={4} value={form.notes} onChange={set('notes')} />
         </Field>
+      </div>
+    </Modal>
+  );
+}
+
+function GroupsModal({ groups, onClose, onChanged }) {
+  const notify = useNotify();
+  const [name, setName] = useState('');
+  const [rename, setRename] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async (req, done) => {
+    setBusy(true);
+    try {
+      await req();
+      notify(done);
+      onChanged();
+      return true;
+    } catch (e) {
+      notify(e.message, 'error');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const add = async (e) => {
+    e.preventDefault();
+    const v = name.trim();
+    if (!v) {
+      notify('Tên nhóm không được để trống', 'error');
+      return;
+    }
+    if (await run(() => api.post('/api/tasks/groups', { name: v }), `Đã thêm nhóm “${v}”`)) setName('');
+  };
+
+  const applyRename = async (from) => {
+    const to = rename.to.trim();
+    if (!to || to === from) {
+      setRename(null);
+      return;
+    }
+    if (await run(() => api.put('/api/tasks/groups', { from, to }), `Đã đổi tên “${from}” thành “${to}”`)) setRename(null);
+  };
+
+  const remove = (g) =>
+    run(() => api.del('/api/tasks/groups' + qs({ name: g.name })), `Đã xoá nhóm “${g.name}”`);
+
+  return (
+    <Modal title="Quản lý nhóm" onClose={onClose} footer={<Btn onClick={onClose}>Xong</Btn>}>
+      <div className="group-box">
+        <form className="inline-form" onSubmit={add}>
+          <Input
+            placeholder="Tên nhóm mới (Học tập, Gia đình…)"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={busy}
+            autoFocus
+          />
+          <Btn variant="primary" icon={Plus} type="submit" disabled={busy}>Thêm</Btn>
+        </form>
+
+        {groups.length === 0 ? (
+          <Empty icon={FolderPlus} title="Chưa có nhóm nào" hint="Thêm nhóm để chọn nhanh khi tạo công việc" />
+        ) : (
+          <div className="list">
+            {groups.map((g) => (
+              <div className="list-row" key={g.name}>
+                {rename?.from === g.name ? (
+                  <>
+                    <div className="grow">
+                      <Input
+                        value={rename.to}
+                        disabled={busy}
+                        autoFocus
+                        onChange={(e) => setRename({ ...rename, to: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            applyRename(g.name);
+                          } else if (e.key === 'Escape') {
+                            setRename(null);
+                          }
+                        }}
+                      />
+                    </div>
+                    <IconBtn icon={Check} title="Lưu tên mới" onClick={() => applyRename(g.name)} />
+                    <IconBtn icon={X} title="Huỷ đổi tên" onClick={() => setRename(null)} />
+                  </>
+                ) : (
+                  <>
+                    <div className="grow">
+                      <div className="row-title">{g.name}</div>
+                      <div className="row-meta">{g.tasks > 0 ? `${g.tasks} công việc` : 'Chưa dùng'}</div>
+                    </div>
+                    <Badge tone={g.tasks > 0 ? 'info' : 'muted'}>{g.tasks}</Badge>
+                    <IconBtn icon={Pencil} title="Đổi tên" onClick={() => setRename({ from: g.name, to: g.name })} />
+                    <IconBtn
+                      icon={Trash2}
+                      title={g.tasks > 0 ? 'Xoá nhóm (còn công việc)' : 'Xoá nhóm'}
+                      onClick={() => remove(g)}
+                    />
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <p className="group-note">
+          Nhóm rỗng xoá ngay; nhóm còn công việc phải chuyển hết công việc sang nhóm khác trước.
+          Đổi tên sẽ cập nhật luôn mọi công việc đang thuộc nhóm đó.
+        </p>
       </div>
     </Modal>
   );

@@ -14,6 +14,7 @@ import com.lifedesk.notifications.NotificationService;
 import com.lifedesk.search.SearchService;
 import com.lifedesk.storage.JsonStore;
 import com.lifedesk.storage.StorageIssueLog;
+import com.lifedesk.tasks.JsonTaskGroupRepository;
 import com.lifedesk.tasks.JsonTaskRepository;
 import com.lifedesk.tasks.TaskService;
 import org.slf4j.Logger;
@@ -58,7 +59,7 @@ public class AppContext {
         this.store = new JsonStore(dataDir, issueLog);
 
         // Core productivity services
-        this.taskService = new TaskService(new JsonTaskRepository(store));
+        this.taskService = new TaskService(new JsonTaskRepository(store), new JsonTaskGroupRepository(store));
         this.notesService = new NotesService(store);
         this.financeService = new FinanceService(store);
         this.habitService = new HabitService(store);

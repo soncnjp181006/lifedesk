@@ -20,10 +20,12 @@ import java.util.function.Predicate;
  */
 public class TaskService {
     private final TaskRepository repo;
+    private final TaskGroupRepository groupRepo;
     private final ChangeNotifier change = new ChangeNotifier();
 
-    public TaskService(TaskRepository repo) {
+    public TaskService(TaskRepository repo, TaskGroupRepository groupRepo) {
         this.repo = repo;
+        this.groupRepo = groupRepo;
     }
 
     public ChangeNotifier changes() {
@@ -173,8 +175,74 @@ public class TaskService {
                 .toList();
     }
 
+    /**
+     * What the group pickers offer: every name the user saved plus every value
+     * already written on a task, so free-text groups predating the list survive.
+     */
     public List<String> groups() {
-        return repo.findAll().stream().map(t -> t.group).filter(g -> !g.isBlank()).distinct().sorted().toList();
+        java.util.TreeSet<String> names = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        names.addAll(groupRepo.findAll());
+        repo.findAll().forEach(t -> {
+            if (t.group != null && !t.group.isBlank()) {
+                names.add(t.group.trim());
+            }
+        });
+        return List.copyOf(names);
+    }
+
+    /** Tasks tagged with a group, matched case-insensitively like the picker. */
+    public long groupUsage(String name) {
+        if (name == null || name.isBlank()) {
+            return 0;
+        }
+        return repo.findAll().stream().filter(t -> name.equalsIgnoreCase(t.group)).count();
+    }
+
+    public void addGroup(String name) {
+        String clean = Validators.requireNonBlank(name, "Tên nhóm");
+        if (groups().stream().anyMatch(g -> g.equalsIgnoreCase(clean))) {
+            throw new ValidationException("Nhóm \"" + clean + "\" đã tồn tại");
+        }
+        List<String> saved = new ArrayList<>(groupRepo.findAll());
+        saved.add(clean);
+        groupRepo.save(saved);
+        change.fire();
+    }
+
+    /** Renames the saved entry and re-tags the tasks that carry it. */
+    public void renameGroup(String from, String to) {
+        String clean = Validators.requireNonBlank(to, "Tên nhóm");
+        Validators.requireNonBlank(from, "Nhóm gốc");
+        if (from.equalsIgnoreCase(clean)) {
+            return;
+        }
+        if (groups().stream().anyMatch(g -> g.equalsIgnoreCase(clean))) {
+            throw new ValidationException("Nhóm \"" + clean + "\" đã tồn tại");
+        }
+        List<String> saved = new ArrayList<>(groupRepo.findAll());
+        saved.replaceAll(g -> g.equalsIgnoreCase(from) ? clean : g);
+        groupRepo.save(saved);
+        for (Task t : repo.findAll()) {
+            if (from.equalsIgnoreCase(t.group)) {
+                t.group = clean;
+                repo.update(t);
+            }
+        }
+        change.fire();
+    }
+
+    /** Refuses to orphan tasks: the group only goes once nothing uses it. */
+    public void deleteGroup(String name) {
+        long used = groupUsage(name);
+        if (used > 0) {
+            throw new ValidationException("Còn " + used + " công việc thuộc nhóm \"" + name + "\"");
+        }
+        List<String> saved = new ArrayList<>(groupRepo.findAll());
+        if (!saved.removeIf(g -> g.equalsIgnoreCase(name))) {
+            throw new NotFoundException("Không tìm thấy nhóm: " + name);
+        }
+        groupRepo.save(saved);
+        change.fire();
     }
 
     public long openCount() {

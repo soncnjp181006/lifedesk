@@ -17,7 +17,8 @@ class TaskServiceTest {
     Path dir;
 
     private TaskService service() {
-        return new TaskService(new JsonTaskRepository(new JsonStore(dir, new StorageIssueLog())));
+        JsonStore store = new JsonStore(dir, new StorageIssueLog());
+        return new TaskService(new JsonTaskRepository(store), new JsonTaskGroupRepository(store));
     }
 
     @Test
@@ -99,5 +100,34 @@ class TaskServiceTest {
         assertTrue(!svc.search("kanji", null, null).isEmpty());
         assertTrue(!svc.search("ngon ngu", null, null).isEmpty());
         assertTrue(svc.search("không có", null, null).isEmpty());
+    }
+
+    @Test
+    void savedGroupsAndFreeTextGroupsShareOneList() {
+        TaskService svc = service();
+        svc.addGroup("Học tập");
+        svc.create("Đọc sách", null, Priority.MEDIUM, null, null, "Cá nhân", null, null);
+        assertEquals(List.of("Cá nhân", "Học tập"), svc.groups());
+    }
+
+    @Test
+    void duplicateGroupNameIsRejected() {
+        TaskService svc = service();
+        svc.addGroup("Nhà");
+        assertThrows(RuntimeException.class, () -> svc.addGroup("nhà"));
+        assertThrows(RuntimeException.class, () -> svc.addGroup("  "));
+    }
+
+    @Test
+    void renameRetagsTasksAndDeleteWaitsUntilEmpty() {
+        TaskService svc = service();
+        svc.addGroup("Việc");
+        Task t = svc.create("Mua đồ", null, Priority.MEDIUM, null, null, "Việc", null, null);
+        svc.renameGroup("Việc", "Mua sắm");
+        assertEquals("Mua sắm", svc.get(t.id).group);
+        assertThrows(RuntimeException.class, () -> svc.deleteGroup("Mua sắm"));
+        svc.delete(t.id);
+        svc.deleteGroup("Mua sắm");
+        assertEquals(List.of(), svc.groups());
     }
 }
