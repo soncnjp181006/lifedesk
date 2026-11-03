@@ -1,9 +1,0 @@
-target/
-*.log
-.idea/
-*.iml
-.vscode/
-.DS_Store
-
-web/node_modules/
-web/dist/
