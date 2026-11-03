@@ -101,13 +101,10 @@ export default function Habits() {
   };
 
   return (
-    <Page
-      title="Thói quen & Mục tiêu"
-      subtitle="Theo dõi chuỗi ngày và mục tiêu dài hạn"
-      actions={<Btn variant="primary" icon={Plus} onClick={() => setHabitModal(true)}>Thói quen mới</Btn>}
-    >
+    <Page>
       <Card title="Tuần này" actions={
         <div className="inline-form">
+          <Btn variant="primary" icon={Plus} onClick={() => setHabitModal(true)}>Thói quen mới</Btn>
           <Btn onClick={() => setStart(mondayOf(fmt.today()))}>Tuần hiện tại</Btn>
           <DateField value={start} onChange={(v) => v && setStart(mondayOf(v))} />
         </div>

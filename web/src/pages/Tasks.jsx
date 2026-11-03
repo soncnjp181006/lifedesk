@@ -130,11 +130,7 @@ export default function Tasks() {
   };
 
   return (
-    <Page
-      title="Công việc"
-      subtitle="Quản lý việc cần làm, ưu tiên và hạn chót"
-      actions={<Btn variant="primary" icon={Plus} onClick={openNew}>Thêm công việc</Btn>}
-    >
+    <Page fill>
       <div className="toolbar">
         <Tabs value={scope} onChange={setScope} items={SCOPES} />
         <div className="toolbar-fields">
@@ -151,6 +147,7 @@ export default function Tasks() {
               <option key={k} value={k}>{v.label}</option>
             ))}
           </Select>
+          <Btn variant="primary" icon={Plus} onClick={openNew}>Thêm công việc</Btn>
         </div>
       </div>
 

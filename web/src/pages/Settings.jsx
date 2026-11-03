@@ -8,7 +8,6 @@ import {
   Input,
   Page,
   Select,
-  Textarea,
   useApp,
   useNotify
 } from '../ui.jsx';
@@ -26,7 +25,6 @@ export default function Settings() {
     remindersEnabled: !!cfg.remindersEnabled,
     reminderMinutesBefore: cfg.reminderMinutesBefore,
     latexAssist: !!cfg.latexAssist,
-    allowedRoots: (cfg.allowedRoots || []).join('\n'),
     aiEnabled: !!cfg.ai.enabled,
     providerId: cfg.ai.providerId,
     includeUserData: !!cfg.ai.includeUserData,
@@ -47,7 +45,6 @@ export default function Settings() {
         remindersEnabled: form.remindersEnabled,
         reminderMinutesBefore: Number(form.reminderMinutesBefore) || 0,
         latexAssist: form.latexAssist,
-        allowedRoots: form.allowedRoots.split('\n').map((s) => s.trim()).filter(Boolean),
         ai: {
           enabled: form.aiEnabled,
           providerId: form.providerId,
@@ -66,7 +63,10 @@ export default function Settings() {
   };
 
   return (
-    <Page title="Cài đặt" subtitle="Giao diện, nhắc việc, AI và quyền truy cập tệp" actions={<Btn variant="primary" icon={Save} onClick={save}>Lưu cài đặt</Btn>}>
+    <Page>
+      <div className="toolbar toolbar-end">
+        <Btn variant="primary" icon={Save} onClick={save}>Lưu cài đặt</Btn>
+      </div>
       <div className="grid-2">
         <Card title="Giao diện">
           <div className="form-grid">
@@ -117,13 +117,6 @@ export default function Settings() {
             <Field label="Kilo model"><Input value={form.kiloModel} onChange={set('kiloModel')} /></Field>
             <Field label="Kilo API key" hint="Để trống để giữ key hiện tại"><Input type="password" value={form.kiloApiKey} onChange={set('kiloApiKey')} placeholder="••••••••" /></Field>
           </div>
-        </Card>
-
-        <Card title="Quyền truy cập tệp">
-          <Field label="Thư mục được phép (mỗi dòng một đường dẫn)">
-            <Textarea rows={6} value={form.allowedRoots} onChange={set('allowedRoots')} placeholder="C:\Users\...\Documents" />
-          </Field>
-          <p className="muted small">Tab Tệp và Agent chỉ đọc/ghi trong các thư mục này.</p>
         </Card>
 
         <Card title="Dữ liệu">

@@ -78,11 +78,7 @@ export default function Library() {
   };
 
   return (
-    <Page
-      title="Thư viện"
-      subtitle={`${stats.total} mục · ${stats.done} hoàn thành · điểm TB ${stats.avgRating ? stats.avgRating.toFixed(1) : '—'}`}
-      actions={<Btn variant="primary" icon={Plus} onClick={() => setModal(true)}>Thêm mục</Btn>}
-    >
+    <Page>
       <div className="toolbar">
         <div className="tabs">
           {Object.entries(KIND).map(([k, v]) => (
@@ -91,6 +87,7 @@ export default function Library() {
             </button>
           ))}
         </div>
+        <Btn variant="primary" icon={Plus} onClick={() => setModal(true)}>Thêm mục</Btn>
       </div>
 
       {shown.length === 0 ? <Empty title="Chưa có mục nào" hint="Thêm sách, phim, game… để theo dõi" /> : (

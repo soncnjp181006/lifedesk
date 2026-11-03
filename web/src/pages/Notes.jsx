@@ -595,11 +595,7 @@ export default function Notes() {
   };
 
   return (
-    <Page
-      title="Ghi chú"
-      subtitle="Markdown, thư mục lồng nhau và xem trước trực tiếp"
-      actions={<Btn variant="primary" icon={Plus} onClick={() => setNewNote(true)}>Ghi chú mới</Btn>}
-    >
+    <Page fill flush>
       <div className="notes-layout">
         <aside className="notes-side">
           <div className="notes-tools">
@@ -610,17 +606,22 @@ export default function Notes() {
               <IconBtn icon={Trash2} title="Xoá thư mục" onClick={deleteFolder} />
             </div>
           </div>
-          <button className={'folder-row' + (folder === '' ? ' active' : '')} onClick={() => setFolder('')}>
-            <Folder size={14} /> Tất cả ghi chú
-          </button>
-          {folders.map((f) => (
-            <button key={f} className={'folder-row depth-' + f.split('/').length + (folder === f ? ' active' : '')} onClick={() => setFolder(f)}>
-              <Folder size={14} /> {f.split('/').pop()}
+          <div className="folder-list">
+            <button className={'folder-row' + (folder === '' ? ' active' : '')} onClick={() => setFolder('')}>
+              <Folder size={14} /> Tất cả ghi chú
             </button>
-          ))}
+            {folders.map((f) => (
+              <button key={f} className={'folder-row depth-' + f.split('/').length + (folder === f ? ' active' : '')} onClick={() => setFolder(f)}>
+                <Folder size={14} /> {f.split('/').pop()}
+              </button>
+            ))}
+          </div>
 
           <div className="notes-sep" />
-          <div className="muted small note-count">{visible.length} ghi chú</div>
+          <div className="notes-list-head">
+            <span className="muted small note-count">{visible.length} ghi chú</span>
+            <Btn variant="primary" icon={Plus} onClick={() => setNewNote(true)}>Ghi chú mới</Btn>
+          </div>
           <div className="note-list">
             {visible.length === 0 && <p className="muted small pad">Chưa có ghi chú.</p>}
             {visible.map((n) => (

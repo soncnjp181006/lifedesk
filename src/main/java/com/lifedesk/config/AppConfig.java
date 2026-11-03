@@ -21,9 +21,6 @@ public class AppConfig {
     /** Shorthand table, one {@code trigger:::replacement} per line (#cursor marks the caret). */
     public String latexShorthands = "";
 
-    /** File manager + agent file tools: user-granted root folders. */
-    public List<String> allowedRoots = new ArrayList<>();
-
 
     public AiConfig ai = new AiConfig();
 

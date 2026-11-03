@@ -48,11 +48,7 @@ export default function Dashboard() {
   };
 
   return (
-    <Page
-      title="Tổng quan"
-      subtitle="Tổng quan công việc, tài chính, thói quen và học tập của bạn"
-      actions={<Btn icon={ListTodo} onClick={() => nav('/tasks')}>Mở công việc</Btn>}
-    >
+    <Page>
       <div className="stat-grid">
         <StatCard icon={ListTodo} label="Việc hôm nay" value={tasks.dueToday} hint={`${tasks.overdue} việc quá hạn`} onClick={() => nav('/tasks')} />
         <StatCard icon={Wallet} label="Số dư tháng" value={fmt.money(finance.summary.net)} hint={`thu ${fmt.money(finance.summary.income)} · chi ${fmt.money(finance.summary.expense)}`} tone={Number(finance.summary.net) < 0 ? 'danger' : 'ok'} onClick={() => nav('/finance')} />
@@ -61,7 +57,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid-2">
-        <Card title="Việc hôm nay" actions={<Btn variant="ghost" onClick={() => nav('/tasks')}>Xem tất cả</Btn>}>
+        <Card title="Việc hôm nay" actions={<Btn variant="ghost" icon={ListTodo} onClick={() => nav('/tasks')}>Mở công việc</Btn>}>
           {tasks.dueTodayList.length === 0 ? (
             <Empty icon={Check} title="Không có việc đến hạn hôm nay" />
           ) : (

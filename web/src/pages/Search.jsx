@@ -22,7 +22,7 @@ export default function SearchPage() {
   const data = useLoad(() => (q ? api.get('/api/search' + qs({ q })) : Promise.resolve([])), [q]);
 
   return (
-    <Page title="Kết quả tìm kiếm" subtitle={q ? `Cho "${q}"` : 'Nhập từ khoá ở thanh tìm kiếm'}>
+    <Page>
       {!q ? (
         <Empty icon={SearchIcon} title="Chưa có từ khoá" />
       ) : data.loading ? (

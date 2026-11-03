@@ -93,17 +93,7 @@ export default function Finance() {
   };
 
   return (
-    <Page
-      title="Tài chính cá nhân"
-      subtitle="Thu chi, ngân sách và khoản nợ"
-      actions={
-        <div className="month-nav">
-          <IconBtn icon={ChevronLeft} title="Tháng trước" onClick={() => setMonth(shiftMonth(month, -1))} />
-          <strong>{month}</strong>
-          <IconBtn icon={ChevronRight} title="Tháng sau" onClick={() => setMonth(shiftMonth(month, 1))} />
-        </div>
-      }
-    >
+    <Page>
       <div className="stat-grid">
         <div className="stat-card static">
           <div className="stat-label">Thu nhập</div>
@@ -123,7 +113,13 @@ export default function Finance() {
         </div>
       </div>
 
-      <Card title={'Giao dịch tháng ' + month}>
+      <Card title={'Giao dịch tháng ' + month} actions={
+        <div className="month-nav">
+          <IconBtn icon={ChevronLeft} title="Tháng trước" onClick={() => setMonth(shiftMonth(month, -1))} />
+          <strong>{month}</strong>
+          <IconBtn icon={ChevronRight} title="Tháng sau" onClick={() => setMonth(shiftMonth(month, 1))} />
+        </div>
+      }>
         <TxForm month={month} categories={categories} onSaved={reloadAll} onError={(m) => notify(m, 'error')} />
         <div className="spark finance-spark">
           {series.map((d) => (

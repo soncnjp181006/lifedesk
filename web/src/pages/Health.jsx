@@ -74,7 +74,7 @@ export default function Health() {
   };
 
   return (
-    <Page title="Sức khỏe" subtitle="Giấc ngủ, vận động, cân nặng và chỉ số riêng">
+    <Page>
       <div className="stat-grid">
         <div className="stat-card static"><div className="stat-label">Giấc ngủ TB (7 ngày)</div><div className="stat-value">{avgSleep7 == null ? '—' : avgSleep7.toFixed(1) + ' giờ'}</div></div>
         <div className="stat-card static"><div className="stat-label">Vận động TB (7 ngày)</div><div className="stat-value">{avgExercise7 == null ? '—' : Math.round(avgExercise7) + ' phút'}</div></div>

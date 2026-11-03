@@ -95,13 +95,12 @@ export default function AiChat() {
   if (convs.error) return <ErrorBox error={convs.error} onRetry={convs.reload} />;
 
   return (
-    <Page
-      title="Trợ lý AI"
-      subtitle={`Nhà cung cấp: ${app.boot.activeProvider} · model ${app.boot.activeModel || 'mặc định'}`}
-      actions={<Btn variant="primary" icon={Plus} onClick={newConversation}>Hội thoại mới</Btn>}
-    >
+    <Page fill>
       <div className="chat-layout">
         <aside className="chat-side">
+          <div className="chat-side-head">
+            <Btn variant="primary" icon={Plus} onClick={newConversation}>Hội thoại mới</Btn>
+          </div>
           {convs.data.length === 0 && <p className="muted small pad">Chưa có hội thoại.</p>}
           {convs.data.map((c) => (
             <div key={c.id} className={'chat-conv' + (active === c.id ? ' active' : '')}>

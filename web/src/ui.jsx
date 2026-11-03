@@ -5,16 +5,9 @@ import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, X } from 'lucid
 export const AppCtx = createContext(null);
 export const useApp = () => useContext(AppCtx);
 
-export function Page({ title, subtitle, actions, children }) {
+export function Page({ fill = false, flush = false, children }) {
   return (
-    <div className="page">
-      <header className="page-head">
-        <div>
-          <h1>{title}</h1>
-          {subtitle && <p className="muted">{subtitle}</p>}
-        </div>
-        {actions && <div className="page-actions">{actions}</div>}
-      </header>
+    <div className={'page' + (fill ? ' page-fill' : '') + (flush ? ' page-flush' : '')}>
       {children}
     </div>
   );

@@ -1,11 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { NavLink, Route, Routes, useNavigate } from 'react-router-dom';
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bell,
   BookOpen,
   Bot,
-  ClipboardList,
-  FolderOpen,
   HeartPulse,
   LayoutDashboard,
   LibraryBig,
@@ -14,7 +12,6 @@ import {
   PanelLeft,
   RefreshCw,
   Repeat,
-  Rss,
   Search,
   Settings,
   Wallet
@@ -28,10 +25,7 @@ import Finance from './pages/Finance.jsx';
 import Habits from './pages/Habits.jsx';
 import Health from './pages/Health.jsx';
 import Learning from './pages/Learning.jsx';
-import Files from './pages/Files.jsx';
 import AiChat from './pages/AiChat.jsx';
-import Agent from './pages/Agent.jsx';
-import RssPage from './pages/RssPage.jsx';
 import Library from './pages/Library.jsx';
 import SettingsPage from './pages/Settings.jsx';
 import SearchPage from './pages/Search.jsx';
@@ -52,15 +46,12 @@ const GROUPS = [
   {
     label: 'Trợ lý',
     items: [
-      { to: '/ai', label: 'Trợ lý AI', icon: Bot },
-      { to: '/agent', label: 'Agent', icon: ClipboardList }
+      { to: '/ai', label: 'Trợ lý AI', icon: Bot }
     ]
   },
   {
     label: 'Khác',
     items: [
-      { to: '/files', label: 'Tệp', icon: FolderOpen },
-      { to: '/rss', label: 'RSS', icon: Rss },
       { to: '/library', label: 'Thư viện', icon: LibraryBig },
       { to: '/settings', label: 'Cài đặt', icon: Settings }
     ]
@@ -86,6 +77,7 @@ export default function App() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifs, setNotifs] = useState({ items: [], unread: 0 });
   const navigate = useNavigate();
+  const { pathname } = useLocation();
 
   const loadBoot = useCallback(() => {
     api
@@ -113,7 +105,7 @@ export default function App() {
   }, [loadNotifs]);
 
   useEffect(() => {
-    const shortcuts = ['/', '/tasks', '/notes', '/finance', '/habits', '/health', '/learning', '/files', '/ai', '/settings'];
+    const shortcuts = ['/', '/tasks', '/notes', '/finance', '/habits', '/health', '/learning', '/ai', '/settings'];
     const onKey = (e) => {
       if (!e.ctrlKey) return;
       if (e.key.toLowerCase() === 'k') {
@@ -121,9 +113,10 @@ export default function App() {
         searchRef.current?.focus();
         return;
       }
-      if (/^[0-9]$/.test(e.key)) {
+      if (/^[1-9]$/.test(e.key)) {
         e.preventDefault();
-        navigate(shortcuts[e.key === '0' ? 9 : Number(e.key) - 1]);
+        const dest = shortcuts[Number(e.key) - 1];
+        if (dest) navigate(dest);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -263,7 +256,7 @@ export default function App() {
             </div>
           </header>
 
-          <main className="content">
+          <main className={'content' + (pathname === '/notes' ? ' content-notes' : '')}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/tasks" element={<Tasks />} />
@@ -272,13 +265,11 @@ export default function App() {
               <Route path="/habits" element={<Habits />} />
               <Route path="/health" element={<Health />} />
               <Route path="/learning" element={<Learning />} />
-              <Route path="/files" element={<Files />} />
               <Route path="/ai" element={<AiChat />} />
-              <Route path="/agent" element={<Agent />} />
-              <Route path="/rss" element={<RssPage />} />
               <Route path="/library" element={<Library />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/search" element={<SearchPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
         </div>

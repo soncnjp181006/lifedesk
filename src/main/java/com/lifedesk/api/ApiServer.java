@@ -9,8 +9,6 @@ import com.lifedesk.app.AppContext;
 import com.lifedesk.common.NotFoundException;
 import com.lifedesk.common.ValidationException;
 import com.lifedesk.config.ConfigService;
-import com.lifedesk.files.FileHit;
-import com.lifedesk.files.FileSearchOptions;
 import com.lifedesk.finance.TxType;
 import com.lifedesk.habits.Habit;
 import com.lifedesk.health.HealthService;
@@ -20,7 +18,6 @@ import com.lifedesk.learning.Deck;
 import com.lifedesk.learning.Flashcard;
 import com.lifedesk.notes.NoteMeta;
 import com.lifedesk.notes.NotesService;
-import com.lifedesk.rss.RssService;
 import com.lifedesk.storage.GsonFactory;
 import com.lifedesk.tasks.Priority;
 import com.lifedesk.tasks.RecurrenceRule;
@@ -150,10 +147,7 @@ public final class ApiServer {
             case "habits" -> habits(ex, method, p);
             case "health" -> health(ex, method, p);
             case "learning" -> learning(ex, method, p);
-            case "files" -> files(ex, method, p);
             case "ai" -> ai(ex, method, p);
-            case "agent" -> agent(ex, method, p);
-            case "rss" -> rss(ex, method, p);
             case "library" -> library(ex, method, p);
             case "notifications" -> notifications(ex, method, p);
             case "search" -> search(ex, method);
@@ -914,89 +908,6 @@ public final class ApiServer {
 
     // ------------------------------------------------------------------ files
 
-    private void files(HttpExchange ex, String method, List<String> p) throws IOException {
-        if (p.size() == 1 && method.equals("GET")) {
-            JsonObject out = new JsonObject();
-            JsonArray roots = new JsonArray();
-            for (Path r : ctx.files().allowedRoots()) {
-                roots.add(r.toString());
-            }
-            out.add("roots", roots);
-            out.add("favorites", gson.toJsonTree(ctx.files().favorites()));
-            String path = query(ex, "path", "");
-            if (!path.isBlank()) {
-                Path dir = Path.of(path);
-                ctx.files().requireAllowed(dir);
-                if (!Files.isDirectory(dir)) {
-                    throw new ValidationException("Không phải thư mục: " + path);
-                }
-                JsonArray items = new JsonArray();
-                for (FileHit hit : ctx.files().list(dir)) {
-                    JsonObject o = new JsonObject();
-                    o.addProperty("path", hit.path().toString());
-                    o.addProperty("name", hit.name());
-                    o.addProperty("directory", hit.directory());
-                    o.addProperty("sizeBytes", hit.sizeBytes());
-                    if (hit.lastModified() == null) {
-                        o.add("lastModified", com.google.gson.JsonNull.INSTANCE);
-                    } else {
-                        o.addProperty("lastModified", hit.lastModified().toString());
-                    }
-                    o.addProperty("extension", hit.extension());
-                    items.add(o);
-                }
-                out.add("items", items);
-                out.addProperty("parent", dir.getParent() == null ? null : dir.getParent().toString());
-            }
-            sendJson(ex, 200, out);
-            return;
-        }
-        if (p.size() == 2 && p.get(1).equals("search") && method.equals("GET")) {
-            FileSearchOptions options = new FileSearchOptions();
-            options.root = Path.of(query(ex, "path", ""));
-            ctx.files().requireAllowed(options.root);
-            options.nameQuery = query(ex, "q", "");
-            String ext = query(ex, "ext", "");
-            if (!ext.isBlank()) {
-                options.extensions = new LinkedHashSet<>(List.of(ext.split(",")));
-            }
-            options.includeSubfolders = true;
-            options.maxResults = 300;
-            JsonArray items = new JsonArray();
-            for (FileHit hit : ctx.files().search(options)) {
-                JsonObject o = new JsonObject();
-                o.addProperty("path", hit.path().toString());
-                o.addProperty("name", hit.name());
-                o.addProperty("directory", hit.directory());
-                o.addProperty("sizeBytes", hit.sizeBytes());
-                o.addProperty("extension", hit.extension());
-                items.add(o);
-            }
-            sendJson(ex, 200, items);
-            return;
-        }
-        if (p.size() == 2 && p.get(1).equals("favorites") && method.equals("POST")) {
-            JsonObject b = body(ex);
-            ctx.files().addFavorite(str(b, "path", ""), str(b, "label", ""));
-            sendJson(ex, 200, okJson());
-            return;
-        }
-        if (p.size() == 2 && p.get(1).equals("favorites") && method.equals("DELETE")) {
-            ctx.files().removeFavorite(query(ex, "path", ""));
-            sendJson(ex, 200, okJson());
-            return;
-        }
-        if (p.size() == 2 && p.get(1).equals("open") && method.equals("POST")) {
-            JsonObject b = body(ex);
-            boolean opened = ctx.files().openWithDefaultApp(Path.of(str(b, "path", "")));
-            JsonObject out = new JsonObject();
-            out.addProperty("opened", opened);
-            sendJson(ex, 200, out);
-            return;
-        }
-        sendError(ex, 404, "Không tìm thấy endpoint tệp");
-    }
-
     // ------------------------------------------------------------------ AI
 
     private void ai(HttpExchange ex, String method, List<String> p) throws Exception {
@@ -1076,122 +987,7 @@ public final class ApiServer {
 
     // ------------------------------------------------------------------ agent
 
-    private void agent(HttpExchange ex, String method, List<String> p) throws Exception {
-        if (p.size() == 2 && p.get(1).equals("workflows") && method.equals("GET")) {
-            JsonArray arr = new JsonArray();
-            for (var wf : ctx.agent().workflows()) {
-                JsonObject o = new JsonObject();
-                o.addProperty("id", wf.id());
-                o.addProperty("name", wf.name());
-                o.addProperty("description", wf.description());
-                JsonArray steps = new JsonArray();
-                for (var step : wf.steps()) {
-                    steps.add(step.label());
-                }
-                o.add("steps", steps);
-                arr.add(o);
-            }
-            sendJson(ex, 200, arr);
-            return;
-        }
-        if (p.size() == 2 && p.get(1).equals("run") && method.equals("POST")) {
-            JsonObject b = body(ex);
-            String id = str(b, "workflowId", "");
-            var wf = ctx.agent().workflows().stream().filter(w -> w.id().equals(id))
-                    .findFirst().orElseThrow(() -> new NotFoundException("Không tìm thấy workflow"));
-            List<com.lifedesk.agent.AgentService.StepUpdate> steps =
-                    java.util.Collections.synchronizedList(new ArrayList<>());
-            CountDownLatch latch = new CountDownLatch(1);
-            ctx.agent().runWorkflowAsync(wf, ctx.executors().ai(), steps::add, latch::countDown);
-            if (!latch.await(300, TimeUnit.SECONDS)) {
-                throw new ValidationException("Workflow chạy quá lâu");
-            }
-            sendJson(ex, 200, gson.toJsonTree(steps));
-            return;
-        }
-        if (p.size() == 2 && p.get(1).equals("command") && method.equals("POST")) {
-            JsonObject b = body(ex);
-            List<com.lifedesk.agent.AgentService.StepUpdate> steps =
-                    java.util.Collections.synchronizedList(new ArrayList<>());
-            AtomicReference<String> answer = new AtomicReference<>();
-            AtomicReference<Throwable> failure = new AtomicReference<>();
-            CountDownLatch latch = new CountDownLatch(1);
-            ctx.agent().runCommandAsync(str(b, "instruction", ""), ctx.executors().ai(),
-                    steps::add,
-                    result -> {
-                        answer.set(result);
-                        latch.countDown();
-                    },
-                    error -> {
-                        failure.set(error);
-                        latch.countDown();
-                    });
-            if (!latch.await(300, TimeUnit.SECONDS)) {
-                throw new ValidationException("Agent không phản hồi trong thời gian cho phép");
-            }
-            if (failure.get() != null) {
-                throw new ValidationException(failure.get().toString());
-            }
-            JsonObject out = new JsonObject();
-            out.add("steps", gson.toJsonTree(steps));
-            out.addProperty("answer", answer.get());
-            sendJson(ex, 200, out);
-            return;
-        }
-        sendError(ex, 404, "Không tìm thấy endpoint agent");
-    }
-
     // ------------------------------------------------------------------ RSS
-
-    private void rss(HttpExchange ex, String method, List<String> p) throws IOException {
-        if (p.size() == 1 && method.equals("GET")) {
-            JsonObject out = new JsonObject();
-            out.add("feeds", gson.toJsonTree(ctx.rss().feeds()));
-            JsonArray articles = new JsonArray();
-            for (RssService.Article a : ctx.rss().articles()) {
-                JsonObject o = gson.toJsonTree(a).getAsJsonObject();
-                o.addProperty("read", ctx.rss().isRead(a.url()));
-                o.addProperty("saved", ctx.rss().isSaved(a.url()));
-                articles.add(o);
-            }
-            out.add("articles", articles);
-            sendJson(ex, 200, out);
-            return;
-        }
-        if (p.size() == 2 && p.get(1).equals("feeds") && method.equals("POST")) {
-            JsonObject b = body(ex);
-            sendJson(ex, 200, gson.toJsonTree(ctx.rss().addFeed(
-                    str(b, "url", ""), str(b, "folder", ""))));
-            return;
-        }
-        if (p.size() == 3 && p.get(1).equals("feeds") && method.equals("DELETE")) {
-            ctx.rss().removeFeed(p.get(2));
-            sendJson(ex, 200, okJson());
-            return;
-        }
-        if (p.size() == 2 && p.get(1).equals("refresh") && method.equals("POST")) {
-            sendJson(ex, 200, gson.toJsonTree(ctx.rss().refreshAll()));
-            return;
-        }
-        if (p.size() == 2 && p.get(1).equals("mark-read") && method.equals("POST")) {
-            JsonObject b = body(ex);
-            ctx.rss().markRead(str(b, "url", ""), b.has("read") && b.get("read").getAsBoolean());
-            sendJson(ex, 200, okJson());
-            return;
-        }
-        if (p.size() == 2 && p.get(1).equals("mark-all-read") && method.equals("POST")) {
-            ctx.rss().markAllRead();
-            sendJson(ex, 200, okJson());
-            return;
-        }
-        if (p.size() == 2 && p.get(1).equals("save") && method.equals("POST")) {
-            JsonObject b = body(ex);
-            ctx.rss().markSaved(str(b, "url", ""));
-            sendJson(ex, 200, okJson());
-            return;
-        }
-        sendError(ex, 404, "Không tìm thấy endpoint RSS");
-    }
 
     // ------------------------------------------------------------------ library
 
@@ -1321,14 +1117,6 @@ public final class ApiServer {
         }
         if (b.has("latexAssist")) {
             cfg.latexAssist = b.get("latexAssist").getAsBoolean();
-        }
-        if (b.has("allowedRoots")) {
-            List<String> roots = new ArrayList<>();
-            for (JsonElement e : b.getAsJsonArray("allowedRoots")) {
-                roots.add(e.getAsString());
-            }
-            cfg.allowedRoots = roots;
-            ctx.files().setAllowedRoots(roots);
         }
         if (b.has("ai") && b.get("ai").isJsonObject()) {
             JsonObject ai = b.getAsJsonObject("ai");

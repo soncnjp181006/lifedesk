@@ -87,17 +87,7 @@ export default function Learning() {
   };
 
   return (
-    <Page
-      title="Học tập"
-      subtitle="Khóa học, flashcard và phiên ôn tập"
-      actions={
-        tab === 'courses'
-          ? <Btn variant="primary" icon={Plus} onClick={() => setCourseModal(true)}>Khóa học mới</Btn>
-          : tab === 'cards'
-            ? <Btn variant="primary" icon={Plus} onClick={() => setDeckModal(true)}>Bộ thẻ mới</Btn>
-            : null
-      }
-    >
+    <Page fill>
       <div className="toolbar">
         <Tabs
           value={tab}
@@ -108,10 +98,14 @@ export default function Learning() {
             { value: 'sessions', label: 'Phiên học (' + sessions.length + ')' }
           ]}
         />
+        <div className="toolbar-fields">
+          {tab === 'courses' && <Btn variant="primary" icon={Plus} onClick={() => setCourseModal(true)}>Khóa học mới</Btn>}
+          {tab === 'cards' && <Btn variant="primary" icon={Plus} onClick={() => setDeckModal(true)}>Bộ thẻ mới</Btn>}
+        </div>
       </div>
 
       {tab === 'courses' && (
-        <div className="grid-2">
+        <div className="grid-2 learning-courses">
           {courses.length === 0 && <Empty title="Chưa có khóa học" />}
           {courses.map((c) => (
             <Card key={c.id} title={c.title} actions={<IconBtn icon={Trash2} title="Xoá" onClick={() => removeCourse(c)} />}>
@@ -169,7 +163,7 @@ export default function Learning() {
       )}
 
       {tab === 'sessions' && (
-        <Card title="Phiên học gần đây">
+        <Card title="Phiên học gần đây" className="sessions-card">
           {sessions.length === 0 ? <Empty title="Chưa có phiên học" /> : (
             <ul className="row-list">
               {sessions.map((s) => (

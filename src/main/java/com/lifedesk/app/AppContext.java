@@ -6,7 +6,6 @@ import com.lifedesk.backup.BackupService;
 import com.lifedesk.common.AppExecutors;
 import com.lifedesk.config.AppConfig;
 import com.lifedesk.finance.FinanceService;
-import com.lifedesk.files.FileManagerService;
 import com.lifedesk.habits.HabitService;
 import com.lifedesk.health.HealthService;
 import com.lifedesk.learning.LearningService;
@@ -46,14 +45,11 @@ public class AppContext {
     private final HabitService habitService;
     private final HealthService healthService;
     private final LearningService learningService;
-    private final FileManagerService fileService;
     private final NotificationService notificationService;
     private final SearchService searchService;
     private final BackupService backupService = new BackupService();
     private final AiManager aiManager;
     private final com.lifedesk.ai.AiConversationService aiConversationService;
-    private final com.lifedesk.agent.AgentService agentService;
-    private final com.lifedesk.rss.RssService rssService;
     private final com.lifedesk.library.LibraryService libraryService;
     private final ReminderScheduler reminderScheduler;
     private final java.util.concurrent.ScheduledExecutorService debounceScheduler;
@@ -70,7 +66,6 @@ public class AppContext {
         this.habitService = new HabitService(store);
         this.healthService = new HealthService(store);
         this.learningService = new LearningService(store);
-        this.fileService = new FileManagerService(store, config.allowedRoots);
         this.notificationService = new NotificationService(store);
 
         // Search over everything
@@ -82,8 +77,6 @@ public class AppContext {
                 habitService, learningService, searchService, markdownService, healthService);
         this.aiManager = new AiManager(config.ai, ruleBasedEngine);
         this.aiConversationService = new com.lifedesk.ai.AiConversationService(store);
-        this.agentService = new com.lifedesk.agent.AgentService(this);
-        this.rssService = new com.lifedesk.rss.RssService(store);
         this.libraryService = new com.lifedesk.library.LibraryService(store);
 
         // Reminders
@@ -213,10 +206,6 @@ public class AppContext {
         return learningService;
     }
 
-    public FileManagerService files() {
-        return fileService;
-    }
-
     public NotificationService notifications() {
         return notificationService;
     }
@@ -241,16 +230,6 @@ public class AppContext {
         return aiConversationService;
     }
 
-    /** Agent that operates the app through tools (Agent Workflow). */
-    public com.lifedesk.agent.AgentService agent() {
-        return agentService;
-    }
-
-    /** RSS/Atom feed dashboard. */
-    public com.lifedesk.rss.RssService rss() {
-        return rssService;
-    }
-
     /** Personal library (books/movies/series/games...). */
     public com.lifedesk.library.LibraryService library() {
         return libraryService;
@@ -260,8 +239,4 @@ public class AppContext {
         return reminderScheduler;
     }
 
-    /** Allowed roots helper shared by settings UI and file tools. */
-    public List<String> allowedRoots() {
-        return List.copyOf(config.allowedRoots);
-    }
 }
