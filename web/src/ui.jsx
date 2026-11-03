@@ -44,9 +44,9 @@ export function IconBtn({ icon: Icon, title, className = '', ...props }) {
   );
 }
 
-export function Field({ label, hint, children }) {
+export function Field({ label, hint, className, children }) {
   return (
-    <label className="field">
+    <label className={className ? 'field ' + className : 'field'}>
       <span className="field-label">{label}</span>
       {children}
       {hint && <span className="field-hint">{hint}</span>}

@@ -252,9 +252,6 @@ function TaskModal({ initial, groups, onClose, onSave }) {
         <Field label="Hạn">
           <DateField value={form.dueDate} onChange={(v) => setForm({ ...form, dueDate: v })} />
         </Field>
-        <Field label="Giờ">
-          <Input type="time" value={form.dueTime} onChange={set('dueTime')} />
-        </Field>
         <Field label="Nhóm" hint="Thêm nhóm ở nút “Nhóm” trên thanh công cụ">
           <Select value={form.group} onChange={set('group')}>
             <option value="">Chưa có nhóm</option>
@@ -281,7 +278,7 @@ function TaskModal({ initial, groups, onClose, onSave }) {
         <Field label="Mỗi">
           <Input type="number" min="1" value={form.recurrenceInterval} onChange={set('recurrenceInterval')} />
         </Field>
-        <Field label="Ghi chú" wide>
+        <Field label="Ghi chú" className="wide">
           <Textarea rows={4} value={form.notes} onChange={set('notes')} />
         </Field>
       </div>
