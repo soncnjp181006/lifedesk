@@ -102,16 +102,9 @@ public final class SmokeMain {
         check("nhật ký thay đổi ghi nhận điều chỉnh",
                 ctx.habits().changeLog().stream().anyMatch(e -> e.reason.equals("bù lịch sử")));
 
-        // 5. Health + Learning
+        // 5. Health
         ctx.health().upsert(LocalDate.now(), new BigDecimal("7.5"), 30, new BigDecimal("65.4"), null, "");
         check("health upsert đọc lại", ctx.health().byDate(LocalDate.now()).isPresent());
-        var deck = ctx.learning().addDeck("Toeic", "");
-        ctx.learning().addCard(deck.id, "abandon", "từ bỏ");
-        check("flashcard đến hạn ngay khi tạo", ctx.learning().dueCount() == 1);
-        var card = ctx.learning().dueCards(null).get(0);
-        ctx.learning().review(card.id, true);
-        check("leitner box tăng khi đúng", ctx.learning().cardsInDeck(deck.id).get(0).box == 2);
-        check("học buổi học + thống kê phút", ctx.learning().minutesBetween(LocalDate.now(), LocalDate.now()) == 0);
 
         // 6. Rule engine (offline intelligence)
         RuleBasedEngine engine = ctx.ai().byId(RuleBasedEngine.ID) instanceof RuleBasedEngine r ? r : null;
@@ -141,7 +134,6 @@ public final class SmokeMain {
         check("note tồn tại sau reload", ctx2.notes().findByTitle("Ghi chú dự án").isPresent());
         check("finance tồn tại sau reload", ctx2.finance().transactionCount() >= 2);
         check("habit tồn tại sau reload", ctx2.habits().habits(true).size() == 1);
-        check("learning tồn tại sau reload", ctx2.learning().decks().size() == 1);
 
         // 11. Backup + restore roundtrip (acceptance #10)
         BackupService backup = new BackupService();

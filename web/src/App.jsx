@@ -40,7 +40,7 @@ const GROUPS = [
       { to: '/finance', label: 'Tài chính', icon: Wallet },
       { to: '/habits', label: 'Thói quen & Mục tiêu', icon: Repeat },
       { to: '/health', label: 'Sức khỏe', icon: HeartPulse },
-      { to: '/learning', label: 'Học tập', icon: BookOpen }
+      { to: '/learning', label: 'Học tập (EduSmart)', icon: BookOpen }
     ]
   },
   {
@@ -256,7 +256,7 @@ export default function App() {
             </div>
           </header>
 
-          <main className={'content' + (pathname === '/notes' ? ' content-notes' : '')}>
+          <main className={'content' + (pathname === '/notes' ? ' content-notes' : '') + (pathname === '/learning' ? ' content-edu' : '')}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/tasks" element={<Tasks />} />

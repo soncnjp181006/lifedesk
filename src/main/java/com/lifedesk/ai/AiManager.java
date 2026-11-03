@@ -100,7 +100,7 @@ public class AiManager {
                 new PromptTemplate("/kehoach", "Giúp tôi lập kế hoạch làm việc cho hôm nay dựa trên dữ liệu: việc đến hạn, thói quen, và thời gian trống."),
                 new PromptTemplate("/chitieu", "Phân tích chi tiêu tháng này và gợi ý 3 cách tiết kiệm cụ thể."),
                 new PromptTemplate("/tomtat", "Tóm tắt nội dung sau thành 5 gạch đầu dòng: "),
-                new PromptTemplate("/ontap", "Tạo 5 câu hỏi ôn tập từ các flashcard và khóa học của tôi, kèm đáp án."),
+                new PromptTemplate("/ontap", "Tạo 5 câu hỏi ôn tập từ thời khóa biểu, bài kiểm tra và bài tập của tôi trong EduSmart, kèm đáp án."),
                 new PromptTemplate("/email", "Viết một email ngắn gọn, chuyên nghiệp về chủ đề: "),
                 new PromptTemplate("/latex", "Giải thích khái niệm toán học sau và viết công thức LaTeX: "));
     }

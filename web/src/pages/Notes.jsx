@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Folder,
   FolderPlus,
+  MoreVertical,
   Pencil,
   Plus,
   Save,
@@ -19,7 +21,6 @@ import {
   Input,
   Modal,
   Page,
-  Select,
   Spinner,
   fmt,
   useConfirm,
@@ -27,6 +28,9 @@ import {
 } from '../ui.jsx';
 
 const PREFIX_RE = /^(\s*)(#{1,6}\s+|>\s+|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+\.\s+)/;
+
+const MENU_W = 178;
+const MENU_H = 86;
 
 function kindOfPrefix(full) {
   const t = (full || '').trim();
@@ -209,6 +213,7 @@ export default function Notes() {
   const [preview, setPreview] = useState('');
   const [folderModal, setFolderModal] = useState(null);
   const [newNote, setNewNote] = useState(false);
+  const [menu, setMenu] = useState(null);
   const editorRef = useRef(null);
   const placeholderRef = useRef(null);
   const lastSavedSig = useRef('');
@@ -557,6 +562,64 @@ export default function Notes() {
     }
   };
 
+  const openMenu = (e, id) => {
+    const trigger = e.currentTarget;
+    if (menu && menu.id === id) {
+      setMenu(null);
+      return;
+    }
+    const r = trigger.getBoundingClientRect();
+    const box = (trigger.closest('.note-item-wrap') || trigger).getBoundingClientRect();
+    const below = box.bottom + 6;
+    setMenu({
+      id,
+      trigger,
+      x: Math.max(10, Math.min(r.right - MENU_W, window.innerWidth - MENU_W - 10)),
+      y: below + MENU_H > window.innerHeight - 10 ? Math.max(10, box.top - MENU_H - 6) : below
+    });
+    // The menu acts on the note it belongs to, and "Lưu" only ever means the
+    // editor draft, so the row becomes the selected note.
+    if (selectedId !== id) setSelectedId(id);
+  };
+
+  useEffect(() => {
+    if (!menu) return undefined;
+    const isMine = (target) => {
+      if (!(target instanceof Node)) return false;
+      if (menu.trigger.contains(target)) return true;
+      return !!(target.closest && target.closest('.note-menu'));
+    };
+    const close = () => setMenu(null);
+    const onDown = (e) => {
+      if (!isMine(e.target)) setMenu(null);
+    };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      setMenu(null);
+      menu.trigger.focus();
+    };
+    // The popover is position:fixed; a scrolled list or resized window would
+    // leave it floating over the wrong row.
+    const list = document.querySelector('.note-list');
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('resize', close);
+    if (list) list.addEventListener('scroll', close);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', close);
+      if (list) list.removeEventListener('scroll', close);
+    };
+  }, [menu]);
+
+  const runMenuItem = (fn) => async () => {
+    const trigger = menu ? menu.trigger : null;
+    setMenu(null);
+    await fn();
+    if (trigger && document.contains(trigger)) trigger.focus();
+  };
+
   const saveFolder = async (name, rename) => {
     if (!name.trim()) return;
     try {
@@ -625,19 +688,30 @@ export default function Notes() {
           <div className="note-list">
             {visible.length === 0 && <p className="muted small pad">Chưa có ghi chú.</p>}
             {visible.map((n) => (
-              <button
-                key={n.id}
-                className={'note-item' + (selectedId === n.id ? ' active' : '')}
-                onClick={() => setSelectedId(n.id)}
-              >
-                <div className="row-title">
-                  {n.starred && <Star size={12} className="star" />} {n.title}
-                </div>
-                <div className="row-meta">
-                  <span>{n.folder || '(gốc)'}</span>
-                  <span>{fmt.dateTime(n.updatedAt)}</span>
-                </div>
-              </button>
+              <div key={n.id} className="note-item-wrap">
+                <button
+                  className={'note-item' + (selectedId === n.id ? ' active' : '')}
+                  onClick={() => setSelectedId(n.id)}
+                >
+                  <div className="row-title">
+                    {n.starred && <Star size={12} className="star" />} {n.title}
+                  </div>
+                  <div className="row-meta">
+                    {n.folder && <span>{n.folder}</span>}
+                    <span>{fmt.dateTime(n.updatedAt)}</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  className="note-more"
+                  aria-label={'Tùy chọn cho "' + n.title + '"'}
+                  aria-haspopup="true"
+                  aria-expanded={menu ? menu.id === n.id : false}
+                  onClick={(e) => openMenu(e, n.id)}
+                >
+                  <MoreVertical size={15} />
+                </button>
+              </div>
             ))}
           </div>
         </aside>
@@ -663,21 +737,6 @@ export default function Notes() {
                   title="Đánh dấu quan trọng"
                   className={draft.starred ? 'starred' : ''}
                   onClick={() => setDraft({ ...draft, starred: !draft.starred })}
-                />
-                <Btn icon={Save} variant="primary" onClick={save} disabled={saving}>
-                  {saving ? 'Đang lưu…' : 'Lưu'}
-                </Btn>
-                <Btn variant="danger" icon={Trash2} onClick={deleteNote}>Xoá</Btn>
-              </div>
-              <div className="note-meta">
-                <Select value={draft.folder} onChange={(e) => setDraft({ ...draft, folder: e.target.value })}>
-                  <option value="">(gốc)</option>
-                  {folders.map((f) => <option key={f} value={f}>{f}</option>)}
-                </Select>
-                <Input
-                  placeholder="tags, cách nhau bằng dấu phẩy"
-                  value={draft.tagsText}
-                  onChange={(e) => setDraft({ ...draft, tagsText: e.target.value })}
                 />
               </div>
               <div className="md-toolbar" onMouseDown={(e) => e.preventDefault()}>
@@ -720,6 +779,27 @@ export default function Notes() {
         </section>
       </div>
 
+      {menu && createPortal(
+        <div className="note-menu" style={{ left: menu.x, top: menu.y }}>
+          <button
+            type="button"
+            onClick={runMenuItem(save)}
+            disabled={saving || draft?.id !== menu.id}
+          >
+            <Save size={14} /> {saving ? 'Đang lưu…' : 'Lưu'}
+          </button>
+          <span className="note-menu-sep" />
+          <button
+            type="button"
+            className="danger"
+            onClick={runMenuItem(deleteNote)}
+            disabled={draft?.id !== menu.id}
+          >
+            <Trash2 size={14} /> Xoá
+          </button>
+        </div>,
+        document.body
+      )}
       {folderModal && (
         <NameModal
           title={folderModal.rename ? 'Đổi tên thư mục' : 'Thư mục mới'}

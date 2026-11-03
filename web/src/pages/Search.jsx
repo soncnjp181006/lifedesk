@@ -11,8 +11,6 @@ const ROUTE = {
   TRANSACTION: '/finance',
   HABIT: '/habits',
   GOAL: '/habits',
-  COURSE: '/learning',
-  FLASHCARD: '/learning',
   HEALTH: '/health'
 };
 

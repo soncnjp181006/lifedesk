@@ -8,7 +8,6 @@ import com.lifedesk.config.AppConfig;
 import com.lifedesk.finance.FinanceService;
 import com.lifedesk.habits.HabitService;
 import com.lifedesk.health.HealthService;
-import com.lifedesk.learning.LearningService;
 import com.lifedesk.markdown.MarkdownService;
 import com.lifedesk.notes.NotesService;
 import com.lifedesk.notifications.NotificationService;
@@ -44,7 +43,6 @@ public class AppContext {
     private final FinanceService financeService;
     private final HabitService habitService;
     private final HealthService healthService;
-    private final LearningService learningService;
     private final NotificationService notificationService;
     private final SearchService searchService;
     private final BackupService backupService = new BackupService();
@@ -65,16 +63,15 @@ public class AppContext {
         this.financeService = new FinanceService(store);
         this.habitService = new HabitService(store);
         this.healthService = new HealthService(store);
-        this.learningService = new LearningService(store);
         this.notificationService = new NotificationService(store);
 
         // Search over everything
         this.searchService = new SearchService(store, taskService, notesService,
-                financeService, habitService, healthService, learningService);
+                financeService, habitService, healthService);
 
         // AI
         this.ruleBasedEngine = new RuleBasedEngine(taskService, notesService, financeService,
-                habitService, learningService, searchService, markdownService, healthService);
+                habitService, searchService, markdownService, healthService);
         this.aiManager = new AiManager(config.ai, ruleBasedEngine);
         this.aiConversationService = new com.lifedesk.ai.AiConversationService(store);
         this.libraryService = new com.lifedesk.library.LibraryService(store);
@@ -94,7 +91,6 @@ public class AppContext {
         financeService.changes().addListener(this::markSearchDirty);
         habitService.changes().addListener(this::markSearchDirty);
         healthService.changes().addListener(this::markSearchDirty);
-        learningService.changes().addListener(this::markSearchDirty);
 
         // Mirror AI provider settings + metadata into data/ai/ (schema-versioned store).
         persistAiSnapshot();
@@ -200,10 +196,6 @@ public class AppContext {
 
     public HealthService health() {
         return healthService;
-    }
-
-    public LearningService learning() {
-        return learningService;
     }
 
     public NotificationService notifications() {

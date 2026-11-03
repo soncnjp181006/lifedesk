@@ -13,9 +13,7 @@ import com.lifedesk.finance.TxType;
 import com.lifedesk.habits.Habit;
 import com.lifedesk.health.HealthService;
 import com.lifedesk.health.HealthEntry;
-import com.lifedesk.learning.Course;
-import com.lifedesk.learning.Deck;
-import com.lifedesk.learning.Flashcard;
+import com.lifedesk.edusmart.EduSmartBackend;
 import com.lifedesk.notes.NoteMeta;
 import com.lifedesk.notes.NotesService;
 import com.lifedesk.storage.GsonFactory;
@@ -67,9 +65,11 @@ public final class ApiServer {
     private HttpServer server;
     private ExecutorService pool;
     private int port;
+    private final EduSmartBackend eduSmart;
 
     public ApiServer(AppContext ctx) {
         this.ctx = ctx;
+        this.eduSmart = new EduSmartBackend(ctx.dataDir());
     }
 
     public synchronized int start() throws IOException {
@@ -100,6 +100,7 @@ public final class ApiServer {
             pool.shutdownNow();
             pool = null;
         }
+        eduSmart.stop();
     }
 
     // ------------------------------------------------------------------ dispatch
@@ -146,7 +147,7 @@ public final class ApiServer {
             case "finance" -> finance(ex, method, p);
             case "habits" -> habits(ex, method, p);
             case "health" -> health(ex, method, p);
-            case "learning" -> learning(ex, method, p);
+            case "edusmart" -> edusmart(ex, method);
             case "ai" -> ai(ex, method, p);
             case "library" -> library(ex, method, p);
             case "notifications" -> notifications(ex, method, p);
@@ -224,18 +225,6 @@ public final class ApiServer {
             habits.add(item);
         }
         out.add("habits", habits);
-
-        JsonObject learning = new JsonObject();
-        learning.addProperty("dueCards", ctx.learning().dueCount());
-        JsonArray decks = new JsonArray();
-        for (Deck d : ctx.learning().decks()) {
-            JsonObject dj = gson.toJsonTree(d).getAsJsonObject();
-            dj.addProperty("dueCount", ctx.learning().dueCountForDeck(d.id));
-            decks.add(dj);
-        }
-        learning.add("decks", decks);
-        learning.addProperty("courses", ctx.learning().courses().size());
-        out.add("learning", learning);
 
         JsonObject health = new JsonObject();
         health.addProperty("avgSleep7", ctx.health().averageDays(HealthService.HealthField.SLEEP, 7));
@@ -782,128 +771,36 @@ public final class ApiServer {
         sendError(ex, 404, "Không tìm thấy endpoint sức khỏe");
     }
 
-    // ------------------------------------------------------------------ learning
+    // ------------------------------------------------------------------ edusmart
 
-    private void learning(HttpExchange ex, String method, List<String> p) throws IOException {
-        if (p.size() == 1 && method.equals("GET")) {
-            JsonObject out = new JsonObject();
-            synchronized (moduleLock) {
-                JsonArray decks = new JsonArray();
-                for (Deck d : ctx.learning().decks()) {
-                    JsonObject o = gson.toJsonTree(d).getAsJsonObject();
-                    o.addProperty("dueCount", ctx.learning().dueCountForDeck(d.id));
-                    o.addProperty("cardCount", ctx.learning().cardsInDeck(d.id).size());
-                    decks.add(o);
-                }
-                out.add("courses", gson.toJsonTree(ctx.learning().courses()));
-                out.add("decks", decks);
-                out.addProperty("dueCards", ctx.learning().dueCount());
-                out.addProperty("cardCount", ctx.learning().cardCount());
-                out.add("sessions", gson.toJsonTree(ctx.learning().sessions().stream()
-                        .sorted(Comparator.comparing((com.lifedesk.learning.StudySession s) -> s.date).reversed())
-                        .limit(20).toList()));
-            }
-            sendJson(ex, 200, out);
+    /**
+     * Status/start surface for the embedded EduSmart backend consumed by the
+     * "Học tập (EduSmart)" iframe. A GET on a never-started backend boots it so
+     * the module opens without an extra round-trip; a failed backend stays in
+     * ERROR until the user asks for a restart, so polling can never spawn a
+     * new JVM on every request.
+     */
+    private void edusmart(HttpExchange ex, String method) throws IOException {
+        String path = ex.getRequestURI().getPath();
+        if (method.equals("POST") && path.endsWith("/restart")) {
+            eduSmart.stop();
+            eduSmart.startAsync();
+            sendJson(ex, 200, eduSmart.status());
             return;
         }
-        if (p.size() == 2 && p.get(1).equals("courses") && method.equals("POST")) {
-            JsonObject b = body(ex);
-            synchronized (moduleLock) {
-                sendJson(ex, 200, gson.toJsonTree(ctx.learning().addCourse(
-                        str(b, "title", "Khóa học"), str(b, "source", ""),
-                        str(b, "link", ""), tags(b))));
-            }
+        if (method.equals("POST")) {
+            eduSmart.startAsync();
+            sendJson(ex, 200, eduSmart.status());
             return;
         }
-        if (p.size() == 3 && p.get(1).equals("courses") && method.equals("DELETE")) {
-            synchronized (moduleLock) {
-                ctx.learning().deleteCourse(p.get(2));
+        if (method.equals("GET")) {
+            if (eduSmart.status().get("state").getAsString().equals("STOPPED")) {
+                eduSmart.startAsync();
             }
-            sendJson(ex, 200, okJson());
+            sendJson(ex, 200, eduSmart.status());
             return;
         }
-        if (p.size() == 3 && p.get(1).equals("courses") && method.equals("PUT")) {
-            JsonObject b = body(ex);
-            synchronized (moduleLock) {
-                Course c = ctx.learning().course(p.get(2));
-                if (b.has("status")) {
-                    c.status = enumValue(com.lifedesk.learning.CourseStatus.class,
-                            str(b, "status", c.status.name()));
-                }
-                if (b.has("progressPercent")) {
-                    c.progressPercent = b.get("progressPercent").getAsInt();
-                }
-                if (b.has("title")) {
-                    c.title = str(b, "title", c.title);
-                }
-                if (b.has("source")) {
-                    c.source = str(b, "source", c.source);
-                }
-                if (b.has("link")) {
-                    c.link = str(b, "link", c.link);
-                }
-                ctx.learning().updateCourse(c);
-                sendJson(ex, 200, gson.toJsonTree(c));
-            }
-            return;
-        }
-        if (p.size() == 2 && p.get(1).equals("decks") && method.equals("POST")) {
-            JsonObject b = body(ex);
-            synchronized (moduleLock) {
-                sendJson(ex, 200, gson.toJsonTree(ctx.learning().addDeck(
-                        str(b, "name", "Bộ thẻ"), str(b, "courseId", ""))));
-            }
-            return;
-        }
-        if (p.size() == 4 && p.get(1).equals("decks") && p.get(3).equals("cards")
-                && method.equals("GET")) {
-            synchronized (moduleLock) {
-                sendJson(ex, 200, gson.toJsonTree(ctx.learning().cardsInDeck(p.get(2))));
-            }
-            return;
-        }
-        if (p.size() == 3 && p.get(1).equals("decks") && method.equals("DELETE")) {
-            synchronized (moduleLock) {
-                ctx.learning().deleteDeck(p.get(2));
-            }
-            sendJson(ex, 200, okJson());
-            return;
-        }
-        if (p.size() == 2 && p.get(1).equals("cards") && method.equals("POST")) {
-            JsonObject b = body(ex);
-            synchronized (moduleLock) {
-                sendJson(ex, 200, gson.toJsonTree(ctx.learning().addCard(
-                        str(b, "deckId", ""), str(b, "front", ""), str(b, "back", ""))));
-            }
-            return;
-        }
-        if (p.size() == 3 && p.get(1).equals("cards") && method.equals("DELETE")) {
-            synchronized (moduleLock) {
-                ctx.learning().deleteCard(p.get(2));
-            }
-            sendJson(ex, 200, okJson());
-            return;
-        }
-        if (p.size() == 4 && p.get(1).equals("cards") && p.get(3).equals("review")
-                && method.equals("POST")) {
-            JsonObject b = body(ex);
-            synchronized (moduleLock) {
-                ctx.learning().review(p.get(2), b.has("correct") && b.get("correct").getAsBoolean());
-                Flashcard c = ctx.learning().card(p.get(2));
-                sendJson(ex, 200, gson.toJsonTree(c));
-            }
-            return;
-        }
-        if (p.size() == 2 && p.get(1).equals("sessions") && method.equals("POST")) {
-            JsonObject b = body(ex);
-            synchronized (moduleLock) {
-                ctx.learning().addSession(str(b, "courseId", ""), date(b, "date"),
-                        num(b, "minutes", 30).intValue(), str(b, "topic", ""));
-            }
-            sendJson(ex, 200, okJson());
-            return;
-        }
-        sendError(ex, 404, "Không tìm thấy endpoint học tập");
+        sendError(ex, 404, "Không tìm thấy endpoint EduSmart");
     }
 
     // ------------------------------------------------------------------ files
@@ -1176,6 +1073,8 @@ public final class ApiServer {
         InputStream in = getClass().getResourceAsStream("/web" + clean);
         if (in == null) {
             in = getClass().getResourceAsStream("/web/index.html");
+            // SPA route fallback: the bytes are HTML, so the extension-less URL must not mime as octet-stream
+            clean = "/index.html";
         }
         if (in == null) {
             sendError(ex, 404, "UI chưa được build (thiếu resources/web)");

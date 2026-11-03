@@ -3,7 +3,6 @@ package com.lifedesk.ai;
 import com.lifedesk.finance.FinanceService;
 import com.lifedesk.habits.Habit;
 import com.lifedesk.habits.HabitService;
-import com.lifedesk.learning.LearningService;
 import com.lifedesk.markdown.MarkdownService;
 import com.lifedesk.notes.NoteMeta;
 import com.lifedesk.notes.NotesService;
@@ -46,20 +45,18 @@ public class RuleBasedEngine implements AiProvider {
     private final NotesService notesService;
     private final FinanceService financeService;
     private final HabitService habitService;
-    private final LearningService learningService;
     private final SearchService searchService;
     private final MarkdownService markdownService;
     private final com.lifedesk.health.HealthService healthService;
 
     public RuleBasedEngine(TaskService taskService, NotesService notesService, FinanceService financeService,
-                           HabitService habitService, LearningService learningService,
+                           HabitService habitService,
                            SearchService searchService, MarkdownService markdownService,
                            com.lifedesk.health.HealthService healthService) {
         this.taskService = taskService;
         this.notesService = notesService;
         this.financeService = financeService;
         this.habitService = habitService;
-        this.learningService = learningService;
         this.searchService = searchService;
         this.markdownService = markdownService;
         this.healthService = healthService;
@@ -226,13 +223,13 @@ public class RuleBasedEngine implements AiProvider {
                         return lower.contains("muc tieu") || lower.contains("goal");
                     },
                     q -> goalStatus()),
-            new Intent("- \"ôn tập\" — số flashcard đến hạn",
+            new Intent("- \"ôn tập\" — học tập với EduSmart",
                     q -> {
                         String lower = com.lifedesk.common.TextSearch.normalize(q);
                         return lower.contains("on tap") || lower.contains("flashcard") || lower.contains("hoc tap")
                                 || lower.contains("review") || lower.contains("learning");
                     },
-                    q -> learningStatus()),
+                    q -> "Mục Học tập (EduSmart) đã có thời khóa biểu, bài kiểm tra và bài tập riêng — bạn mở mục Học tập (EduSmart) trong LifeDesk để ôn tập nhé."),
             new Intent("- \"gợi ý\" — đề xuất việc cần làm",
                     q -> {
                         String lower = com.lifedesk.common.TextSearch.normalize(q);
@@ -508,22 +505,6 @@ public class RuleBasedEngine implements AiProvider {
         return sb.toString().stripTrailing();
     }
 
-    private String learningStatus() {
-        int due = learningService.dueCount();
-        var courses = learningService.courses().stream()
-                .filter(c -> c.status() == com.lifedesk.learning.CourseStatus.IN_PROGRESS).toList();
-        StringBuilder sb = new StringBuilder("## Học tập\n\n");
-        sb.append("- Flashcard đến hạn ôn: **").append(due).append("**\n");
-        sb.append("- Khóa học đang học: **").append(courses.size()).append("**\n");
-        for (var c : courses) {
-            sb.append("  - ").append(c.title()).append(" (_").append(c.progressPercent()).append("%_)\n");
-        }
-        if (due == 0 && courses.isEmpty()) {
-            sb.append("\nHiện không có gì để ôn — thêm thẻ hoặc khóa học mới trong mục Học tập.");
-        }
-        return sb.toString().stripTrailing();
-    }
-
     private String healthStatus() {
         Double sleep = healthService.averageDays(com.lifedesk.health.HealthService.HealthField.SLEEP, 30);
         Double weight = healthService.averageDays(com.lifedesk.health.HealthService.HealthField.WEIGHT, 30);
@@ -675,10 +656,6 @@ public class RuleBasedEngine implements AiProvider {
         }
 
         List<String> watch = new ArrayList<>();
-        int cards = learningService.dueCount();
-        if (cards > 0) {
-            watch.add("**" + cards + " flashcard** đến hạn ôn — khoảng " + Math.max(5, cards * 2) + " phút.");
-        }
         LocalDate yesterday = today.minusDays(1);
         List<String> missed = new ArrayList<>();
         for (Habit h : habitService.habits(false)) {
@@ -713,8 +690,6 @@ public class RuleBasedEngine implements AiProvider {
         } else if (!due.isEmpty()) {
             sb.append("Bắt đầu với \"").append(due.get(0).title).append("\" (_")
                     .append(priorityLabel(due.get(0).priority)).append("_) — hỏi tôi \"việc hôm nay\" để xem cả danh sách.");
-        } else if (cards > 0) {
-            sb.append("Không có việc gấp — dồn 15 phút cho ").append(cards).append(" flashcard đang đến hạn.");
         } else {
             sb.append("Không có gì gấp. Dùng thời gian này để lên kế hoạch tuần: hỏi tôi \"sắp tới\".");
         }
@@ -730,10 +705,6 @@ public class RuleBasedEngine implements AiProvider {
         var today = taskService.dueToday();
         if (!today.isEmpty()) {
             out.add("Hôm nay còn " + today.size() + " việc đến hạn — lên kế hoạch giờ làm cụ thể.");
-        }
-        var dueCards = learningService.dueCount();
-        if (dueCards > 0) {
-            out.add("Có " + dueCards + " flashcard đến hạn ôn tập (15 phút là đủ).");
         }
         for (Habit h : habitService.habits(false)) {
             LocalDate yesterday = LocalDate.now().minusDays(1);
@@ -772,7 +743,7 @@ public class RuleBasedEngine implements AiProvider {
             habitLine.append(h.name).append("(").append(habitService.currentStreak(h)).append(" ngày) ");
         }
         parts.put("Thói quen", habitLine.toString().trim());
-        parts.put("Học tập", "flashcard đến hạn: " + learningService.dueCount());
+        parts.put("Học tập", "EduSmart (đã tích hợp)");
         StringBuilder sb = new StringBuilder("Dữ liệu người dùng (đã cho phép truy cập):\n");
         parts.forEach((k, v) -> sb.append("- ").append(k).append(": ").append(v).append('\n'));
         return sb.toString();

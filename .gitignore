@@ -7,3 +7,9 @@ target/
 
 web/node_modules/
 web/dist/
+
+# EduSmart runtime: 134 MB jar (over GitHub's 100 MB file limit) + its H2 database
+vendor/
+data/
+*.mv.db
+*.lock.db

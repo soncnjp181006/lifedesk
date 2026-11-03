@@ -6,7 +6,6 @@ import com.lifedesk.common.TextSearch;
 import com.lifedesk.finance.FinanceService;
 import com.lifedesk.habits.HabitService;
 import com.lifedesk.health.HealthService;
-import com.lifedesk.learning.LearningService;
 import com.lifedesk.notes.NotesService;
 import com.lifedesk.storage.GsonFactory;
 import com.lifedesk.storage.JsonStore;
@@ -49,21 +48,19 @@ public class SearchService {
     private final FinanceService financeService;
     private final HabitService habitService;
     private final HealthService healthService;
-    private final LearningService learningService;
 
     private final Map<String, SearchDoc> docs = new HashMap<>();
     private final Map<String, IndexedDoc> indexed = new HashMap<>();
 
     public SearchService(JsonStore store, TaskService taskService, NotesService notesService,
                          FinanceService financeService, HabitService habitService,
-                         HealthService healthService, LearningService learningService) {
+                         HealthService healthService) {
         this.store = store;
         this.taskService = taskService;
         this.notesService = notesService;
         this.financeService = financeService;
         this.habitService = habitService;
         this.healthService = healthService;
-        this.learningService = learningService;
     }
 
     /** Rebuild all documents from module sources (background thread safe: synchronize). */
@@ -75,7 +72,6 @@ public class SearchService {
         indexFinance(fresh);
         indexHabits(fresh);
         indexHealth(fresh);
-        indexLearning(fresh);
         docs.clear();
         docs.putAll(fresh);
         reindexNormalized();
@@ -140,17 +136,6 @@ public class SearchService {
         for (var e : healthService.entries()) {
             String content = "ngủ " + e.sleepHours + " tập " + e.exerciseMinutes + " cân " + e.weightKg + " " + e.note;
             add(out, SearchDoc.HEALTH, e.id, "Sức khỏe " + e.date, content, "");
-        }
-    }
-
-    private void indexLearning(Map<String, SearchDoc> out) {
-        for (var c : learningService.courses()) {
-            add(out, SearchDoc.COURSE, c.id, c.title, c.source + " " + c.link, String.join(" ", c.tags));
-        }
-        for (var deck : learningService.decks()) {
-            for (var card : learningService.cardsInDeck(deck.id)) {
-                add(out, SearchDoc.FLASHCARD, card.id, card.front, card.back, "");
-            }
         }
     }
 

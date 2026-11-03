@@ -31,7 +31,7 @@ export default function Dashboard() {
   if (loading) return <Spinner />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
 
-  const { tasks, notes, finance, habits, learning, health } = data;
+  const { tasks, notes, finance, habits, health } = data;
   const maxSeries = Math.max(1, ...finance.series.map((d) => Number(d.expense || 0)));
 
   const toggleHabit = async (h) => {
@@ -52,7 +52,7 @@ export default function Dashboard() {
       <div className="stat-grid">
         <StatCard icon={ListTodo} label="Việc hôm nay" value={tasks.dueToday} hint={`${tasks.overdue} việc quá hạn`} onClick={() => nav('/tasks')} />
         <StatCard icon={Wallet} label="Số dư tháng" value={fmt.money(finance.summary.net)} hint={`thu ${fmt.money(finance.summary.income)} · chi ${fmt.money(finance.summary.expense)}`} tone={Number(finance.summary.net) < 0 ? 'danger' : 'ok'} onClick={() => nav('/finance')} />
-        <StatCard icon={BookOpen} label="Thẻ đến hạn" value={learning.dueCards} hint={`${learning.courses} khóa học`} onClick={() => nav('/learning')} />
+        <StatCard icon={BookOpen} label="Học tập (EduSmart)" value="EduSmart" hint="thời khóa biểu, đề thi, bài tập" onClick={() => nav('/learning')} />
         <StatCard icon={NotebookPen} label="Ghi chú" value={notes.count} hint="mở tab Ghi chú để viết tiếp" onClick={() => nav('/notes')} />
       </div>
 
@@ -136,18 +136,19 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        <Card title="Học tập" actions={<Btn variant="ghost" onClick={() => nav('/learning')}>Mở</Btn>}>
+        <Card title="Học tập (EduSmart)" actions={<Btn variant="ghost" onClick={() => nav('/learning')}>Mở</Btn>}>
           <div className="kv">
-            <span>Thẻ đến hạn</span>
-            <strong>{learning.dueCards}</strong>
+            <span>Thời khóa biểu hôm nay</span>
+            <span className="muted">xem trong EduSmart</span>
           </div>
-          {learning.decks.slice(0, 4).map((d) => (
-            <div className="kv" key={d.id}>
-              <span>{d.name}</span>
-              <span className="muted">{d.dueCount} thẻ</span>
-            </div>
-          ))}
-          {learning.decks.length === 0 && <p className="muted small">Chưa có bộ thẻ.</p>}
+          <div className="kv">
+            <span>Bài kiểm tra &amp; bài tập về nhà</span>
+            <span className="muted">chấm điểm tự động</span>
+          </div>
+          <div className="kv">
+            <span>Tạo đề thi bằng AI</span>
+            <span className="muted">cần cấu hình API key</span>
+          </div>
         </Card>
 
         <Card title="Sức khỏe 7 ngày" actions={<Btn variant="ghost" onClick={() => nav('/health')}>Chi tiết</Btn>}>
