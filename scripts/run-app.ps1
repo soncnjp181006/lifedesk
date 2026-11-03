@@ -45,11 +45,42 @@ $mvnCandidates = @(
 )
 $mvn = $mvnCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 
+$npmCandidates = @(
+    (Get-Command npm -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue),
+    'C:\Program Files\nodejs\npm.cmd'
+)
+$npm = $npmCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+
 if (-not $NoBuild) {
+    if (-not $npm) {
+        throw 'npm not found. Install Node.js so the embedded web UI can be rebuilt before launching.'
+    }
+
+    $webDir = Join-Path $root 'web'
+    if (-not (Test-Path $webDir)) {
+        throw "Web frontend folder not found: $webDir"
+    }
+
+    Write-Host 'Building embedded web UI bundle...'
+    Push-Location $webDir
+    if (-not (Test-Path (Join-Path $webDir 'node_modules'))) {
+        & $npm install
+        if ($LASTEXITCODE -ne 0) {
+            Pop-Location
+            throw 'npm install failed while preparing the web bundle.'
+        }
+    }
+    & $npm run build
+    if ($LASTEXITCODE -ne 0) {
+        Pop-Location
+        throw 'Web bundle build failed.'
+    }
+    Pop-Location
+
     if (-not $mvn) {
         throw 'mvn not found. Install Maven or pass -NoBuild to launch without rebuilding.'
     }
-    Write-Host "Building (mvn clean package -DskipTests)..."
+    Write-Host "Building JavaFX app (mvn clean package -DskipTests)..."
     & $mvn clean package -DskipTests -q
     if ($LASTEXITCODE -ne 0) {
         throw "Build failed (exit $LASTEXITCODE). Fix compile errors and retry."

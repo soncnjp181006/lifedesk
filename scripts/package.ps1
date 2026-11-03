@@ -49,6 +49,22 @@ if ($RunTests) {
     if ($LASTEXITCODE -ne 0) { throw "Tests failed - packaging aborted." }
 }
 
+# --- rebuild embedded web bundle ----------------------------------------
+$npm = Get-Command npm -ErrorAction SilentlyContinue
+if (-not $npm) { throw "npm is required to rebuild the embedded web UI before packaging the JavaFX app." }
+$webDir = Join-Path $ProjectRoot 'web'
+if (-not (Test-Path $webDir)) { throw "Web frontend folder not found: $webDir" }
+
+Write-Host "== Building embedded web UI (npm run build)..."
+Push-Location $webDir
+if (-not (Test-Path (Join-Path $webDir 'node_modules'))) {
+    & $npm.Source install
+    if ($LASTEXITCODE -ne 0) { Pop-Location; throw "npm install failed while preparing the web bundle." }
+}
+& $npm.Source run build
+if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Web bundle build failed." }
+Pop-Location
+
 # --- build jar -----------------------------------------------------------
 Write-Host "== Building jar (mvn package)..."
 & $Mvn -q package -DskipTests
