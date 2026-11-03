@@ -18,6 +18,7 @@ import {
   Page,
   Progress,
   Spinner,
+  Textarea,
   fmt,
   useConfirm,
   useNotify
@@ -229,11 +230,11 @@ function HabitModal({ onClose, onSaved, onError }) {
     }
   };
   return (
-    <Modal title="Thói quen mới" onClose={onClose} footer={<><Btn onClick={onClose}>Hủy</Btn><Btn variant="primary" onClick={submit}>Lưu</Btn></>}>
-      <div className="form-grid">
-        <Field label="Tên" wide><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus /></Field>
-        <Field label="Mô tả" wide><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-        <Field label="Ngày tập" hint="Để trống = mọi ngày" wide>
+    <Modal title="Thói quen mới" size="wide" onClose={onClose} footer={<><Btn onClick={onClose}>Hủy</Btn><Btn variant="primary" onClick={submit}>Lưu</Btn></>}>
+      <div className="form-grid form-grid-stack">
+        <Field label="Tên"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus /></Field>
+        <Field label="Mô tả"><Textarea rows={7} placeholder="Mô tả ngắn: làm thế nào, cần chuẩn bị gì…" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+        <Field label="Ngày tập" hint="Để trống = mọi ngày">
           <div className="chip-wrap">
             {DAYS.map((d) => (
               <button type="button" key={d} className={'chip toggle' + (form.days.includes(d) ? ' on' : '')} onClick={() => toggleDay(d)}>
@@ -262,11 +263,13 @@ function GoalModal({ onClose, onSaved, onError }) {
     }
   };
   return (
-    <Modal title="Mục tiêu mới" onClose={onClose} footer={<><Btn onClick={onClose}>Hủy</Btn><Btn variant="primary" onClick={submit}>Lưu</Btn></>}>
-      <div className="form-grid">
-        <Field label="Tên mục tiêu" wide><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} autoFocus /></Field>
-        <Field label="Mô tả" wide><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-        <Field label="Hạn"><DateField value={form.targetDate} onChange={(v) => setForm({ ...form, targetDate: v })} /></Field>
+    <Modal title="Mục tiêu mới" size="wide" onClose={onClose} footer={<><Btn onClick={onClose}>Hủy</Btn><Btn variant="primary" onClick={submit}>Lưu</Btn></>}>
+      <div className="form-grid form-grid-stack">
+        <Field label="Tên mục tiêu"><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} autoFocus /></Field>
+        <Field label="Mô tả"><Textarea rows={7} placeholder="Mô tả mục tiêu, lý do muốn đạt, mốc thời gian…" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+        <div className="field-narrow">
+          <Field label="Hạn"><DateField value={form.targetDate} onChange={(v) => setForm({ ...form, targetDate: v })} /></Field>
+        </div>
       </div>
     </Modal>
   );

@@ -234,6 +234,15 @@ select.input { cursor: pointer; }
 .field-hint { font-size: 11px; color: var(--muted); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-grid .field[data-wide], .field.wide { grid-column: 1 / -1; }
+
+/* The habit and goal editors opt out of the two-column grid on purpose: their
+   description needs a real writing area, so fields stack and the dialog widens.
+   Class-scoped so every other module's modal keeps 640px / two columns. */
+.modal.modal-wide { width: min(820px, 94vw); }
+.form-grid-stack { grid-template-columns: 1fr; gap: 14px; }
+.form-grid-stack .textarea { min-height: 205px; }
+.field-narrow { max-width: 260px; }
+
 .checkbox { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text); }
 
 /* date field + calendar popover (WebView has no native date picker) */

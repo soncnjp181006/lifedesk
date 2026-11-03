@@ -102,10 +102,10 @@ export function ErrorBox({ error, onRetry }) {
   );
 }
 
-export function Modal({ title, onClose, children, footer }) {
+export function Modal({ title, onClose, children, footer, size }) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
+      <div className={'modal' + (size === 'wide' ? ' modal-wide' : '')}>
         <header className="modal-head">
           <h3>{title}</h3>
           <IconBtn icon={X} title="Đóng" onClick={onClose} />
