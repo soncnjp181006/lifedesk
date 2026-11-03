@@ -112,6 +112,8 @@ public final class EduSmartBackend {
             pb.redirectErrorStream(true);
             pb.environment().put("SPRING_PROFILES_ACTIVE", "h2");
             pb.environment().put("JWT_SECRET", jwtSecret());
+            // App desktop: học sinh không phải đăng nhập, EduSmart tự lấy JWT cục bộ
+            pb.environment().put("LOCAL_LOGIN_ENABLED", "true");
             inheritOptionalConfig(pb.environment(), jar, "AI_API_KEY", "ai-key.txt");
             inheritOptionalConfig(pb.environment(), jar, "AI_BASE_URL", "ai-base-url.txt");
             inheritOptionalConfig(pb.environment(), jar, "AI_MODEL", "ai-model.txt");
