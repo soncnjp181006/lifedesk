@@ -22,6 +22,13 @@ public class Task {
     public Set<String> tags = new LinkedHashSet<>();
     public List<ChecklistItem> checklist = new ArrayList<>();
     public RecurrenceRule recurrence = new RecurrenceRule();
+    /**
+     * Lineage marker for the occurrences of one recurring task. The first
+     * occurrence carries its own id; every rolled-over copy carries that same
+     * value, so "an occurrence is still open" is answerable without scanning
+     * titles. Blank on rows written before the field existed.
+     */
+    public String seriesId = "";
     /** Linked records from other modules. */
     public Set<String> linkedNoteIds = new LinkedHashSet<>();
     public Set<String> linkedGoalIds = new LinkedHashSet<>();

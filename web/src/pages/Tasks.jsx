@@ -63,12 +63,25 @@ export default function Tasks() {
   const { data: groupRows, reload: reloadGroups } = useLoad(() => api.get('/api/tasks/groups'), []);
   const groups = groupRows || [];
 
+  /* A completed recurring task is replaced at the top of the list by its next
+     occurrence, so a second click lands on the fresh copy. One request in
+     flight per task keeps that rollover single-step. */
+  const [pending, setPending] = useState(() => new Set());
   const toggle = async (t) => {
+    if (pending.has(t.id)) return;
+    setPending((s) => new Set(s).add(t.id));
     try {
-      await api.post(`/api/tasks/${t.id}/status`, { status: t.status === 'DONE' ? 'TODO' : 'DONE' });
+      const res = await api.post(`/api/tasks/${t.id}/status`, { status: t.status === 'DONE' ? 'TODO' : 'DONE' });
+      if (res?.nextDueDate) notify(`Đã hoàn thành — lần lặp tiếp theo ngày ${fmt.date(res.nextDueDate)}`);
       reload();
     } catch (e) {
       notify(e.message, 'error');
+    } finally {
+      setPending((s) => {
+        const n = new Set(s);
+        n.delete(t.id);
+        return n;
+      });
     }
   };
 
@@ -174,7 +187,12 @@ export default function Tasks() {
         <div className="list">
           {data.map((t) => (
             <div key={t.id} className={'list-row' + (t.status === 'DONE' ? ' done' : '')}>
-              <button className={'check' + (t.status === 'DONE' ? ' on' : '')} onClick={() => toggle(t)} title="Đánh dấu hoàn thành">
+              <button
+                className={'check' + (t.status === 'DONE' ? ' on' : '')}
+                onClick={() => toggle(t)}
+                disabled={pending.has(t.id)}
+                title="Đánh dấu hoàn thành"
+              >
                 {t.status === 'DONE' ? '✓' : ''}
               </button>
               <div className="grow">

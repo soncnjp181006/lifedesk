@@ -45,6 +45,7 @@ public class TaskService {
             tags.stream().filter(s -> !s.isBlank()).map(String::trim).forEach(t.tags::add);
         }
         t.recurrence = recurrence == null ? new RecurrenceRule() : recurrence;
+        t.seriesId = t.id;
         repo.insert(t);
         change.fire();
         return t;
@@ -69,32 +70,79 @@ public class TaskService {
         return repo.findAll();
     }
 
-    /** Set status; completing a recurring task spawns its next occurrence. */
-    public void setStatus(String id, TaskStatus status) {
+    /**
+     * Set status; completing a recurring task rolls it forward to its next
+     * occurrence. Returns the occurrence that was created, or null when the
+     * series already has an open one — that guard is what stops a repeat click
+     * from chaining a new copy off every copy it just produced.
+     */
+    public Task setStatus(String id, TaskStatus status) {
         Task t = get(id);
+        boolean alreadyDone = t.status == TaskStatus.DONE;
         t.status = status;
         t.completedAt = status == TaskStatus.DONE ? java.time.Instant.now() : null;
-        if (status == TaskStatus.DONE && t.recurrence.type != RecurrenceType.NONE) {
-            LocalDate next = nextOccurrence(t);
-            if (next != null) {
-                Task spawned = new Task();
-                spawned.title = t.title;
-                spawned.notes = t.notes;
-                spawned.priority = t.priority;
-                spawned.dueDate = next;
-                spawned.dueTime = t.dueTime;
-                spawned.group = t.group;
-                spawned.tags = new java.util.LinkedHashSet<>(t.tags);
-                spawned.checklist = new ArrayList<>(t.checklist.stream()
-                        .map(c -> new ChecklistItem(c.text, false)).toList());
-                spawned.recurrence = t.recurrence;
-                spawned.linkedGoalIds = new java.util.LinkedHashSet<>(t.linkedGoalIds);
-                spawned.linkedNoteIds = new java.util.LinkedHashSet<>(t.linkedNoteIds);
-                repo.insert(spawned);
+        repo.update(t);
+        Task spawned = status == TaskStatus.DONE && !alreadyDone
+                && t.recurrence.type != RecurrenceType.NONE
+                && openOccurrence(t) == null
+                ? spawnNextOccurrence(t) : null;
+        change.fire();
+        return spawned;
+    }
+
+    private Task spawnNextOccurrence(Task t) {
+        /* A slot that has not come due yet is simply finished early: rolling it
+           forward would put another future-dated copy in the same list position,
+           and completing that copy again repeats forever. Only a slot of today
+           or earlier advances the series, so at most one copy appears per day. */
+        if (t.dueDate != null && t.dueDate.isAfter(LocalDate.now())) {
+            return null;
+        }
+        LocalDate next = nextOccurrence(t);
+        if (next == null) {
+            return null;
+        }
+        Task spawned = new Task();
+        spawned.title = t.title;
+        spawned.notes = t.notes;
+        spawned.priority = t.priority;
+        spawned.dueDate = next;
+        spawned.dueTime = t.dueTime;
+        spawned.group = t.group;
+        spawned.tags = new java.util.LinkedHashSet<>(t.tags);
+        spawned.checklist = new ArrayList<>(t.checklist.stream()
+                .map(c -> new ChecklistItem(c.text, false)).toList());
+        spawned.recurrence = t.recurrence;
+        spawned.seriesId = seriesOf(t);
+        spawned.linkedGoalIds = new java.util.LinkedHashSet<>(t.linkedGoalIds);
+        spawned.linkedNoteIds = new java.util.LinkedHashSet<>(t.linkedNoteIds);
+        repo.insert(spawned);
+        return spawned;
+    }
+
+    /** A different, not-yet-done occurrence of the same recurring task. */
+    private Task openOccurrence(Task t) {
+        String series = seriesOf(t);
+        for (Task other : repo.findAll()) {
+            if (!other.id.equals(t.id) && series.equals(seriesOf(other))
+                    && other.status != TaskStatus.DONE && other.status != TaskStatus.CANCELLED) {
+                return other;
             }
         }
-        repo.update(t);
-        change.fire();
+        return null;
+    }
+
+    /**
+     * Rows saved before {@code seriesId} existed carry no lineage, so they are
+     * matched on the fields a rolled-over copy always repeats. Without this the
+     * duplicated occurrences already in a user's file would keep chaining.
+     */
+    private static String seriesOf(Task t) {
+        if (t.seriesId != null && !t.seriesId.isBlank()) {
+            return t.seriesId;
+        }
+        return "legacy:" + t.title + "|" + t.group + "|" + t.recurrence.type
+                + "|" + t.recurrence.interval + "|" + t.recurrence.daysOfWeek;
     }
 
     /** Compute the next due date for a recurring task, relative to today. */

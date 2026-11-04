@@ -394,6 +394,7 @@ select.input { cursor: pointer; }
   background: transparent; color: #071120; display: grid; place-items: center; cursor: pointer;
 }
 .check.on { background: var(--ok); border-color: var(--ok); }
+.check:disabled { opacity: .45; cursor: progress; }
 
 .table { display: flex; flex-direction: column; overflow-x: auto; }
 .tr { min-width: 680px; }

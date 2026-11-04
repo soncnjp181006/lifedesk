@@ -274,11 +274,14 @@ public final class ApiServer {
         }
         if (p.size() == 1 && method.equals("POST")) {
             JsonObject b = body(ex);
-            Task created = ctx.tasks().create(
-                    str(b, "title", ""), str(b, "notes", ""),
-                    enumValue(Priority.class, str(b, "priority", "MEDIUM")),
-                    date(b, "dueDate"), time(b, "dueTime"),
-                    str(b, "group", ""), new ArrayList<>(tags(b)), recurrence(b));
+            Task created;
+            synchronized (moduleLock) {
+                created = ctx.tasks().create(
+                        str(b, "title", ""), str(b, "notes", ""),
+                        enumValue(Priority.class, str(b, "priority", "MEDIUM")),
+                        date(b, "dueDate"), time(b, "dueTime"),
+                        str(b, "group", ""), new ArrayList<>(tags(b)), recurrence(b));
+            }
             sendJson(ex, 200, taskJson(created, LocalDate.now()));
             return;
         }
@@ -322,14 +325,26 @@ public final class ApiServer {
         if (p.size() >= 2) {
             String id = p.get(1);
             if (method.equals("DELETE")) {
-                ctx.tasks().delete(id);
+                synchronized (moduleLock) {
+                    ctx.tasks().delete(id);
+                }
                 sendJson(ex, 200, okJson());
                 return;
             }
             if (method.equals("POST") && p.size() == 3 && p.get(2).equals("status")) {
                 JsonObject b = body(ex);
-                ctx.tasks().setStatus(id, enumValue(TaskStatus.class, str(b, "status", "TODO")));
-                sendJson(ex, 200, okJson());
+                TaskStatus next = enumValue(TaskStatus.class, str(b, "status", "TODO"));
+                Task rolled;
+                // The pool runs 8 threads: two clicks arriving together would each
+                // read the task as still open and both roll it forward.
+                synchronized (moduleLock) {
+                    rolled = ctx.tasks().setStatus(id, next);
+                }
+                JsonObject o = okJson();
+                if (rolled != null && rolled.dueDate != null) {
+                    o.addProperty("nextDueDate", rolled.dueDate.toString());
+                }
+                sendJson(ex, 200, o);
                 return;
             }
             if (method.equals("PUT")) {

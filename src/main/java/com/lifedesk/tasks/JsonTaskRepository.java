@@ -7,7 +7,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/** JSON file-backed task repository (data/tasks/tasks.json). */
+/**
+ * JSON file-backed task repository (data/tasks/tasks.json).
+ * The API answers on a thread pool, so reads and writes of the list are
+ * serialised: an unsynchronised add() racing a set() drops rows silently.
+ */
 public class JsonTaskRepository implements TaskRepository {
     public static final String FILE = "tasks/tasks.json";
     private static final int SCHEMA_VERSION = 1;
@@ -31,23 +35,23 @@ public class JsonTaskRepository implements TaskRepository {
     }
 
     @Override
-    public List<Task> findAll() {
+    public synchronized List<Task> findAll() {
         return List.copyOf(tasks);
     }
 
     @Override
-    public Optional<Task> findById(String id) {
+    public synchronized Optional<Task> findById(String id) {
         return tasks.stream().filter(t -> t.id.equals(id)).findFirst();
     }
 
     @Override
-    public void insert(Task task) {
+    public synchronized void insert(Task task) {
         tasks.add(task);
         persist();
     }
 
     @Override
-    public void update(Task task) {
+    public synchronized void update(Task task) {
         for (int i = 0; i < tasks.size(); i++) {
             if (tasks.get(i).id.equals(task.id)) {
                 task.updatedAt = java.time.Instant.now();
@@ -60,7 +64,7 @@ public class JsonTaskRepository implements TaskRepository {
     }
 
     @Override
-    public void delete(String id) {
+    public synchronized void delete(String id) {
         if (!tasks.removeIf(t -> t.id.equals(id))) {
             throw new com.lifedesk.common.NotFoundException("Không tìm thấy công việc: " + id);
         }
